@@ -1,0 +1,1 @@
+# ch_shrinkwrap.python_microscopy.visgui_modules.NAME_OF_FILE_WITHOUT_EXTENSION
