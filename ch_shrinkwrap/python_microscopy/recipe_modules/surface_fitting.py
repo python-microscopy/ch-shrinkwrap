@@ -36,8 +36,8 @@ class MembraneDualMarchingCubes(ModuleBase):
 
 @register_module('ShrinkwrapMembrane')
 class ShrinkwrapMembrane(ModuleBase):
-    membrane = Input('membrane')
-    points = Input('input')
+    input = Input('membrane')
+    points = Input('points')
 
     max_iters = Int(100)
     step_size = Float(1)

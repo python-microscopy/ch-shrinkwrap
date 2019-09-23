@@ -26,7 +26,7 @@ def shrinkwrap(visFr):
         gen_membrane(visFr)
     
     recipe = visFr.pipeline.recipe
-    sw = ShrinkwrapMembrane(recipe, membrane='membrane', points='output')
+    sw = ShrinkwrapMembrane(recipe, input='membrane', points='output')
     
     if sw.configure_traits(kind='modal'):
         recipe.add_module(sw)

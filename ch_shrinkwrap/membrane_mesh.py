@@ -32,18 +32,21 @@ class MembraneMesh(TriangleMesh):
     def E(self):
         if self._E is None:
             self.curvature_grad()
+        self._E[np.isnan(self._E)] = 0
         return self._E
 
     @property
     def H(self):
         if self._H is None:
             self.curvature_grad()
+        self._H[np.isnan(self._H)] = 0
         return self._H
 
     @property
     def K(self):
         if self._K is None:
             self.curvature_grad()
+        self._K[np.isnan(self._K)] = 0
         return self._K
 
     @property
