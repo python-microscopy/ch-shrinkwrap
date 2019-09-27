@@ -5,6 +5,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def estimate_density(ot):
+    """
+    Estimate the mean density of the octree.
+
+    Parameters
+    ----------
+        ot : PYME.experimental._octree.Octree
+            Octree
+    """
+    import numpy as np
+
+    max_depth = ot._nodes['depth'].max()
+    density_sc = 1.0/np.prod(ot.box_size(np.arange(max_depth + 1)), axis=0)
+    node_mask = (ot._nodes['nPoints'] != 0)
+    nodes_in_use = ot._nodes[node_mask]
+    density = nodes_in_use['nPoints']*density_sc[nodes_in_use['depth']]
+
+    return np.median(density)
+
+
 @register_module('MembraneDualMarchingCubes')
 class MembraneDualMarchingCubes(ModuleBase):
     input = Input('octree')
@@ -37,7 +57,7 @@ class MembraneDualMarchingCubes(ModuleBase):
 @register_module('ShrinkwrapMembrane')
 class ShrinkwrapMembrane(ModuleBase):
     input = Input('membrane')
-    points = Input('points')
+    points = Input('filtered_localizations')
 
     max_iters = Int(100)
     step_size = Float(1)
@@ -47,14 +67,14 @@ class ShrinkwrapMembrane(ModuleBase):
     def excecute(self, namespace):
         import numpy as np
 
-        namespace[self.membrane].a = self.attraction_weight
-        namespace[self.membrane].c = self.curvature_weight
-        namespace[self.membrane].max_iter = self.max_iters
-        namespace[self.membrane].step_size = self.step_size
+        namespace[self.input].a = self.attraction_weight
+        namespace[self.input].c = self.curvature_weight
+        namespace[self.input].max_iter = self.max_iters
+        namespace[self.input].step_size = self.step_size
 
         pts = np.vstack([namespace[self.points]['x'], 
                          namespace[self.points]['y'],
                          namespace[self.points]['z']]).T
         sigma = namespace[self.points]['sigma']
 
-        namespace[self.membrane].shrink_wrap(pts, sigma)
+        namespace[self.input].shrink_wrap(pts, sigma)

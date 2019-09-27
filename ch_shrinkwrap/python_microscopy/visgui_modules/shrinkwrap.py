@@ -10,7 +10,8 @@ def gen_membrane(visFr):
 
     
     recipe = visFr.pipeline.recipe
-    dmc = MembraneDualMarchingCubes(recipe, input='octree',
+    dmc = MembraneDualMarchingCubes(recipe, invalidate_parent=False, 
+                                            input='octree',
                                              output='membrane')
     if dmc.configure_traits(kind='modal'):
         recipe.add_module(dmc)
@@ -18,6 +19,7 @@ def gen_membrane(visFr):
 
         layer = TriangleRenderLayer(visFr.pipeline, dsname='membrane')
         visFr.add_layer(layer)
+        dmc._invalidate_parent = True
 
 def shrinkwrap(visFr):
     from ch_shrinkwrap.python_microscopy.recipe_modules.surface_fitting import ShrinkwrapMembrane
@@ -26,11 +28,12 @@ def shrinkwrap(visFr):
         gen_membrane(visFr)
     
     recipe = visFr.pipeline.recipe
-    sw = ShrinkwrapMembrane(recipe, input='membrane', points='output')
+    sw = ShrinkwrapMembrane(recipe, invalidate_parent=False, input='membrane', points='filtered_localizations')
     
     if sw.configure_traits(kind='modal'):
         recipe.add_module(sw)
         recipe.execute()
+        sw._invalidate_parent = True
 
         visFr.RefreshView()
 
