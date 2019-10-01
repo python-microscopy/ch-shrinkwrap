@@ -3,8 +3,8 @@ import numpy as np
 from PYME.experimental.triangle_mesh import TriangleMesh
 
 class MembraneMesh(TriangleMesh):
-    def __init__(self, vertices, faces):
-        super(MembraneMesh, self).__init__(vertices, faces)
+    def __init__(self, vertices=None, faces=None, mesh=None):
+        super(MembraneMesh, self).__init__(vertices=vertices, faces=faces, mesh=mesh)
 
         # Bending stiffness coefficients
         self.kc = 0.1
@@ -357,6 +357,8 @@ class MembraneMesh(TriangleMesh):
                 self.remesh(5, target_length, 0.5, 10)
                 print('Mean length: ' + str(self._mean_edge_length))
 
+            print('Iteration %d ...' % i)
+            
             # Calculate the weighted gradient
             shift = step_size*self.grad(points, sigma)
 
