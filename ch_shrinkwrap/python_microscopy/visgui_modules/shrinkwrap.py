@@ -5,13 +5,15 @@ def shrinkwrap(visFr):
     from PYME.LMVis.layers.mesh import TriangleRenderLayer
     from ch_shrinkwrap.python_microscopy.recipe_modules.surface_fitting import ShrinkwrapMembrane
 
-    if not 'surf0' in visFr.pipeline.dataSources.keys():
+    surf_name = 'surf0'
+
+    if not surf_name in visFr.pipeline.dataSources.keys():
         gen_isosurface(visFr)
 
     membrane_name = visFr.pipeline.new_ds_name('membrane')
     
     recipe = visFr.pipeline.recipe
-    sw = ShrinkwrapMembrane(recipe, invalidate_parent=False, input='surf0', output=membrane_name, points='filtered_localizations')
+    sw = ShrinkwrapMembrane(recipe, invalidate_parent=False, input=surf_name, output=membrane_name, points='filtered_localizations')
     
     if sw.configure_traits(kind='modal'):
         recipe.add_module(sw)

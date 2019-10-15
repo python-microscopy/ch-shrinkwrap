@@ -35,7 +35,7 @@ class ShrinkwrapMembrane(ModuleBase):
     attraction_weight = Float(1)
     curvature_weight = Float(-1)
 
-    def excecute(self, namespace):
+    def execute(self, namespace):
         import copy
         import numpy as np
         from ch_shrinkwrap import membrane_mesh
