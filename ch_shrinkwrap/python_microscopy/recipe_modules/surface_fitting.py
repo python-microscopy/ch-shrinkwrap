@@ -34,6 +34,7 @@ class ShrinkwrapMembrane(ModuleBase):
     step_size = Float(1)
     attraction_weight = Float(1)
     curvature_weight = Float(-1)
+    largest_component_only = Bool(True)
 
     def execute(self, namespace):
         import copy
@@ -55,6 +56,8 @@ class ShrinkwrapMembrane(ModuleBase):
         except(KeyError):
             sigma = np.ones_like(namespace[self.points]['x'])
 
+        if self.largest_component_only:
+            mesh.keep_largest_connected_component()
         mesh.shrink_wrap(pts, sigma)
 
         namespace[self.output] = mesh
