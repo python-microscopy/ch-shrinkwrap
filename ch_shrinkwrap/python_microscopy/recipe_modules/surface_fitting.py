@@ -50,7 +50,10 @@ class ShrinkwrapMembrane(ModuleBase):
         pts = np.vstack([namespace[self.points]['x'], 
                          namespace[self.points]['y'],
                          namespace[self.points]['z']]).T
-        sigma = namespace[self.points]['sigma']
+        try:
+            sigma = namespace[self.points]['sigma']
+        except(KeyError):
+            sigma = np.ones_like(namespace[self.points]['x'])
 
         mesh.shrink_wrap(pts, sigma)
 
