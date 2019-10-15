@@ -1,10 +1,10 @@
 import numpy as np
 
-from PYME.experimental.triangle_mesh import TriangleMesh
+from PYME.experimental._triangle_mesh import TriangleMesh
 
 class MembraneMesh(TriangleMesh):
-    def __init__(self, vertices, faces):
-        super(MembraneMesh, self).__init__(vertices, faces)
+    def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
+        super(MembraneMesh, self).__init__(vertices, faces, mesh, **kwargs)
 
         # Bending stiffness coefficients
         self.kc = 0.1
@@ -26,7 +26,10 @@ class MembraneMesh(TriangleMesh):
         self._K = None
         self._E = None
         
-        self.vertex_properties.extend(['E', 'K', 'H'])
+        self.vertex_properties.extend(['E'])
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     @property
     def E(self):
@@ -101,6 +104,7 @@ class MembraneMesh(TriangleMesh):
 
             # radial weighting
             r_sum = np.sum(1./np.sqrt((dvs*dvs).sum(1)))
+
 
             # Norms
             dvs_norm = np.sqrt((dvs*dvs).sum(1))
