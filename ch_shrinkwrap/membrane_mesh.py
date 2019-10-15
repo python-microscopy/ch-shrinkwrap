@@ -361,6 +361,8 @@ class MembraneMesh(TriangleMesh):
                 self.remesh(5, target_length, 0.5, 10)
                 print('Mean length: ' + str(self._mean_edge_length))
 
+            print('Iteration %d ...' % _i)
+            
             # Calculate the weighted gradient
             shift = step_size*self.grad(points, sigma)
 
