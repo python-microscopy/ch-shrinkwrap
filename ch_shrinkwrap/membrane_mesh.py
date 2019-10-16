@@ -256,8 +256,6 @@ class MembraneMesh(TriangleMesh):
         
         pt_weights = np.prod(pt_weight_matrix, axis=1)
 
-        print(pt_cnt_dist_2.shape, pt_weight_matrix.shape, pt_weights.shape)
-
         for i in range(self._vertices.shape[0]): 
             if self._vertices['halfedge'][i] != -1:
                 d = self._vertices['position'][i, :] - points
