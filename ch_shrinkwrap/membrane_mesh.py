@@ -253,7 +253,10 @@ class MembraneMesh(TriangleMesh):
         charge_sigma = self._mean_edge_length/2.5
 
         pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
+        
         pt_weights = np.prod(pt_weight_matrix, axis=1)
+
+        print(pt_cnt_dist_2.shape, pt_weight_matrix.shape, pt_weights.shape)
 
         for i in range(self._vertices.shape[0]): 
             if self._vertices['halfedge'][i] != -1:
@@ -279,6 +282,67 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
+    def point_attraction_grad_kdtree(self, points, sigma, w=0.95, search_r=100.0):
+        """
+        Attractive force of membrane to points.
+
+        Parameters
+        ----------
+            points : np.array
+                3D point cloud to fit.
+            sigma : float
+                Localization uncertainty of points.
+            w : float
+                Weight
+            search_r : float
+                Max distance of points from vertex to consider
+        """
+        import scipy.spatial
+
+        dirs = []
+
+        # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
+        # first loop iteration when we add a matrix to this scalar
+        # pt_cnt_dist_2 = 0
+
+        # for j in range(points.shape[1]):
+        #     pt_cnt_dist_2 = pt_cnt_dist_2 + (points[:,j][:,None] - self._vertices['position'][:,j][None,:])**2
+
+        charge_sigma = self._mean_edge_length/2.5
+        charge_var = (2*charge_sigma**2)
+
+        # pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
+        # pt_weights = np.prod(pt_weight_matrix, axis=1)
+
+        # Compute a KDTree on points
+        tree = scipy.spatial.KDTree(points)
+
+        for i in range(self._vertices.shape[0]):
+            if self._vertices['halfedge'][i] != -1:
+                neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
+                d = self._vertices['position'][i,:] - points[neighbors]
+                dd = (d*d).sum(1)
+                pt_weight_matrix = 1. - 2*np.exp(-dd/charge_var)
+                pt_weights = np.prod(pt_weight_matrix)
+                r = np.sqrt(dd)/sigma[neighbors]
+                
+                rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))
+
+                # Points at the vertex we're interested in are not de-weighted by the
+                # pt_weight_matrix
+                rf = rf*(pt_weights/pt_weight_matrix)
+                
+                attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)
+            else:
+                attraction = np.array([0,0,0])
+            
+            dirs.append(attraction)
+
+        dirs = np.vstack(dirs)
+        dirs[self._vertices['halfedge'] == -1] = 0
+
+        return dirs
+
     def grad(self, points, sigma):
         """
         Gradient between points and the surface.
@@ -291,7 +355,7 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
         curvature = self.curvature_grad()
-        attraction = self.point_attraction_grad(points, sigma)
+        attraction = self.point_attraction_grad_kdtree(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
