@@ -26,7 +26,7 @@ class MembraneMesh(TriangleMesh):
         self._K = None
         self._E = None
         
-        self.vertex_properties.extend(['E', 'K', 'H'])
+        self.vertex_properties.extend(['E', 'K', 'H', 'pE', 'R'])
 
     @property
     def E(self):
@@ -34,6 +34,18 @@ class MembraneMesh(TriangleMesh):
             self.curvature_grad()
         self._E[np.isnan(self._E)] = 0
         return self._E
+
+    @property
+    def pE(self):
+        #pEi = np.exp(-250. * self.E)
+        #pE = np.sum(pEi) * pEi
+        
+        pEi = np.exp(-self.E)
+        return pEi
+    
+    @property
+    def R(self):
+        return 1.0/(np.abs(self.H) + 1e-9)
 
     @property
     def H(self):
@@ -214,8 +226,12 @@ class MembraneMesh(TriangleMesh):
         self._E = E
         self._K = K
         
+        #intuitively this weighting feels wrong - I think there is a scaling factor off somewhere
         pEi = np.exp(-250.*E)
-        pE = np.sum(pEi)*pEi
+        pE = np.sum(pEi)*pEi #what is this supposed to do?
+        
+        pE = np.exp(-E)
+        
         # Take into account the change in neighboring energies for each
         # vertex shift
         dEdN = (areas*(4.*self.kc*H*dH + self.kg*dK) + dE_neighbors)*(1.-pE)
@@ -351,7 +367,7 @@ class MembraneMesh(TriangleMesh):
         
         for _i in np.arange(max_iter):
             # Remesh
-            if np.mod(_i, 20) == 0:
+            if _i > 0 and np.mod(_i, 20) == 0:
                 target_length = initial_length + m*_i
                 print('Target length: ' + str(target_length))
                 self.remesh(5, target_length, 0.5, 10)
