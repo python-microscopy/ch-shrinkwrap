@@ -1,7 +1,8 @@
 from PYME.IO import tabular, image, MetaDataHandler
 from PYME.recipes.base import register_module, ModuleBase
-from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float
+from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
+from ch_shrinkwrap.membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class ShrinkwrapMembrane(ModuleBase):
     attraction_weight = Float(1)
     curvature_weight = Float(-1)
     largest_component_only = Bool(True)
+    method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):
         import copy
@@ -58,6 +60,6 @@ class ShrinkwrapMembrane(ModuleBase):
 
         if self.largest_component_only:
             mesh.keep_largest_connected_component()
-        mesh.shrink_wrap(pts, sigma)
+        mesh.shrink_wrap(pts, sigma, method=self.method)
 
         namespace[self.output] = mesh

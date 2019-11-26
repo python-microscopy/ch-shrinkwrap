@@ -2,6 +2,10 @@ import numpy as np
 
 from PYME.experimental._triangle_mesh import TriangleMesh
 
+
+# Gradient descent methods
+DESCENT_METHODS = ['euler', 'adam']
+
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         super(MembraneMesh, self).__init__(vertices, faces, mesh, **kwargs)
@@ -251,11 +255,8 @@ class MembraneMesh(TriangleMesh):
             pt_cnt_dist_2 = pt_cnt_dist_2 + (points[:,j][:,None] - self._vertices['position'][:,j][None,:])**2
 
         charge_sigma = self._mean_edge_length/2.5
-
         pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
-        
         pt_weights = np.prod(pt_weight_matrix, axis=1)
-
         for i in range(self._vertices.shape[0]): 
             if self._vertices['halfedge'][i] != -1:
                 d = self._vertices['position'][i, :] - points
@@ -353,14 +354,14 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
         curvature = self.curvature_grad()
-        attraction = self.point_attraction_grad_kdtree(points, sigma)
+        attraction = self.point_attraction_grad(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
 
         return self.a*attraction + self.c*curvature
 
-    def adam_shrink_wrap(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8):
+    def adam_shrink_wrap(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
         """
         Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
         fit of surface mesh surf to point cloud points.
@@ -380,6 +381,8 @@ class MembraneMesh(TriangleMesh):
         # g_mag_prev = 0
         # g_mag = 0
         while (t < max_iter):
+            print('Iteration %d ...' % t)
+            
             t += 1
             # Gaussian noise std
             noise_sigma = np.sqrt(self.step_size / ((1 + t)**0.55))
@@ -396,9 +399,9 @@ class MembraneMesh(TriangleMesh):
             # Remove biases on moments & calculate update weight
             a = step_size * np.sqrt(1. - beta_2**t) / (1. - beta_1**t)
             # Update the surface
-            self.vertices['position'] = self._vertices['position'] + a * m / (np.sqrt(v) + eps)
+            self._vertices['position'] += a * m / (np.sqrt(v) + eps)
 
-    def euler_shrink_wrap(self, points, sigma, max_iter=100, step_size=1, eps=0.00001):
+    def euler_shrink_wrap(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         """
         Normal gradient descent.
 
@@ -411,17 +414,11 @@ class MembraneMesh(TriangleMesh):
         """
 
         # Calculate target lengths for remesh steps
-        initial_length = self._mean_edge_length
-        final_length = np.max(sigma)
-        m = (final_length - initial_length)/max_iter
+        # initial_length = self._mean_edge_length
+        # final_length = np.max(sigma)
+        # m = (final_length - initial_length)/max_iter
         
         for _i in np.arange(max_iter):
-            # Remesh
-            if np.mod(_i, 20) == 0:
-                target_length = initial_length + m*_i
-                print('Target length: ' + str(target_length))
-                self.remesh(5, target_length, 0.5, 10)
-                print('Mean length: ' + str(self._mean_edge_length))
 
             print('Iteration %d ...' % _i)
             
@@ -440,14 +437,28 @@ class MembraneMesh(TriangleMesh):
             if np.all(shift < eps):
                 return
 
-    def shrink_wrap(self, points, sigma, method='euler'):
-        options = ['euler', 'adam']
+            # # Remesh
+            # if (np.mod(_i, 19) == 0) and (_i != 0):
+            #     target_length = initial_length + m*_i
+            #     print('Target length: ' + str(target_length))
+            #     self.remesh(5, target_length, 0.5, 10)
+            #     print('Mean length: ' + str(self._mean_edge_length))
 
-        if method not in options:
+    def shrink_wrap(self, points, sigma, method='euler'):
+
+        if method not in DESCENT_METHODS:
             print('Unknown gradient descent method. Using default.')
             method = 'euler'
 
+        opts = dict(points=points, 
+                    sigma=sigma, 
+                    max_iter=self.max_iter, 
+                    step_size=self.step_size, 
+                    beta_1=self.beta_1, 
+                    beta_2=self.beta_2,
+                    eps=self.eps)
+
         if method == 'euler':
-            return self.euler_shrink_wrap(points, sigma, self.max_iter, self.step_size, self.eps)
+            return self.euler_shrink_wrap(**opts)
         elif method == 'adam':
-            return self.adam_shrink_wrap(points, sigma, self.max_iter, self.step_size, self.beta_1, self.beta_2, self.eps)
+            return self.adam_shrink_wrap(**opts)
