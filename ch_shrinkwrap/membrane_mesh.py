@@ -408,8 +408,8 @@ class MembraneMesh(TriangleMesh):
         # print('Ratio: ' + str(ratio))
     
         if jac:
-            g = np.dstack([self.a*attraction, self.c*curvature])
-            j = np.dstack([self.a*da, self.c*d2EdN2])
+            g = np.dstack([self.a*attraction, self.c*curvature]).swapaxes(1,2)
+            j = np.dstack([self.a*da, self.c*d2EdN2]).swapaxes(1,2)
             return g, j
 
         g = self.a*attraction + self.c*curvature
@@ -509,7 +509,7 @@ class MembraneMesh(TriangleMesh):
             jac = (np.eye(j.shape[1], j.shape[2])[None,...] - step_size*j)
 
             # compute the shift k = position+ - position
-            k = step_size*np.matmul(np.linalg.pinv(jac), shift)
+            k = step_size*np.matmul(np.linalg.pinv(jac), shift).sum(1)
 
             # Update the vertices            
             self._vertices['position'] += k
