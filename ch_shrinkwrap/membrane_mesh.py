@@ -4,7 +4,7 @@ from PYME.experimental._triangle_mesh import TriangleMesh
 
 
 # Gradient descent methods
-DESCENT_METHODS = ['euler', 'adam']
+DESCENT_METHODS = ['euler', 'backward_euler', 'adam']
 
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -67,6 +67,74 @@ class MembraneMesh(TriangleMesh):
         self._K = None
         self._E = None
 
+    def _compute_curvature_tensor_eig(self, Mvi):
+        """
+        Return the first two eigenvalues and eigenvectors of 3x3 curvature 
+        tensor. The third eigenvector is the unit normal of the point for
+        which the curvature tensor is defined.
+
+        This is a closed-form solution, and it assumes no eigenvalue is 0.
+
+        Parameters
+        ----------
+            Mvi : np.array
+                3x3 curvature tensor at a point.
+
+        Returns
+        -------
+            l1, l2 : float
+                Eigenvalues
+            v1, v2 : np.array
+                Eigenvectors
+        """
+        # Solve the eigenproblem in closed form
+        m00 = Mvi[0,0]
+        m01 = Mvi[0,1]
+        m02 = Mvi[0,2]
+        m11 = Mvi[1,1]
+        m12 = Mvi[1,2]
+        m22 = Mvi[2,2]
+
+        # Here we use the fact that Mvi is symnmetric and we know
+        # one of the eigenvalues must be 0
+        p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12
+        q = m00 + m11 + m22
+        r = np.sqrt(4*p + q*q)
+        
+        # Eigenvalues
+        l1 = 0.5*(q-r)
+        l2 = 0.5*(q+r)
+
+        def safe_divide(x, y):
+            if y == 0:
+                return 0
+            return 1.*x/y
+
+        # Now calculate the eigenvectors, assuming x = 1
+        z1n = ((m00 - l1)*(m11 - l1) - (m01*m01))
+        z1d = (m01*m12 - m02*(m11 - l1))
+        z1 = safe_divide(z1n, z1d)
+        y1n = (m12*z1 + m01)
+        y1d = (m11 - l1)
+        y1 = safe_divide(y1n, y1d)
+        
+        v1 = np.array([1., y1, z1])
+        v1_norm = np.sqrt((v1*v1).sum())
+        v1 = v1/v1_norm
+        
+        z2n = ((m00 - l2)*(m11 - l2) - (m01*m01))
+        z2d = (m01*m12 - m02*(m11 - l2))
+        z2 = safe_divide(z2n, z2d)
+        y2n = (m12*z2 + m01)
+        y2d = (m11 - l2)
+        y2 = safe_divide(y2n, y2d)
+        
+        v2 = np.array([1., y2, z2])
+        v2_norm = np.sqrt((v2*v2).sum())
+        v2 = v2/v2_norm
+
+        return l1, l2, v1, v2
+
     def curvature_grad(self, dN=0.1):
         """
         Estimate curvature. Here we follow a mix of ESTIMATING THE 
@@ -109,7 +177,6 @@ class MembraneMesh(TriangleMesh):
             # radial weighting
             r_sum = np.sum(1./np.sqrt((dvs*dvs).sum(1)))
 
-
             # Norms
             dvs_norm = np.sqrt((dvs*dvs).sum(1))
             dvs_1_norm = np.sqrt((dvs_1*dvs_1).sum(1))
@@ -142,63 +209,22 @@ class MembraneMesh(TriangleMesh):
 
             Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)
 
-            # Solve the eigenproblem in closed form
-            m00 = Mvi[0,0]
-            m01 = Mvi[0,1]
-            m02 = Mvi[0,2]
-            m11 = Mvi[1,1]
-            m12 = Mvi[1,2]
-            m22 = Mvi[2,2]
-
-            # Here we use the fact that Mvi is symnmetric and we know
-            # one of the eigenvalues must be 0
-            p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12
-            q = m00 + m11 + m22
-            r = np.sqrt(4*p + q*q)
-            
-            # Eigenvalues
-            l1 = 0.5*(q-r)
-            l2 = 0.5*(q+r)
-
-            def safe_divide(x, y):
-                if y == 0:
-                    return 0
-                return 1.*x/y
-
-            # Now calculate the eigenvectors, assuming x = 1
-            z1n = ((m00 - l1)*(m11 - l1) - (m01*m01))
-            z1d = (m01*m12 - m02*(m11 - l1))
-            z1 = safe_divide(z1n, z1d)
-            y1n = (m12*z1 + m01)
-            y1d = (m11 - l1)
-            y1 = safe_divide(y1n, y1d)
-            
-            v1 = np.array([1., y1, z1])
-            v1_norm = np.sqrt((v1*v1).sum())
-            v1 = v1/v1_norm
-            
-            z2n = ((m00 - l2)*(m11 - l2) - (m01*m01))
-            z2d = (m01*m12 - m02*(m11 - l2))
-            z2 = safe_divide(z2n, z2d)
-            y2n = (m12*z2 + m01)
-            y2d = (m11 - l2)
-            y2 = safe_divide(y2n, y2d)
-            
-            v2 = np.array([1., y2, z2])
-            v2_norm = np.sqrt((v2*v2).sum())
-            v2 = v2/v2_norm
+            l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
 
             # Eigenvectors
-            w = np.vstack([v1, v2, Nvi]).T
+            m = np.vstack([v1, v2, Nvi]).T
 
+            # Principal curvatures
             k_1 = 3.*l1 - l2 #e[0] - e[1]
             k_2 = 3.*l2 - l1 #e[1] - e[0]
+
+            # Mean and Gaussian curvatures
             H[iv] = 0.5*(k_1 + k_2)
             K[iv] = k_1*k_2
 
             # Now calculate the shift
             # We construct a quadratic in the space of T_1 vs. T_2
-            t_1, t_2, _ = np.dot(vjs-vi,w).T
+            t_1, t_2, _ = np.dot(vjs-vi,m).T
             A = np.array([t_1**2, t_2**2]).T
             
             # Update the equation y-intercept to displace the curve along
@@ -234,7 +260,7 @@ class MembraneMesh(TriangleMesh):
         # Return derivative of Boltzmann distribution
         return -dEdN[:,None]*self._vertices['normal']
 
-    def point_attraction_grad(self, points, sigma, w=0.95):
+    def point_attraction_grad(self, points, sigma, w=0.95, jac=False):
         """
         Attractive force of membrane to points.
 
@@ -246,6 +272,8 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
         dirs = []
+        if jac:
+            dirs2 = []
 
         # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
         # first loop iteration when we add a matrix to this scalar
@@ -271,13 +299,27 @@ class MembraneMesh(TriangleMesh):
                 rf = rf*(pt_weights/pt_weight_matrix[:, i])
                 
                 attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)
+
+                if jac:
+                    r2f = -3*(1-np.exp(-(r-1)**2/2))*(r**3/((r**3+1)**2)) + np.exp(-(r-1)**2/2)*(r*(r-1)/(r**3+1)) + 2*np.exp(-r**2/2)*r + np.exp(-r**2/2)*(1-r**2)*r
+                    r2f = r2f*(pt_weights/pt_weight_matrix[:,i])
+                    dattraction = (-d*(r2f/np.sqrt(dd))[:,None]).sum(0)
             else:
                 attraction = np.array([0,0,0])
+                if jac:
+                    dattraction = np.array([0,0,0])
             
             dirs.append(attraction)
+            if jac:
+                dirs2.append(dattraction)
 
         dirs = np.vstack(dirs)
         dirs[self._vertices['halfedge'] == -1] = 0
+
+        if jac:
+            dirs2 = np.vstack(dirs2)
+            dirs2[self._vertices['halfedge'] == -1] = 0
+            return dirs, dirs2
 
         return dirs
 
@@ -342,7 +384,7 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def grad(self, points, sigma):
+    def grad(self, points, sigma, jac=False):
         """
         Gradient between points and the surface.
 
@@ -353,13 +395,25 @@ class MembraneMesh(TriangleMesh):
             sigma : float
                 Localization uncertainty of points.
         """
-        curvature = self.curvature_grad()
-        attraction = self.point_attraction_grad(points, sigma)
+        dN = 0.1
+        curvature = self.curvature_grad(dN=dN)
+        if jac:
+            curvature_reverse = self.curvature_grad(dN=-dN)
+            d2EdN2 = (curvature + curvature_reverse)/dN
+            attraction, da = self.point_attraction_grad(points, sigma, jac=True)
+        else:
+            attraction = self.point_attraction_grad(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
+    
+        if jac:
+            g = np.dstack([self.a*attraction, self.c*curvature])
+            j = np.dstack([self.a*da, self.c*d2EdN2])
+            return g, j
 
-        return self.a*attraction + self.c*curvature
+        g = self.a*attraction + self.c*curvature
+        return g
 
     def adam_shrink_wrap(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
         """
@@ -444,6 +498,31 @@ class MembraneMesh(TriangleMesh):
             #     self.remesh(5, target_length, 0.5, 10)
             #     print('Mean length: ' + str(self._mean_edge_length))
 
+
+    def backward_euler_shrink_wrap(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+        for _i in np.arange(max_iter):
+
+            print('Iteration %d ...' % _i)
+            
+            # Calculate the gradient and Jacobian
+            shift, j = self.grad(points, sigma, jac=True)
+            jac = (np.eye(j.shape[1], j.shape[2])[None,...] - step_size*j)
+
+            # compute the shift k = position+ - position
+            k = step_size*np.matmul(np.linalg.pinv(jac), shift)
+
+            # Update the vertices            
+            self._vertices['position'] += k
+
+            self._faces['normal'][:] = -1
+            self._vertices['neighbors'][:] = -1
+            self.face_normals
+            self.vertex_neighbors
+
+            # If we've reached precision, terminate
+            if np.all(shift < eps):
+                return
+
     def shrink_wrap(self, points, sigma, method='euler'):
 
         if method not in DESCENT_METHODS:
@@ -460,5 +539,7 @@ class MembraneMesh(TriangleMesh):
 
         if method == 'euler':
             return self.euler_shrink_wrap(**opts)
+        elif method == 'backward_euler':
+            return self.backward_euler_shrink_wrap(**opts)
         elif method == 'adam':
             return self.adam_shrink_wrap(**opts)
