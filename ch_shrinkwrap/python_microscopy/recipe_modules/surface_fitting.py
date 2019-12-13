@@ -50,9 +50,9 @@ class ShrinkwrapMembrane(ModuleBase):
         mesh.max_iter = self.max_iters
         mesh.step_size = self.step_size
 
-        pts = np.vstack([namespace[self.points]['x'], 
-                         namespace[self.points]['y'],
-                         namespace[self.points]['z']]).T
+        pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
+                                              namespace[self.points]['y'],
+                                              namespace[self.points]['z']]).T)
         try:
             sigma = namespace[self.points]['sigma']
         except(KeyError):
@@ -60,6 +60,10 @@ class ShrinkwrapMembrane(ModuleBase):
 
         if self.largest_component_only:
             mesh.keep_largest_connected_component()
+        from PYME.util import mProfile
+        mProfile.profileOn(['membrane_mesh.py'])
         mesh.shrink_wrap(pts, sigma, method=self.method)
+        mProfile.profileOff()
+        mProfile.report()
 
         namespace[self.output] = mesh

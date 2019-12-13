@@ -2,9 +2,10 @@ import numpy as np
 
 from PYME.experimental._triangle_mesh import TriangleMesh
 
+import membrane_mesh_utils
 
 # Gradient descent methods
-DESCENT_METHODS = ['euler', 'backward_euler', 'adam']
+DESCENT_METHODS = ['euler', 'backward_euler', 'expectation_maximization', 'adam']
 
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -277,13 +278,15 @@ class MembraneMesh(TriangleMesh):
 
         # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
         # first loop iteration when we add a matrix to this scalar
-        pt_cnt_dist_2 = 0
+        # pt_cnt_dist_2 = 0
 
-        for j in range(points.shape[1]):
-            pt_cnt_dist_2 = pt_cnt_dist_2 + (points[:,j][:,None] - self._vertices['position'][:,j][None,:])**2
+        # for j in range(points.shape[1]):
+        #     pt_cnt_dist_2 = pt_cnt_dist_2 + (points[:,j][:,None] - self._vertices['position'][:,j][None,:])**2
 
         charge_sigma = self._mean_edge_length/2.5
-        pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
+        # pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
+        pt_weight_matrix = np.zeros((points.shape[0], self._vertices.shape[0]), 'f4')
+        membrane_mesh_utils.calculate_pt_cnt_dist_2(points, self._vertices, pt_weight_matrix, w, charge_sigma)
         pt_weights = np.prod(pt_weight_matrix, axis=1)
         for i in range(self._vertices.shape[0]): 
             if self._vertices['halfedge'][i] != -1:
@@ -415,7 +418,7 @@ class MembraneMesh(TriangleMesh):
         g = self.a*attraction + self.c*curvature
         return g
 
-    def adam_shrink_wrap(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
+    def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
         """
         Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
         fit of surface mesh surf to point cloud points.
@@ -455,7 +458,7 @@ class MembraneMesh(TriangleMesh):
             # Update the surface
             self._vertices['position'] += a * m / (np.sqrt(v) + eps)
 
-    def euler_shrink_wrap(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+    def opt_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         """
         Normal gradient descent.
 
@@ -499,7 +502,7 @@ class MembraneMesh(TriangleMesh):
             #     print('Mean length: ' + str(self._mean_edge_length))
 
 
-    def backward_euler_shrink_wrap(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+    def opt_backward_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):
 
             print('Iteration %d ...' % _i)
@@ -513,6 +516,32 @@ class MembraneMesh(TriangleMesh):
 
             # Update the vertices            
             self._vertices['position'] += k
+
+            self._faces['normal'][:] = -1
+            self._vertices['neighbors'][:] = -1
+            self.face_normals
+            self.vertex_neighbors
+
+            # If we've reached precision, terminate
+            if np.all(shift < eps):
+                return
+
+    def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+        for _i in np.arange(max_iter):
+
+            print('Iteration %d ...' % _i)
+
+            if _i % 2:
+                dN = 0.1
+                grad = self.c*self.curvature_grad(dN=dN)
+            else:
+                grad = self.a*self.point_attraction_grad(points, sigma)
+
+            # Calculate the weighted gradient
+            shift = step_size*grad
+
+            # Update the vertices
+            self._vertices['position'] += shift
 
             self._faces['normal'][:] = -1
             self._vertices['neighbors'][:] = -1
@@ -538,8 +567,10 @@ class MembraneMesh(TriangleMesh):
                     eps=self.eps)
 
         if method == 'euler':
-            return self.euler_shrink_wrap(**opts)
+            return self.opt_euler(**opts)
         elif method == 'backward_euler':
-            return self.backward_euler_shrink_wrap(**opts)
+            return self.opt_backward_euler(**opts)
+        elif method == 'expectation_maximization':
+            return self.opt_expectation_maximization(**opts)
         elif method == 'adam':
-            return self.adam_shrink_wrap(**opts)
+            return self.opt_adam(**opts)
