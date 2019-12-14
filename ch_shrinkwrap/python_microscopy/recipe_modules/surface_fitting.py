@@ -60,10 +60,10 @@ class ShrinkwrapMembrane(ModuleBase):
 
         if self.largest_component_only:
             mesh.keep_largest_connected_component()
-        from PYME.util import mProfile
-        mProfile.profileOn(['membrane_mesh.py'])
+        # from PYME.util import mProfile
+        # mProfile.profileOn(['membrane_mesh.py'])
         mesh.shrink_wrap(pts, sigma, method=self.method)
-        mProfile.profileOff()
-        mProfile.report()
+        # mProfile.profileOff()
+        # mProfile.report()
 
         namespace[self.output] = mesh

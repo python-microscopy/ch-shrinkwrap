@@ -11,7 +11,7 @@ class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         super(MembraneMesh, self).__init__(vertices, faces, mesh, **kwargs)
 
-        # Bending stiffness coefficients
+        # Bending stiffness coefficients (in units of kbT)
         self.kc = 0.1
         self.kg = -0.1
 
@@ -30,8 +30,9 @@ class MembraneMesh(TriangleMesh):
         self._H = None
         self._K = None
         self._E = None
+        self._pE = None
         
-        self.vertex_properties.extend(['E'])
+        self.vertex_properties.extend(['E', 'pE'])
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -56,6 +57,13 @@ class MembraneMesh(TriangleMesh):
             self.curvature_grad()
         self._K[np.isnan(self._K)] = 0
         return self._K
+
+    @property
+    def pE(self):
+        if self._pE is None:
+            self.curvature_grad()
+            self._pE[np.isnan(self._pE)] = 0
+        return self._pE
 
     @property
     def _mean_edge_length(self):
@@ -249,11 +257,13 @@ class MembraneMesh(TriangleMesh):
         self._E = E
         self._K = K
         
-        pEi = np.exp(-250.*E)
-        pE = np.sum(pEi)*pEi
-        # Take into account the change in neighboring energies for each
+        #pEi = np.exp(-250.*E)
+        pEi = np.exp(-4.*E)
+        #self._pE = (1./np.median(pEi))*pEi
+        self._pE = pEi
+        ## Take into account the change in neighboring energies for each
         # vertex shift
-        dEdN = (areas*(4.*self.kc*H*dH + self.kg*dK) + dE_neighbors)*(1.-pE)
+        dEdN = (areas*(4.*self.kc*H*dH + self.kg*dK) + dE_neighbors)*(1.-self._pE)
         # dEdN = -(4.*self.kc*H*dH + self.kg*dK)*pE
         # 250 = 1/kbT where kb in nm
         # dpdN = -250.*np.exp(-250.*E)*dEdN
@@ -326,7 +336,7 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def point_attraction_grad_kdtree(self, points, sigma, w=0.95, search_r=100.0):
+    def point_attraction_grad_kdtree(self, points, sigma, w=0.95, search_k=200):
         """
         Attractive force of membrane to points.
 
@@ -359,14 +369,15 @@ class MembraneMesh(TriangleMesh):
         # pt_weights = np.prod(pt_weight_matrix, axis=1)
 
         # Compute a KDTree on points
-        tree = scipy.spatial.KDTree(points)
+        tree = scipy.spatial.cKDTree(points)
 
         for i in range(self._vertices.shape[0]):
             if self._vertices['halfedge'][i] != -1:
-                neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
+                _, neighbors = tree.query(self._vertices['position'][i,:], search_k)
+                # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
                 d = self._vertices['position'][i,:] - points[neighbors]
                 dd = (d*d).sum(1)
-                pt_weight_matrix = 1. - 2*np.exp(-dd/charge_var)
+                pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)
                 pt_weights = np.prod(pt_weight_matrix)
                 r = np.sqrt(dd)/sigma[neighbors]
                 
@@ -405,7 +416,7 @@ class MembraneMesh(TriangleMesh):
             d2EdN2 = (curvature + curvature_reverse)/dN
             attraction, da = self.point_attraction_grad(points, sigma, jac=True)
         else:
-            attraction = self.point_attraction_grad(points, sigma)
+            attraction = self.point_attraction_grad_kdtree(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
@@ -535,7 +546,7 @@ class MembraneMesh(TriangleMesh):
                 dN = 0.1
                 grad = self.c*self.curvature_grad(dN=dN)
             else:
-                grad = self.a*self.point_attraction_grad(points, sigma)
+                grad = self.a*self.point_attraction_grad_kdtree(points, sigma)
 
             # Calculate the weighted gradient
             shift = step_size*grad
