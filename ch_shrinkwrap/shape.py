@@ -6,6 +6,8 @@ class Shape:
         A general class for generating geometric shapes, and tools to compare 
         these shapes with externally-generated approximations. All Shapes are
         based in constructive solid geometry.
+
+        SDFs from http://iquilezles.org/www/articles/distfunctions/distfunctions.htm.
         """
         self._density = None  # Shape density
         self._points = None  # Point queue representing Shape
@@ -22,7 +24,7 @@ class Shape:
     def volume(self):
         raise NotImplementedError('Implemented in a derived class.')
         
-    def sdf(self):
+    def sdf(self, points):
         """ Signed distance function """
         raise NotImplementedError('Implemented in a derived class')
         
@@ -78,7 +80,7 @@ class Shape:
             points_raw = rp[np.abs(self.sdf(rp)) < eps]
             if (noise > 0):
                 points_raw += noise*self._noise_model((points_raw.shape[0], 3))
-            r = np.random.rand(points_raw.shape[0])
+            # r = np.random.rand(points_raw.shape[0])
             self._points = points_raw # [r < p]  # Make a Monte-Carlo decision
         return self._points
     
@@ -144,7 +146,6 @@ class MeshShape(Shape):
     def __init__(self, mesh, **kwargs):
         super(MeshShape, self).__init__(**kwargs)
         self._surface_area = None
-        self.__radius = None
         self.__tree = None
         self._mesh = mesh
         self._set_radius()
@@ -190,7 +191,7 @@ class MeshShape(Shape):
         
         # Grab the triangle info from the mesh
         h0 = face['halfedge']
-        a = face['area']
+        # a = face['area']
         h1 = self._mesh._halfedges[h0]['next']
         h2 = self._mesh._halfedges[h1]['next']
         v0 = self._mesh._halfedges[h0]['vertex']
@@ -214,7 +215,7 @@ class MeshShape(Shape):
         s3 = np.sign(dot(np.cross(p0p2,n),pp2))
         if (s1+s2+s3) < 2:
             f = np.min(np.min(
-                      dot2(ba*clamp(dot(p2p1,pp0)/dot2(p1p0),0.0,1.0)-pp0),
+                      dot2(p1p0*clamp(dot(p2p1,pp0)/dot2(p1p0),0.0,1.0)-pp0),
                       dot2(p2p1*clamp(dot(p2p1,pp1)/dot2(p2p1),0.0,1.0)-pp1)),
                       dot2(p0p2*clamp(dot(p0p2,pp2)/dot2(p0p2),0.0,1.0)-pp2))
         else:
@@ -230,7 +231,7 @@ class MeshShape(Shape):
             faces = self._mesh._faces[self._mesh._halfedges['face'][self._mesh._vertices['halfedge'][vertices]]]
 
             # Evaluate sdf_triangles for each triangle
-            d = 2*self.__radius
+            d = 2*self._radius
             for face in faces:
                 dt = self.sdf_triangle(_p, face)
                 if dt < d:
