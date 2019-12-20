@@ -5,7 +5,7 @@ from PYME.experimental._triangle_mesh import TriangleMesh
 import membrane_mesh_utils
 
 # Gradient descent methods
-DESCENT_METHODS = ['euler', 'backward_euler', 'expectation_maximization', 'adam']
+DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam']
 
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -271,7 +271,7 @@ class MembraneMesh(TriangleMesh):
         # Return derivative of Boltzmann distribution
         return -dEdN[:,None]*self._vertices['normal']
 
-    def point_attraction_grad(self, points, sigma, w=0.95, jac=False):
+    def point_attraction_grad(self, points, sigma, w=0.95):
         """
         Attractive force of membrane to points.
 
@@ -283,8 +283,6 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
         dirs = []
-        if jac:
-            dirs2 = []
 
         # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
         # first loop iteration when we add a matrix to this scalar
@@ -312,27 +310,13 @@ class MembraneMesh(TriangleMesh):
                 rf = rf*(pt_weights/pt_weight_matrix[:, i])
                 
                 attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)
-
-                if jac:
-                    r2f = -3*(1-np.exp(-(r-1)**2/2))*(r**3/((r**3+1)**2)) + np.exp(-(r-1)**2/2)*(r*(r-1)/(r**3+1)) + 2*np.exp(-r**2/2)*r + np.exp(-r**2/2)*(1-r**2)*r
-                    r2f = r2f*(pt_weights/pt_weight_matrix[:,i])
-                    dattraction = (-d*(r2f/np.sqrt(dd))[:,None]).sum(0)
             else:
                 attraction = np.array([0,0,0])
-                if jac:
-                    dattraction = np.array([0,0,0])
             
             dirs.append(attraction)
-            if jac:
-                dirs2.append(dattraction)
 
         dirs = np.vstack(dirs)
         dirs[self._vertices['halfedge'] == -1] = 0
-
-        if jac:
-            dirs2 = np.vstack(dirs2)
-            dirs2[self._vertices['halfedge'] == -1] = 0
-            return dirs, dirs2
 
         return dirs
 
@@ -375,7 +359,11 @@ class MembraneMesh(TriangleMesh):
             if self._vertices['halfedge'][i] != -1:
                 _, neighbors = tree.query(self._vertices['position'][i,:], search_k)
                 # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
-                d = self._vertices['position'][i,:] - points[neighbors]
+                try:
+                    d = self._vertices['position'][i,:] - points[neighbors]
+                except(IndexError):
+                    print('whaaa?')
+                    print(i, neighbors)
                 dd = (d*d).sum(1)
                 pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)
                 pt_weights = np.prod(pt_weight_matrix)
@@ -398,7 +386,7 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def grad(self, points, sigma, jac=False):
+    def grad(self, points, sigma):
         """
         Gradient between points and the surface.
 
@@ -411,20 +399,10 @@ class MembraneMesh(TriangleMesh):
         """
         dN = 0.1
         curvature = self.curvature_grad(dN=dN)
-        if jac:
-            curvature_reverse = self.curvature_grad(dN=-dN)
-            d2EdN2 = (curvature + curvature_reverse)/dN
-            attraction, da = self.point_attraction_grad(points, sigma, jac=True)
-        else:
-            attraction = self.point_attraction_grad_kdtree(points, sigma)
+        attraction = self.point_attraction_grad_kdtree(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
-    
-        if jac:
-            g = np.dstack([self.a*attraction, self.c*curvature]).swapaxes(1,2)
-            j = np.dstack([self.a*da, self.c*d2EdN2]).swapaxes(1,2)
-            return g, j
 
         g = self.a*attraction + self.c*curvature
         return g
@@ -512,31 +490,6 @@ class MembraneMesh(TriangleMesh):
             #     self.remesh(5, target_length, 0.5, 10)
             #     print('Mean length: ' + str(self._mean_edge_length))
 
-
-    def opt_backward_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
-        for _i in np.arange(max_iter):
-
-            print('Iteration %d ...' % _i)
-            
-            # Calculate the gradient and Jacobian
-            shift, j = self.grad(points, sigma, jac=True)
-            jac = (np.eye(j.shape[1], j.shape[2])[None,...] - step_size*j)
-
-            # compute the shift k = position+ - position
-            k = step_size*np.matmul(np.linalg.pinv(jac), shift).sum(1)
-
-            # Update the vertices            
-            self._vertices['position'] += k
-
-            self._faces['normal'][:] = -1
-            self._vertices['neighbors'][:] = -1
-            self.face_normals
-            self.vertex_neighbors
-
-            # If we've reached precision, terminate
-            if np.all(shift < eps):
-                return
-
     def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):
 
@@ -579,8 +532,6 @@ class MembraneMesh(TriangleMesh):
 
         if method == 'euler':
             return self.opt_euler(**opts)
-        elif method == 'backward_euler':
-            return self.opt_backward_euler(**opts)
         elif method == 'expectation_maximization':
             return self.opt_expectation_maximization(**opts)
         elif method == 'adam':
