@@ -1,4 +1,5 @@
 import numpy as np
+from ch_shrinkwrap import sdf_octree
 
 class Shape:
     def __init__(self, **kwargs):
@@ -77,6 +78,9 @@ class Shape:
         if resample or (self._points is None) or (self._density != density):
             self._density = density
             rp = 2*self._radius*(np.random.rand(int(np.round((self._radius*density)**3)), 3) - 0.5)
+            # r = 2.0*self._radius
+            # ot = sdf_octree.SDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
+            # rp = ot.points()
             points_raw = rp[np.abs(self.sdf(rp)) < eps]
             if (noise > 0):
                 points_raw += noise*self._noise_model((points_raw.shape[0], 3))

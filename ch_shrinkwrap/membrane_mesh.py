@@ -7,19 +7,27 @@ import membrane_mesh_utils
 # Gradient descent methods
 DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam']
 
+KBT = 0.0257  # eV # 4.11e-21  # joules
+NM2M = 1
+
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         super(MembraneMesh, self).__init__(vertices, faces, mesh, **kwargs)
 
         # Bending stiffness coefficients (in units of kbT)
-        self.kc = 0.1
-        self.kg = -0.1
+        self.kc = 20*KBT  # 0.1
+        self.kg = -20*KBT  # -0.1
 
         # Gradient weight
-        self.a = 1.
-        self.c = -1.
+        self.a = 1.0
+        self.c = -1.0
 
-        # Adam optimizer parameters
+        # Spotaneous curvature
+        # Keep in mind the curvature convention we're using. Into the surface is
+        # "down" and positive curvature bends "up".
+        self.c0 = 0.0 # -0.02  # nm^{-1} for a sphere of radius 50
+
+        # Optimizer parameters
         self.step_size = 1
         self.beta_1 = 0.8
         self.beta_2 = 0.7
@@ -144,7 +152,7 @@ class MembraneMesh(TriangleMesh):
 
         return l1, l2, v1, v2
 
-    def curvature_grad(self, dN=0.1):
+    def ch_grad(self, dN=0.1, skip_prob=0.9):
         """
         Estimate curvature. Here we follow a mix of ESTIMATING THE 
         TENSOR OF CURVATURE OF A SURFACE FROM A POLYHEDRAL 
@@ -154,6 +162,8 @@ class MembraneMesh(TriangleMesh):
         From Real 3-D Range Data by Eyal Hameiri and Ilan Shimshon 
         from IEEE TRANSACTIONS ON SYSTEMS, MAN, AND CYBERNETICS-PART
         B: CYBERNETICS, VOL. 33, NO. 4, AUGUST 2003
+
+        Units of energy are in kg*nm^2/s^2
         """
         H = np.zeros(self._vertices.shape[0])
         K = np.zeros(self._vertices.shape[0])
@@ -162,12 +172,18 @@ class MembraneMesh(TriangleMesh):
         dE_neighbors = np.zeros(self._vertices.shape[0])
         I = np.eye(3)
         areas = np.zeros(self._vertices.shape[0])
+        skip = np.random.rand(self._vertices.shape[0])
         for iv in range(self._vertices.shape[0]):
             if self._vertices['halfedge'][iv] == -1:
                 continue
 
+            # Monte carlo selection of vertices to update
+            # Stochastically choose which vertices to adjust
+            if skip[iv] < skip_prob:
+                continue
+
             # Vertex and its normal
-            vi = self._vertices['position'][iv,:]
+            vi = self._vertices['position'][iv,:]*NM2M
             Nvi = self._vertices['normal'][iv,:]
 
             p = I - Nvi[:,None]*Nvi[None,:] # np.outer(Nvi, Nvi)
@@ -176,7 +192,7 @@ class MembraneMesh(TriangleMesh):
             neighbors = self._vertices['neighbors'][iv]
             neighbor_mask = (neighbors != -1)
             neighbor_vertices = self._halfedges['vertex'][neighbors]
-            vjs = self._vertices['position'][neighbor_vertices[neighbor_mask]]
+            vjs = self._vertices['position'][neighbor_vertices[neighbor_mask]]*NM2M
             Nvjs = self._vertices['normal'][neighbor_vertices[neighbor_mask]]
 
             # Neighbor vectors & displaced neighbor tangents
@@ -204,6 +220,7 @@ class MembraneMesh(TriangleMesh):
             Nj_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_hat).sum(1))**2))
             Nj_1_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_1_hat).sum(1))**2))
 
+            # Compute the principal curvatures from the difference in normals (same as difference in tangents)
             kjs = 2.*Nj_diffs/dvs_norm
             kjs_1 = 2.*Nj_1_diffs/dvs_1_norm
 
@@ -211,10 +228,11 @@ class MembraneMesh(TriangleMesh):
             w = (1./dvs_norm)/r_sum
 
             # Calculate areas
-            Aj = self._faces['area'][self._halfedges['face'][neighbors[neighbor_mask]]]
+            Aj = self._faces['area'][self._halfedges['face'][neighbors[neighbor_mask]]]*NM2M*NM2M
             areas[iv] = np.sum(Aj)
 
-            dEj = Aj*w*2.*self.kc*(kjs_1**2 - kjs**2)/dN
+            # Compute the change in bending energy along the edge (assumes no perpendicular contributions and thus no Gaussian curvature)
+            dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV
 
             Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)
 
@@ -251,25 +269,125 @@ class MembraneMesh(TriangleMesh):
             dE_neighbors[iv] = np.sum(dEj)
 
         # Calculate Canham-Helfrich energy functional
-        E = areas*(2.*self.kc*H**2 + self.kg*K)
+        E = areas*(0.5*self.kc*(2.0*H - self.c0)**2 + self.kg*K)
 
         self._H = H
         self._E = E
         self._K = K
         
-        #pEi = np.exp(-250.*E)
-        pEi = np.exp(-4.*E)
-        #self._pE = (1./np.median(pEi))*pEi
-        self._pE = pEi
+        self._pE = np.exp(-(1.0/KBT)*E)  # 243.3 is 1/kbT in kg*nm^2/s^2
+        # self._pE = np.exp(-4.0*E)
+        # self._pE = (1./np.mean(pEi))*pEi
         ## Take into account the change in neighboring energies for each
         # vertex shift
-        dEdN = (areas*(4.*self.kc*H*dH + self.kg*dK) + dE_neighbors)*(1.-self._pE)
+        # Compute dEdN by component
+        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV
+        dEdN_K = areas*self.kg*dK  # eV
+        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors)
+        dEdN = dEdN_sum*(1.0-self._pE)
+
+        print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))
+        print('Total energy difference: {} {} {} {}'.format(np.min(dEdN_sum), np.mean(dEdN_sum), np.max(dEdN_sum), np.max(dEdN_sum)-np.min(dEdN_sum)))
         # dEdN = -(4.*self.kc*H*dH + self.kg*dK)*pE
         # 250 = 1/kbT where kb in nm
         # dpdN = -250.*np.exp(-250.*E)*dEdN
         
-        # Return derivative of Boltzmann distribution
+        # Return energy shift along direction of the normal
         return -dEdN[:,None]*self._vertices['normal']
+
+    def curvature_grad(self, dN=0.1, skip_prob=0.0):
+        """
+        Simple estimate of curvature energy.
+        """
+        H = np.zeros(self._vertices.shape[0])
+        dH = np.zeros(self._vertices.shape[0])
+        I = np.eye(3)
+        areas = np.zeros(self._vertices.shape[0])
+        skip = np.random.rand(self._vertices.shape[0])
+        for iv in range(self._vertices.shape[0]):
+            if self._vertices['halfedge'][iv] == -1:
+                continue
+
+            # Monte carlo selection of vertices to update
+            # Stochastically choose which vertices to adjust
+            if skip[iv] < skip_prob:
+                continue
+
+            # Vertex and its normal
+            vi = self._vertices['position'][iv,:]
+            Nvi = self._vertices['normal'][iv,:]
+
+            p = I - Nvi[:,None]*Nvi[None,:] # np.outer(Nvi, Nvi)
+                
+            # vertex nearest neighbors
+            neighbors = self._vertices['neighbors'][iv]
+            neighbor_mask = (neighbors != -1)
+            neighbor_vertices = self._halfedges['vertex'][neighbors]
+            vjs = self._vertices['position'][neighbor_vertices[neighbor_mask]]
+
+            # Neighbor vectors & displaced neighbor tangents
+            dvs = vjs - vi[None,:]
+
+            # radial weighting
+            r_sum = np.sum(1./np.sqrt((dvs*dvs).sum(1)))
+
+            # Norms
+            dvs_norm = np.sqrt((dvs*dvs).sum(1))
+
+            # Hats
+            dvs_hat = dvs/dvs_norm[:,None]
+
+            # Tangents
+            T_thetas = np.dot(p,-dvs.T).T
+            Tijs = T_thetas/np.sqrt((T_thetas*T_thetas).sum(1)[:,None])
+            Tijs[np.sum(T_thetas,axis=1) == 0, :] = 0
+
+            # Edge normals subtracted from vertex normals
+            Ni_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvi[None,:]*dvs_hat).sum(1))**2))
+
+            k = 2.*np.sign((Nvi[None,:]*dvs).sum(1))*Ni_diffs/dvs_norm
+            w = (1./dvs_norm)/r_sum
+
+            # Calculate areas
+            Aj = self._faces['area'][self._halfedges['face'][neighbors[neighbor_mask]]]
+            areas[iv] = np.sum(Aj)
+
+            Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)
+
+            l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
+
+            # Eigenvectors
+            m = np.vstack([v1, v2, Nvi]).T
+
+            # Principal curvatures
+            k_1 = 3.*l1 - l2 #e[0] - e[1]
+            k_2 = 3.*l2 - l1 #e[1] - e[0]
+
+            # Mean and Gaussian curvatures
+            H[iv] = 0.5*(k_1 + k_2)
+
+            # Now calculate the shift
+            # We construct a quadratic in the space of T_1 vs. T_2
+            t_1, t_2, _ = np.dot(vjs-vi,m).T
+            A = np.array([t_1**2, t_2**2]).T
+            
+            # Update the equation y-intercept to displace the curve along
+            # the normal direction
+            b = np.dot(A,np.array([k_1,k_2])) - dN
+            
+            # Solve
+            # Previously k_p, _, _, _ = np.linalg.lstsq(A, b)
+            k_p = np.dot(np.dot(np.linalg.pinv(np.dot(A.T,A)),A.T),b) 
+
+            # Finite differences of displaced curve and original curve
+            dH[iv] = ((0.5*(k_p[0] + k_p[1]))**2 - H[iv]**2)/dN
+
+        self._H = H
+
+        dEdN_H = areas*self.kc*dH  # eV
+
+        return -dEdN_H[:,None]*self._vertices['normal']
+
 
     def point_attraction_grad(self, points, sigma, w=0.95):
         """
