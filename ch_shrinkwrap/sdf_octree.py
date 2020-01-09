@@ -34,7 +34,7 @@ class SDFOctree(object):
 
         self._bounds = bounds
         self._sdf = sdf
-        self._density = n_points  # points/(1 nm)^3
+        self._density = n_points  # points/unit volume
         self._nodes = np.zeros(INITIAL_NODES, NODE_DTYPE)
         self._eps = eps
 
@@ -49,7 +49,7 @@ class SDFOctree(object):
         self._next_node = 1
         self._resize_limit = INITIAL_NODES
 
-        self.divide(0)  # Generate the octree
+        self.divide()  # Generate the octree
 
     def points(self):
         return self._nodes['center'][self._nodes['flagged']]
@@ -84,19 +84,35 @@ class SDFOctree(object):
         self._nodes['center'][self._next_node] = center
         self._next_node += 1
 
-    def divide(self, node_idx):
-        node = self._nodes[node_idx]
-        abs_dist = np.abs(self._sdf(node['center']))
-        if (abs_dist < self._eps):
-            node['flagged'] = 1
-            return
+    def divide(self):
+        node_idx = 0
+        while node_idx < self._next_node:
+            node = self._nodes[node_idx]
 
-        if (self.density(node['depth']) >= self._density):
-            return
-        
-        for _i in np.arange(8):
-            node['children'][_i] = self._next_node
-            new_center = node['center'] + 0.5*OCT_SHIFT[_i]*self.length(node['depth']+1)
-            self._add_node(node['depth']+1, node_idx, new_center)
-            self.divide(node['children'][_i])
+            if (node_idx > 0) and (node['depth'] == 0):
+                # We've somehow hit the empty node zone (we shouldn't be able to do this)
+                print('Made it to the other world.')
+                break
+            
+            node_idx += 1
+
+            abs_dist = np.abs(self._sdf(node['center']))
+            if (abs_dist <= self._eps):
+                # This voxel's center is acceptably close to the object defined
+                # by self._sdf
+                #
+                # NOTE: should probably change this to if any corners of the box fall within eps of the object, keep it
+                node['flagged'] = 1
+                continue
+
+            if (self.density(node['depth']) >= self._density):
+                # We've subdivided finely enough, but this voxel isn't near the
+                # object defined by self._sdf
+                continue
+            
+            for _i in np.arange(8):
+                # subdivide
+                new_center = node['center'] + 0.5*OCT_SHIFT[_i]*self.length(node['depth']+1)
+                self._add_node(node['depth']+1, node_idx-1, new_center)
+                node['children'][_i] = self._next_node
         

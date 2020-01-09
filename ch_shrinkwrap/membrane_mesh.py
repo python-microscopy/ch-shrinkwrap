@@ -16,7 +16,7 @@ class MembraneMesh(TriangleMesh):
 
         # Bending stiffness coefficients (in units of kbT)
         self.kc = 20*KBT  # 0.1
-        self.kg = -20*KBT  # -0.1
+        self.kg = 0 #  -20*KBT  # -0.1
 
         # Gradient weight
         self.a = 1.0
@@ -232,7 +232,7 @@ class MembraneMesh(TriangleMesh):
             areas[iv] = np.sum(Aj)
 
             # Compute the change in bending energy along the edge (assumes no perpendicular contributions and thus no Gaussian curvature)
-            dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV
+            dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN 
 
             Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)
 
@@ -281,19 +281,19 @@ class MembraneMesh(TriangleMesh):
         ## Take into account the change in neighboring energies for each
         # vertex shift
         # Compute dEdN by component
-        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV
-        dEdN_K = areas*self.kg*dK  # eV
-        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors)
-        dEdN = dEdN_sum*(1.0-self._pE)
+        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH 
+        dEdN_K = areas*self.kg*dK 
+        dEdN_sum = (dEdN_H + dEdN_K) # + dE_neighbors)
+        dEdN = -1*dEdN_sum # *(1.0-self._pE)
 
-        print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))
-        print('Total energy difference: {} {} {} {}'.format(np.min(dEdN_sum), np.mean(dEdN_sum), np.max(dEdN_sum), np.max(dEdN_sum)-np.min(dEdN_sum)))
+        # print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))
+        # print('Total energy difference: {} {} {} {}'.format(np.min(dEdN_sum), np.mean(dEdN_sum), np.max(dEdN_sum), np.max(dEdN_sum)-np.min(dEdN_sum)))
         # dEdN = -(4.*self.kc*H*dH + self.kg*dK)*pE
         # 250 = 1/kbT where kb in nm
         # dpdN = -250.*np.exp(-250.*E)*dEdN
         
         # Return energy shift along direction of the normal
-        return -dEdN[:,None]*self._vertices['normal']
+        return dEdN[:,None]*self._vertices['normal']
 
     def curvature_grad(self, dN=0.1, skip_prob=0.0):
         """
@@ -384,10 +384,9 @@ class MembraneMesh(TriangleMesh):
 
         self._H = H
 
-        dEdN_H = areas*self.kc*dH  # eV
+        dEdN_H = areas*self.kc*dH
 
         return -dEdN_H[:,None]*self._vertices['normal']
-
 
     def point_attraction_grad(self, points, sigma, w=0.95):
         """
@@ -516,7 +515,7 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
         dN = 0.1
-        curvature = self.curvature_grad(dN=dN)
+        curvature = self.ch_grad(dN=dN)
         attraction = self.point_attraction_grad_kdtree(points, sigma)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))

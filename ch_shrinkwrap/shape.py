@@ -145,6 +145,27 @@ class Ellipsoid(Shape):
         k0 = np.sqrt(np.sum(pr*pr))
         k1 = np.sqrt(np.sum(prr*prr))
         return k0*(k0-1.0)/k1
+
+class Torus(Shape):
+    def __init__(self, R=2, r=0.05, **kwargs):
+        super(Torus, self).__init__(**kwargs)
+        self._R = R  # major radius
+        self._r = r  # minor radius
+
+    @property
+    def surface_area(self):
+        return 4*np.pi*np.pi*self._R*self._r
+
+    @property
+    def volume(self):
+        return 2*np.pi*np.pi*self._R*self._r*self._r
+
+    def sdf(self, p):
+        if len(p.shape) > 1:
+            q = np.array([np.sqrt(p[:,0]**2 + p[:,2]**2)-self._R,p[:,1]])
+        else:
+            q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._R,p[1]])
+        return np.linalg.norm(q)-self._r
     
 class MeshShape(Shape):
     def __init__(self, mesh, **kwargs):
