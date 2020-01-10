@@ -96,9 +96,17 @@ class SDFOctree(object):
             
             node_idx += 1
 
+            # Distances we need
             dist = self._sdf(node['center'])
+            ll2 = 0.5*self.long_length(node['depth'])
+            dpos = dist+ll2
+            dneg = dist-ll2
             abs_dist = np.abs(dist)
-            if (abs_dist <= self._eps):
+
+            # Voxel density check
+            density_check = (self.density(node['depth']) >= self._density)
+            
+            if (abs_dist <= self._eps) or (density_check and ((dpos*dneg) < 0)):
                 # This voxel's center is acceptably close to the object defined
                 # by self._sdf
                 #
@@ -106,16 +114,13 @@ class SDFOctree(object):
                 node['flagged'] = 1
                 continue
 
-            ll2 = 0.5*self.long_length(node['depth'])
-            dpos = dist+ll2
-            dneg = dist-ll2
-            if ((dpos*dneg) > 0) and (np.abs(dpos)>self._eps) and (np.abs(dneg)>self._eps):
-                # This box will never straddle the boundary of the sdf 
-                continue
-
-            if (self.density(node['depth']) >= self._density):
+            if density_check:
                 # We've subdivided finely enough, but this voxel isn't near the
                 # object defined by self._sdf
+                continue
+
+            if ((dpos*dneg) > 0) and (np.abs(dpos)>self._eps) and (np.abs(dneg)>self._eps):
+                # This box will never straddle the boundary of the sdf 
                 continue
             
             for _i in np.arange(8):
