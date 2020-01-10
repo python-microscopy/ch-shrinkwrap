@@ -96,13 +96,21 @@ class SDFOctree(object):
             
             node_idx += 1
 
-            abs_dist = np.abs(self._sdf(node['center']))
+            dist = self._sdf(node['center'])
+            abs_dist = np.abs(dist)
             if (abs_dist <= self._eps):
                 # This voxel's center is acceptably close to the object defined
                 # by self._sdf
                 #
                 # NOTE: should probably change this to if any corners of the box fall within eps of the object, keep it
                 node['flagged'] = 1
+                continue
+
+            ll2 = 0.5*self.long_length(node['depth'])
+            dpos = dist+ll2
+            dneg = dist-ll2
+            if ((dpos*dneg) > 0) and (np.abs(dpos)>self._eps) and (np.abs(dneg)>self._eps):
+                # This box will never straddle the boundary of the sdf 
                 continue
 
             if (self.density(node['depth']) >= self._density):
