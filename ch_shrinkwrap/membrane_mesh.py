@@ -2,7 +2,7 @@ import numpy as np
 
 from PYME.experimental._triangle_mesh import TriangleMesh
 
-import membrane_mesh_utils
+import ch_shrinkwrap.membrane_mesh_utils
 
 # Gradient descent methods
 DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam']

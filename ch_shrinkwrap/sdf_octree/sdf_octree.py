@@ -126,6 +126,6 @@ class SDFOctree(object):
             for _i in np.arange(8):
                 # subdivide
                 new_center = node['center'] + 0.5*OCT_SHIFT[_i]*self.length(node['depth']+1)
-                self._add_node(node['depth']+1, node_idx-1, new_center)
                 node['children'][_i] = self._next_node
+                self._add_node(node['depth']+1, node_idx-1, new_center)
         
