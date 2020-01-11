@@ -77,15 +77,15 @@ class Shape:
         """
         if resample or (self._points is None) or (self._density != density):
             self._density = density
-            rp = 2*self._radius*(np.random.rand(int(np.round((self._radius*density)**3)), 3) - 0.5)
-            # r = 2.0*self._radius
-            # ot = sdf_octree.SDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
-            # rp = ot.points()
-            points_raw = rp[np.abs(self.sdf(rp)) < eps]
+            # rp = 2*self._radius*(np.random.rand(int(np.round((self._radius*density)**3)), 3) - 0.5)
+            r = 2.0*self._radius
+            ot = sdf_octree.SDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
+            points_raw = ot.points()
+            # points_raw = rp[np.abs(self.sdf(rp)) < eps]
             if (noise > 0):
                 points_raw += noise*self._noise_model((points_raw.shape[0], 3))
-            # r = np.random.rand(points_raw.shape[0])
-            self._points = points_raw # [r < p]  # Make a Monte-Carlo decision
+            pr = np.random.rand(points_raw.shape[0])
+            self._points = points_raw[pr < p]  # Make a Monte-Carlo decision
         return self._points
     
     def surface_res(self, points):
@@ -147,24 +147,24 @@ class Ellipsoid(Shape):
         return k0*(k0-1.0)/k1
 
 class Torus(Shape):
-    def __init__(self, R=2, r=0.05, **kwargs):
+    def __init__(self, radius=2, r=0.05, **kwargs):
         super(Torus, self).__init__(**kwargs)
-        self._R = R  # major radius
+        self._radius = radius  # major radius
         self._r = r  # minor radius
 
     @property
     def surface_area(self):
-        return 4*np.pi*np.pi*self._R*self._r
+        return 4*np.pi*np.pi*self._radius*self._r
 
     @property
     def volume(self):
-        return 2*np.pi*np.pi*self._R*self._r*self._r
+        return 2*np.pi*np.pi*self._radius*self._r*self._r
 
     def sdf(self, p):
         if len(p.shape) > 1:
-            q = np.array([np.sqrt(p[:,0]**2 + p[:,2]**2)-self._R,p[:,1]])
+            q = np.array([np.sqrt(p[:,0]**2 + p[:,2]**2)-self._radius,p[:,1]])
         else:
-            q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._R,p[1]])
+            q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._radius,p[1]])
         return np.linalg.norm(q)-self._r
     
 class MeshShape(Shape):
