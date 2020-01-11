@@ -3,7 +3,6 @@ import numpy as np
 cimport cython
 
 INITIAL_NODES = 1000
-PRECALC = 20
 
 NODE_DTYPE = [('depth', 'i4'), ('children', '8i4'), ('parent', 'i4'), ('center', '3f4'), ('flagged', 'i1')]
 
@@ -55,11 +54,17 @@ cdef class cSDFOctree(object):
     cdef object _sdf
     cdef public object _nodes
     cdef node_d *_cnodes
-    cdef object _flat_nodes, _long_lengths, _volumes, _densities
+    cdef object _flat_nodes
     cdef np.float32_t _eps, _xwidth, _ywidth, _zwidth, _density
-    cdef np.int32_t _next_node, _resize_limit
+    cdef int _next_node, _resize_limit
+
+    cdef object _sdf_arr
+
+    cdef np.float32_t[20] _long_lengths
+    cdef np.float32_t[20] _volumes
+    cdef np.float32_t[20] _densities
     
-    def __init__(self, bounds, sdf, n_points=1, eps=0.01):
+    def __init__(self, bounds, sdf, n_points=1, eps=0.0001):
         """
         Octree generated from a signed distance function. Only boxes that 
         satisfy the signed distance function and point requirements are
@@ -78,7 +83,7 @@ cdef class cSDFOctree(object):
             eps : float
                 The precision of the Octree approximation
         """
-        cdef np.int32_t _i
+        cdef int _i
 
         bounds = np.array(bounds, 'f4')
         self._bounds = bounds
@@ -86,10 +91,6 @@ cdef class cSDFOctree(object):
         self._density = n_points  # points/unit volume
         self._nodes = np.zeros(INITIAL_NODES, NODE_DTYPE)
         self._eps = eps
-
-        self._long_lengths = np.zeros(PRECALC, np.float32)
-        self._volumes = np.zeros(PRECALC, np.float32)
-        self._densities = np.zeros(PRECALC, np.float32)
 
         self._xwidth = self._bounds[1]-self._bounds[0]
         self._ywidth = self._bounds[3]-self._bounds[2]
@@ -100,13 +101,14 @@ cdef class cSDFOctree(object):
                                     (self._bounds[5]+self._bounds[4])/2.0]
         self._flat_nodes = self._nodes.view(NODE_DTYPE2)
         self._set_cnodes(self._flat_nodes)
+        self._sdf_arr = np.zeros(3,np.float32)
 
         self._next_node = 1
         self._resize_limit = INITIAL_NODES
 
         # Precalculate the long lengths, volumes, and densities
         # for use later
-        for _i in np.arange(PRECALC):
+        for _i in np.arange(20):
             l = self.length(_i)
             self._long_lengths[_i] = np.sqrt(np.sum(np.array([l])**2))
             self._volumes[_i] = np.prod(l)
@@ -118,26 +120,26 @@ cdef class cSDFOctree(object):
         self.divide()  # Generate the octree
 
     def points(self):
-        return self._nodes['center'][self._nodes['flagged']]
+        return self._nodes['center'][self._nodes['flagged']==1]
 
     def length(self, np.int32_t depth):
-        cdef np.float32_t scale
-        scale = 2**depth    
+        cdef np.int32_t scale
+        scale = 2**depth
         return self._xwidth/scale, self._ywidth/scale, self._zwidth/scale
 
     def long_length(self, np.int32_t depth):
-        if depth < PRECALC:
+        if depth < 20:
             return self._long_lengths[depth]
         # Maximum distance traversable within a cube at depth
         return np.sqrt(np.sum(np.array([self.length(depth)])**2))
 
     def volume(self, np.int32_t depth):
-        if depth < PRECALC:
+        if depth < 20:
             return self._volumes[depth]
         return np.prod(self.length(depth))
 
     def density(self, np.int32_t depth):
-        if depth < PRECALC:
+        if depth < 20:
             return self._densities[depth]
         # Note that the only point in an SDFOctree node is the node's center
         return 1.0/self.volume(depth)  # 1 point/unit volume
@@ -146,12 +148,13 @@ cdef class cSDFOctree(object):
         self._cnodes = &nodes[0]
 
     def _resize(self):
+        cdef int new_size
         old_nodes = self._nodes
         new_size = int(self._nodes.shape[0]*1.5 + 0.5)
         self._nodes = np.zeros(new_size, NODE_DTYPE)
         self._flat_nodes = self._nodes.view(NODE_DTYPE2)
         self._set_cnodes(self._flat_nodes)
-        self._nodes[:self._next_node] = old_nodes
+        self._nodes[:self._next_node] = old_nodes[:self._next_node]
         self._resize_limit = new_size
 
     def _add_node(self, np.int32_t depth, np.int32_t parent, np.float32_t center_x, np.float32_t center_y, np.float32_t center_z):
@@ -167,9 +170,8 @@ cdef class cSDFOctree(object):
         self._next_node += 1
 
     def divide(self):
-        cdef int _i
-        cdef np.int32_t node_idx
-        cdef np.float32_t dist, ll2, dpos, dneg, abs_dist, new_center_x, new_center_y, new_center_z, lx, ly, lz
+        cdef int _i, node_idx
+        cdef np.float32_t dist, ll2, dpos, dneg, dpdn, new_center_x, new_center_y, new_center_z, lx, ly, lz
         cdef node_d *node
         cdef bint density_check
         
@@ -182,17 +184,21 @@ cdef class cSDFOctree(object):
                 print('Made it to the other world.')
                 break
             
-            node_idx += 1
             # Distances we need
-            dist = self._sdf(self._nodes['center'][node_idx])
+            self._sdf_arr[0] = node.center_x
+            self._sdf_arr[1] = node.center_y
+            self._sdf_arr[2] = node.center_z
+            dist = self._sdf(self._sdf_arr)
             ll2 = 0.5*self.long_length(node.depth)
             dpos = dist+ll2
             dneg = dist-ll2
-            abs_dist = np.abs(dist)
+            dpdn = dpos*dneg
+
+            node_idx += 1
 
             # Voxel density check
             density_check = (self.density(node.depth) >= self._density)
-            if (abs_dist <= self._eps) or (density_check and ((dpos*dneg) < 0)):
+            if (np.abs(dist) <= self._eps) or (density_check and (dpdn < 0)):
                 # This voxel's center is acceptably close to the object defined
                 # by self._sdf
                 node.flagged = 1
@@ -203,12 +209,11 @@ cdef class cSDFOctree(object):
                 # object defined by self._sdf
                 continue
 
-            if ((dpos*dneg) > 0) and (np.abs(dpos)>self._eps) and (np.abs(dneg)>self._eps):
+            if (dpdn > 0) and (np.abs(dpos)>self._eps) and (np.abs(dneg)>self._eps):
                 # This box will never straddle the boundary of the sdf 
                 continue
 
-            _i = 0
-            while _i < 8:
+            for _i in range(8):
                 # subdivide
                 lx, ly, lz = self.length(node.depth+1)
                 new_center_x = node.center_x + _oct_shift_x[_i]*lx
@@ -217,6 +222,4 @@ cdef class cSDFOctree(object):
                 children = &node.child0
                 children[_i] = self._next_node
                 self._add_node(node.depth+1, node_idx-1, new_center_x, new_center_y, new_center_z)
-                _i += 1
-            print(self._nodes[node_idx-1])
             
