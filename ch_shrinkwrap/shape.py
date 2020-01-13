@@ -197,9 +197,9 @@ class MeshShape(Shape):
     
     @property
     def _tree(self):
-        if self._tree is None:
+        if self.__tree is None:
             import scipy.spatial
-            vertices = self._mesh._vertices['position'][self._mesh._vertices['position']!=-1]
+            vertices = self._mesh._vertices['position'][self._mesh._vertices['halfedge']!=-1]
             self.__tree = scipy.spatial.cKDTree(vertices)
         return self.__tree
     
@@ -239,28 +239,25 @@ class MeshShape(Shape):
         s2 = np.sign(dot(np.cross(p2p1,n),pp1))
         s3 = np.sign(dot(np.cross(p0p2,n),pp2))
         if (s1+s2+s3) < 2:
-            f = np.min(np.min(
+            f = np.minimum(np.minimum(
                       dot2(p1p0*clamp(dot(p2p1,pp0)/dot2(p1p0),0.0,1.0)-pp0),
                       dot2(p2p1*clamp(dot(p2p1,pp1)/dot2(p2p1),0.0,1.0)-pp1)),
                       dot2(p0p2*clamp(dot(p0p2,pp2)/dot2(p0p2),0.0,1.0)-pp2))
         else:
             f = dot(n,pp0)*dot(n,pp0)*dot2(n)
         
-        return np.sqrt(f)
+        return np.sign(dot(p,n))*np.sqrt(f)
     
     def sdf(self, p):
-        dist = []
-        for _p in p:
-            # Find the closest triangles in the mesh
-            vertices = self._tree.query(_p, 20)
-            faces = self._mesh._faces[self._mesh._halfedges['face'][self._mesh._vertices['halfedge'][vertices]]]
+        # Find the closest triangles in the mesh
+        _, vertices = self._tree.query(p, 5)
+        faces = self._mesh._faces[self._mesh._halfedges['face'][self._mesh._vertices['halfedge'][vertices]]]
 
-            # Evaluate sdf_triangles for each triangle
-            d = 2*self._radius
-            for face in faces:
-                dt = self.sdf_triangle(_p, face)
-                if dt < d:
-                    d = dt
-            dist.append(d)
+        # Evaluate sdf_triangles for each triangle
+        d = 2*self._radius
+        for face in faces:
+            dt = self.sdf_triangle(p, face)
+            if np.abs(dt) < np.abs(d):
+                d = dt
 
-        return np.array(dist)
+        return d
