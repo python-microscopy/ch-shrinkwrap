@@ -261,3 +261,84 @@ class MeshShape(Shape):
                 d = dt
 
         return d
+
+class UnionShape(Shape):
+    def __init__(self, s0, s1, k=0, **kwargs):
+        """
+        Return the union of two shapes.
+
+        Parameters
+        ----------
+            s0 : ch_shrinkwrap.shape.Shape
+            s1 : ch_shrinkwrap.shape.Shape
+            k : float
+                Smoothing parameter
+        """
+        super(UnionShape, self).__init__(**kwargs)
+        
+        self._s0 = s0
+        self._s1 = s1
+        self._k = k
+
+    def sdf(self, p):
+        d0 = self._s0.sdf(p)
+        d1 = self._s1.sdf(p)
+        res = np.minimum(d0, d1)
+        if self._k>0:
+            h = np.maximum(self._k-np.abs(d0-d1),0.0)
+            return res - h*h*0.25/self._k
+        return res
+
+class DifferenceShape(Shape):
+    def __init__(self, s0, s1, k=0, **kwargs):
+        """
+        Return the difference of two shapes.
+
+        Parameters
+        ----------
+            s0 : ch_shrinkwrap.shape.Shape
+            s1 : ch_shrinkwrap.shape.Shape
+            k : float
+                Smoothing parameter
+        """
+        super(DifferenceShape, self).__init__(**kwargs)
+        
+        self._s0 = s0
+        self._s1 = s1
+        self._k = k
+
+    def sdf(self, p):
+        d0 = self._s0.sdf(p)
+        d1 = self._s1.sdf(p)
+        res = np.maximum(-d0, d1)
+        if self._k>0:
+            h = np.maximum(self._k-np.abs(-d0-d1),0.0)
+            return res + h*h*0.25/self._k
+        return res
+
+class IntersectionShape(Shape):
+    def __init__(self, s0, s1, k=0, **kwargs):
+        """
+        Return the intersection of two shapes.
+
+        Parameters
+        ----------
+            s0 : ch_shrinkwrap.shape.Shape
+            s1 : ch_shrinkwrap.shape.Shape
+            k : float
+                Smoothing parameter
+        """
+        super(IntersectionShape, self).__init__(**kwargs)
+        
+        self._s0 = s0
+        self._s1 = s1
+        self._k = k
+
+    def sdf(self, p):
+        d0 = self._s0.sdf(p)
+        d1 = self._s1.sdf(p)
+        res = np.maximum(d0,d1)
+        if self._k>0:
+            h = np.maximum(self._k-np.abs(d0-d1),0.0)
+            return res + h*h*0.25/self._k
+        return res
