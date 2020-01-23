@@ -33,22 +33,28 @@ class ShrinkwrapMembrane(ModuleBase):
 
     max_iters = Int(100)
     step_size = Float(1)
-    attraction_weight = Float(1)
-    curvature_weight = Float(-1)
+    # attraction_weight = Float(1)
+    # curvature_weight = Float(-1)
     largest_component_only = Bool(True)
+    search_k = Int(200)
+    temperature = Float(25.0)
+    kc = Float(0.514)
+    kg = Float(0.0)
+    skip_prob = Float(0.0)
     method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):
-        import copy
         import numpy as np
         from ch_shrinkwrap import membrane_mesh
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input])
-
-        mesh.a = self.attraction_weight
-        mesh.c = self.curvature_weight
-        mesh.max_iter = self.max_iters
-        mesh.step_size = self.step_size
+        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+                                          search_k=self.search_k,
+                                          temp=self.temperature,
+                                          kc=self.kc,
+                                          kg=self.kg,
+                                          max_iter=self.max_iters,
+                                          step_size=self.step_size,
+                                          skip_prob=self.skip_prob)
 
         pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
                                               namespace[self.points]['y'],
