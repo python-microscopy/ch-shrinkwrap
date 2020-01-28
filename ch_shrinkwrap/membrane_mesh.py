@@ -18,7 +18,7 @@ class MembraneMesh(TriangleMesh):
         self.temp = 25  # Celsius
 
         # Bending stiffness coefficients
-        self.kc = 0.514  # eV  (roughly 20 kbt at 25C)
+        self.kc = 0.514  # eV  (roughly 20 kbT at 25C)
         self.kg = 0.0  # eV
 
         # Spotaneous curvature
@@ -296,8 +296,8 @@ class MembraneMesh(TriangleMesh):
         dEdN_sum = (dEdN_H + dEdN_K) # eV/nm # + dE_neighbors)
         dEdN = -1.0*dEdN_sum  # eV/nm # *(1.0-self._pE)
         
-        self._pE = np.exp(-(1.0/self.kbt)*E)/self._Q  # unitless
-        _dpE = np.exp(-(1.0/self.kbt)*dEdN)/self._Q  # nm^{-1}
+        self._pE = np.exp(-(1.0/self.kbt)*E)/self._Q/np.sqrt(areas)  # nm^{-1}
+        _dpE = np.exp(-(1.0/self.kbt)*dEdN)/self._Q/np.sqrt(areas)  # nm^{-2}
 
         # Return probability of energy shift along direction of the normal
         return self._pE[:,None]*self._vertices['normal'], -1.0*_dpE[:,None]*self._vertices['normal']
@@ -426,16 +426,16 @@ class MembraneMesh(TriangleMesh):
                 dldz = -1.0*l*d[:,2]/s2[:,2]  # unitless
 
                 # Log likelihood
-                ll = np.log(l)  # unitless
-                dlldx = np.log(dldx)  # unitless
-                dlldy = np.log(dldy)  # unitless
-                dlldz = np.log(dldz)  # unitless
+                ll = np.exp(np.sum(np.log(l)))  # unitless
+                dlldx = np.exp(np.sum(np.log(dldx)))  # unitless
+                dlldy = np.exp(np.sum(np.log(dldy)))  # unitless
+                dlldz = np.exp(np.sum(np.log(dldz)))  # unitless
                 dll = np.vstack([dlldx, dlldy, dlldz]).T
 
                 # Sum the log likelihoods (product of likelihoods) along the unit directions
                 # to the points. Take the exponent to get the likelihood back.
-                attraction = -np.exp(-(-d*(ll/np.sqrt(dd))[:,None]).sum(0))  # unitless
-                d_attraction  = -np.exp(-(-d*dll*(1.0/np.sqrt(dd))[:,None]).sum(0))  # unitless
+                attraction = (-d*(ll/np.sqrt(dd))[:,None]).mean(0)  # unitless
+                d_attraction  = (-d*dll*(1.0/np.sqrt(dd))[:,None]).mean(0)  # unitless
             else:
                 attraction = np.array([0,0,0])
                 d_attraction = np.array([0,0,0])
