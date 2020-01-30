@@ -247,7 +247,7 @@ class MembraneMesh(TriangleMesh):
             areas[iv] = np.sum(Aj)  # nm^2
 
             # Compute the change in bending energy along the edge (assumes no perpendicular contributions and thus no Gaussian curvature)
-            dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV/nm
+            dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV
 
             Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)  # nm
 
@@ -278,10 +278,10 @@ class MembraneMesh(TriangleMesh):
             k_p = np.dot(np.dot(np.linalg.pinv(np.dot(A.T,A)),A.T),b)  # 1/nm
 
             # Finite differences of displaced curve and original curve
-            dH[iv] = (0.5*(k_p[0] + k_p[1]) - H[iv])/dN  # 1/nm^2
-            dK[iv] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN  # 1/nm
+            dH[iv] = (0.5*(k_p[0] + k_p[1]) - H[iv])/dN  # 1/nm
+            dK[iv] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN  # 1/nm^2
 
-            dE_neighbors[iv] = np.sum(dEj)  # eV/nm
+            dE_neighbors[iv] = np.sum(dEj)  # eV
 
         # Calculate Canham-Helfrich energy functional
         E = areas*(0.5*self.kc*(2.0*H - self.c0)**2 + self.kg*K)  # eV
@@ -291,13 +291,15 @@ class MembraneMesh(TriangleMesh):
         self._K = K  # 1/nm^2
 
         # Compute dEdN by component
-        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV/nm
-        dEdN_K = areas*self.kg*dK  # eV/nm
-        dEdN_sum = (dEdN_H + dEdN_K) # eV/nm # + dE_neighbors)
-        dEdN = -1.0*dEdN_sum  # eV/nm # *(1.0-self._pE)
+        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV
+        dEdN_K = areas*self.kg*dK  # eV
+        dEdN_sum = (dEdN_H + dEdN_K) # eV # + dE_neighbors)
+        dEdN = -1.0*dEdN_sum  # eV # *(1.0-self._pE)
         
         self._pE = np.exp(-(1.0/self.kbt)*E)/self._Q/np.sqrt(areas)  # nm^{-1}
-        _dpE = np.exp(-(1.0/self.kbt)*dEdN)/self._Q/np.sqrt(areas)  # nm^{-2}
+        self._pE[areas == 0] = 0
+        _dpE = np.exp(-(1.0/self.kbt)*dEdN)/self._Q/np.sqrt(areas)  # nm^{-1}
+        _dpE[areas == 0] = 0
 
         # Return probability of energy shift along direction of the normal
         return self._pE[:,None]*self._vertices['normal'], -1.0*_dpE[:,None]*self._vertices['normal']
@@ -418,24 +420,18 @@ class MembraneMesh(TriangleMesh):
                 s2 = s**2
                 pf = 1.0/(np.prod(s,axis=1)*S32PI)  # normal distribution prefactor (1/nm)
                 
-                # Likelihood
-                l = pf*np.exp(-0.5*np.sum(d**2/s2,axis=1))  # unitless
-                # Likelihood derivatives
-                dldx = -1.0*l*d[:,0]/s2[:,0]  # unitless
-                dldy = -1.0*l*d[:,1]/s2[:,1]  # unitless
-                dldz = -1.0*l*d[:,2]/s2[:,2]  # unitless
-
                 # Log likelihood
-                ll = np.exp(np.sum(np.log(l)))  # unitless
-                dlldx = np.exp(np.sum(np.log(dldx)))  # unitless
-                dlldy = np.exp(np.sum(np.log(dldy)))  # unitless
-                dlldz = np.exp(np.sum(np.log(dldz)))  # unitless
-                dll = np.vstack([dlldx, dlldy, dlldz]).T
+                ll = (-3.0/2.0)*np.log(2*np.pi*s2)-(1.0/(2.0*s2))*np.sum(d**2,axis=0)  # unitless
+                # Derivative of log likelihood 
+                # dll = (1.0/s2)*np.sum(d,axis=0)
+                # Log of derivative of likelihood
+                dsum = np.sum(d,axis=0)  # For a stupid sign hack
+                dll = ll + np.log(1.0/s2) + np.log(np.abs(dsum))
+                # print(ll, dll)
 
-                # Sum the log likelihoods (product of likelihoods) along the unit directions
-                # to the points. Take the exponent to get the likelihood back.
-                attraction = (-d*(ll/np.sqrt(dd))[:,None]).mean(0)  # unitless
-                d_attraction  = (-d*dll*(1.0/np.sqrt(dd))[:,None]).mean(0)  # unitless
+                # Take the exponent to get the likelihood back.
+                attraction = (-d*np.exp(ll)*(1.0/np.sqrt(dd))[:,None]).sum(0)  # unitless
+                d_attraction  = (-d*np.sign(dsum)*np.exp(dll)*(1.0/np.sqrt(dd))[:,None]).sum(0)  # unitless
             else:
                 attraction = np.array([0,0,0])
                 d_attraction = np.array([0,0,0])
