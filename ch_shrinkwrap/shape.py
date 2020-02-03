@@ -166,7 +166,37 @@ class Torus(Shape):
         else:
             q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._radius,p[1]])
         return np.linalg.norm(q)-self._r
+
+class Box(Shape):
+    def __init__(self, lx=10, ly=None, lz=None, **kwargs):
+        super(Box, self).__init__(**kwargs)
+        self._lx = lx
+        self._ly = ly
+        self._lz = lz
+        if not self._ly:
+            self._ly = self._lx
+        if not self._lz:
+            self._lz = self._lx
+        self._radius = np.sqrt(self._lx**2+self._ly**2+self._lz**2)
     
+    @property
+    def volume(self):
+        return self._lx*self._ly*self._lz
+
+    @property
+    def surface_area(self):
+        return 2.0*(self._lx*self._ly + self._lx*self._lz + self._ly*self._lz)
+
+    def sdf(self, p):
+        b = np.array([self._lx, self._ly, self._lz])
+        if len(p.shape) > 1:
+            q = np.abs(p) - b[None,:]
+            r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[:,0],np.maximum(q[:,1],q[:,2])),0.0)
+        else:
+            q = np.abs(p) - b
+            r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[0],np.maximum(q[1],q[2])),0.0)
+        return r
+
 class MeshShape(Shape):
     def __init__(self, mesh, **kwargs):
         super(MeshShape, self).__init__(**kwargs)

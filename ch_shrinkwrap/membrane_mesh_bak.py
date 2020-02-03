@@ -405,6 +405,7 @@ class MembraneMesh(TriangleMesh):
                 rf = rf*(pt_weights/pt_weight_matrix) # unitless
                 
                 attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+                attraction = (attraction*np.prod(1-np.exp(-r**2/2)))/np.linalg.norm(attraction)  # unitless
             else:
                 attraction = np.array([0,0,0])
             
