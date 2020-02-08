@@ -384,7 +384,7 @@ class MembraneMesh(TriangleMesh):
         # Compute a KDTree on points
         tree = scipy.spatial.cKDTree(points)
 
-        for i in range(self._vertices.shape[0]):
+        for i in np.arange(self._vertices.shape[0]):
             if self._vertices['halfedge'][i] != -1:
                 _, neighbors = tree.query(self._vertices['position'][i,:], search_k)
                 # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
@@ -392,6 +392,7 @@ class MembraneMesh(TriangleMesh):
                     d = self._vertices['position'][i,:] - points[neighbors]  # nm
                 except(IndexError):
                     print('whaaa?')
+                    print(self._vertices[i])
                     print(i, neighbors)
                 dd = (d*d).sum(1)  # nm^2
                 pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
@@ -405,7 +406,9 @@ class MembraneMesh(TriangleMesh):
                 rf = rf*(pt_weights/pt_weight_matrix) # unitless
                 
                 attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
-                attraction = (attraction*np.prod(1-np.exp(-r**2/2)))/np.linalg.norm(attraction)  # unitless
+                attraction_norm = np.linalg.norm(attraction)
+                attraction = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
+                attraction[attraction_norm == 0] = 0  # div by zero
             else:
                 attraction = np.array([0,0,0])
             
@@ -433,6 +436,20 @@ class MembraneMesh(TriangleMesh):
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
+
+        # c_inf_mask = (np.isinf(curvature).sum(1)>0)
+        # a_inf_mask = (np.isinf(attraction).sum(1)>0)
+
+        # c_inf = curvature[c_inf_mask]
+        # a_inf = attraction[a_inf_mask]
+
+        # if len(c_inf) > 0:
+        #     print('Curvature infinity!!!')
+        #     print(self._vertices[c_inf_mask])
+
+        # if len(a_inf) > 0:
+        #     print('Attraction infinity!!!')
+        #     print(self._vertices[a_inf_mask])
 
         g = self.a*attraction + self.c*curvature
         return g
