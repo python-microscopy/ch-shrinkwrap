@@ -41,7 +41,7 @@ class MembraneMesh(TriangleMesh):
         self._E = None
         self._pE = None
         
-        self.vertex_properties.extend(['E', 'pE', 'puncture_candidates'])
+        self.vertex_properties.extend(['E', 'pE']) #, 'puncture_candidates'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -52,17 +52,17 @@ class MembraneMesh(TriangleMesh):
         # Pointcloud kdtree
         self._tree = None
 
-        self._puncture_test = False  # Toggle puncture testing
-        self._puncture_candidates = []
+        # self._puncture_test = False  # Toggle puncture testing
+        # self._puncture_candidates = []
 
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    @property
-    def puncture_candidates(self):
-        arr = np.zeros(self._vertices.shape[0])
-        arr[self._puncture_candidates] = 1
-        return arr
+    # @property
+    # def puncture_candidates(self):
+    #     arr = np.zeros(self._vertices.shape[0])
+    #     arr[self._puncture_candidates] = 1
+    #     return arr
 
     @property
     def E(self):
@@ -408,10 +408,10 @@ class MembraneMesh(TriangleMesh):
                     print(self._vertices[i])
                     print(i, neighbors)
                 dd = (d*d).sum(1)  # nm^2
-                if self._puncture_test:
-                    dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
-                    if np.min(dvn) < np.min(dd):
-                        self._puncture_candidates.append(i)
+                # if self._puncture_test:
+                #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
+                #     if np.min(dvn) < np.min(dd):
+                #         self._puncture_candidates.append(i)
                 pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
                 pt_weights = np.prod(pt_weight_matrix)  # unitless
                 r = np.sqrt(dd)/sigma[neighbors]  # unitless
@@ -436,92 +436,92 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def check_puncture_candidates(self, eps=5.0):
-        """
-        Test self._puncture_candidates to see if we want to puncture the mesh.
-        If so, puncture.
+    # def check_puncture_candidates(self, eps=5.0):
+    #     """
+    #     Test self._puncture_candidates to see if we want to puncture the mesh.
+    #     If so, puncture.
 
-        Parameters
-        ----------
-            eps : float
-                Radius of ball epsilon we wish to clear the points
-        """
-        # p = self._vertices['position'][self._puncture_candidates]
-        pc = np.array(self._puncture_candidates)
-        eps2 = eps**2
-        print(pc)
-        for _v in self._puncture_candidates:
-            if _v == -1:
-                continue
-            v = self._vertices[_v]
-            if v['halfedge'] == -1:
-                continue
-            vp = v['position']
-            n = v['normal']
-            p = self._vertices['position'][pc[pc!=_v]]
+    #     Parameters
+    #     ----------
+    #         eps : float
+    #             Radius of ball epsilon we wish to clear the points
+    #     """
+    #     # p = self._vertices['position'][self._puncture_candidates]
+    #     pc = np.array(self._puncture_candidates)
+    #     eps2 = eps**2
+    #     print(pc)
+    #     for _v in self._puncture_candidates:
+    #         if _v == -1:
+    #             continue
+    #         v = self._vertices[_v]
+    #         if v['halfedge'] == -1:
+    #             continue
+    #         vp = v['position']
+    #         n = v['normal']
+    #         p = self._vertices['position'][pc[pc!=_v]]
 
-            print(_v)
+    #         print(_v)
 
-            # 1. Check if we can see any of the puncture candidates
-            # in the cylinder of radius eps around n
-            pn = (np.eye(3) - n[:,None]*n[None,:])  # projection vector onto plane orthogonal to normal
-            pv = np.matmul(pn,p.T).T
-            _nv = np.where((pv-np.matmul(pn,vp)**2).sum(1) < eps2)[0]
-            if (_nv.size == 0) or (_nv[0] == -1):
-                continue
+    #         # 1. Check if we can see any of the puncture candidates
+    #         # in the cylinder of radius eps around n
+    #         pn = (np.eye(3) - n[:,None]*n[None,:])  # projection vector onto plane orthogonal to normal
+    #         pv = np.matmul(pn,p.T).T
+    #         _nv = np.where((pv-np.matmul(pn,vp)**2).sum(1) < eps2)[0]
+    #         if (_nv.size == 0) or (_nv[0] == -1):
+    #             continue
 
-            # 2. Check if there are no points in the cylinder of
-            # radius eps around n
-            _lv = self._puncture_candidates[_nv[0]]
-            if _lv == -1:
-                continue
-            lv = self._vertices[_lv]  # Pick the first vertex we found in the projection
+    #         # 2. Check if there are no points in the cylinder of
+    #         # radius eps around n
+    #         _lv = self._puncture_candidates[_nv[0]]
+    #         if _lv == -1:
+    #             continue
+    #         lv = self._vertices[_lv]  # Pick the first vertex we found in the projection
 
-            if lv['halfedge'] == -1:
-                continue
+    #         if lv['halfedge'] == -1:
+    #             continue
 
-            if (self._halfedges[v['halfedge']]['face'] == self._halfedges[lv['halfedge']]['face']):
-                continue
+    #         if (self._halfedges[v['halfedge']]['face'] == self._halfedges[lv['halfedge']]['face']):
+    #             continue
 
-            dv = (lv['position'] - vp)/eps
-            _i = 1
-            c = vp + dv
-            points = False
-            while (_i < eps):
-                nn = self._tree.query_ball_point(c, eps)
-                if len(nn) > 0:
-                    points = True
-                    break
-                c += dv
-                _i += 1
+    #         dv = (lv['position'] - vp)/eps
+    #         _i = 1
+    #         c = vp + dv
+    #         points = False
+    #         while (_i < eps):
+    #             nn = self._tree.query_ball_point(c, eps)
+    #             if len(nn) > 0:
+    #                 points = True
+    #                 break
+    #             c += dv
+    #             _i += 1
 
-            if points:
-                # We found points between the vertices, don't divide
-                continue
+    #         if points:
+    #             # We found points between the vertices, don't divide
+    #             continue
 
-            norm = (np.linalg.norm(v['normal'])*np.linalg.norm(lv['normal']))
-            if norm > 0:
-                theta = np.dot(v['normal'],lv['normal'])/norm
-            else:
-                continue
+    #         norm = (np.linalg.norm(v['normal'])*np.linalg.norm(lv['normal']))
+    #         if norm > 0:
+    #             theta = np.dot(v['normal'],lv['normal'])/norm
+    #         else:
+    #             continue
 
-            if np.arccos(theta) < 0.5*np.pi:
-                # Don't snap 
-                continue
+    #         if np.arccos(theta) < 0.5*np.pi:
+    #             # Don't snap 
+    #             continue
 
-            # If 1 and 2 are satisfied, snap _v's face to the face
-            # of the candidate found in 1
-            print('Snapping {} (face {}) to {} (face {})'.format(v['halfedge'], self._halfedges[v['halfedge']]['face'], lv['halfedge'], self._halfedges[lv['halfedge']]['face']))
-            print(self._puncture_candidates, self._vertices['halfedge'][self._puncture_candidates])
-            print(lv)
-            self._snap_faces(v['halfedge'], lv['halfedge'])
-            # self._puncture_candidates.remove(_v)
-            # self._puncture_candidates.remove(self._puncture_candidates[_nv[0]])
-            # while(1):
-            #     try:
-            #         self._puncture_candidates.remove(-1)
-            #     except(ValueError):
-            #         break
+    #         # If 1 and 2 are satisfied, snap _v's face to the face
+    #         # of the candidate found in 1
+    #         print('Snapping {} (face {}) to {} (face {})'.format(v['halfedge'], self._halfedges[v['halfedge']]['face'], lv['halfedge'], self._halfedges[lv['halfedge']]['face']))
+    #         print(self._puncture_candidates, self._vertices['halfedge'][self._puncture_candidates])
+    #         print(lv)
+    #         self._snap_faces(v['halfedge'], lv['halfedge'])
+    #         # self._puncture_candidates.remove(_v)
+    #         # self._puncture_candidates.remove(self._puncture_candidates[_nv[0]])
+    #         # while(1):
+    #         #     try:
+    #         #         self._puncture_candidates.remove(-1)
+    #         #     except(ValueError):
+    #         #         break
 
     def grad(self, points, sigma):
         """
@@ -681,9 +681,11 @@ class MembraneMesh(TriangleMesh):
                     beta_2=self.beta_2,
                     eps=self.eps)
 
-        if method == 'euler':
-            return self.opt_euler(**opts)
-        elif method == 'expectation_maximization':
-            return self.opt_expectation_maximization(**opts)
-        elif method == 'adam':
-            return self.opt_adam(**opts)
+        return getattr(self, 'opt_{}'.format(method))(**opts)
+
+        # if method == 'euler':
+        #     return self.opt_euler(**opts)
+        # elif method == 'expectation_maximization':
+        #     return self.opt_expectation_maximization(**opts)
+        # elif method == 'adam':
+        #     return self.opt_adam(**opts)
