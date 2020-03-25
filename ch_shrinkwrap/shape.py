@@ -1,6 +1,20 @@
 import numpy as np
 from ch_shrinkwrap import sdf_octree
 
+def fast_3x3_cross(a,b):
+    x = a[1]*b[2] - a[2]*b[1]
+    y = a[2]*b[0] - a[0]*b[2]
+    z = a[0]*b[1] - a[1]*b[0]
+
+    vec = np.array([x,y,z])
+    return vec
+
+def fast_sum(vec):
+    return vec[0]+vec[1]+vec[2]
+
+dot = lambda v, w: (v*w).sum()
+dot2 = lambda v: (v*v).sum()
+
 class Shape:
     def __init__(self, **kwargs):
         """
@@ -79,7 +93,7 @@ class Shape:
             self._density = density
             # rp = 2*self._radius*(np.random.rand(int(np.round((self._radius*density)**3)), 3) - 0.5)
             r = 2.0*self._radius
-            ot = sdf_octree.SDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
+            ot = sdf_octree.cSDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
             points_raw = ot.points()
             # points_raw = rp[np.abs(self.sdf(rp)) < eps]
             if (noise > 0):
@@ -167,6 +181,73 @@ class Torus(Shape):
             q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._radius,p[1]])
         return np.linalg.norm(q)-self._r
 
+class Tetrahedron(Shape):
+    def __init__(self, v0, v1, v2, v3, **kwargs):
+        super(Tetrahedron, self).__init__(**kwargs)
+        d01 = dot2(v0-v1)
+        d02 = dot2(v0-v2)
+        d03 = dot2(v0-v3)
+        d12 = dot2(v1-v2)
+        d13 = dot2(v1-v3)
+        d23 = dot2(v2-v3)
+        self._radius = np.sqrt(np.max([d01,d02,d03,d12,d13,d23]))
+        self._v0 = v0
+        self._v1 = v1
+        self._v2 = v2
+        self._v3 = v3
+
+    @property
+    def surface_area(self):
+        v01 = self._v1 - self._v0
+        v12 = self._v2 - self._v1
+        v03 = self._v3 - self._v0
+        v23 = self._v3 - self._v2
+
+        # Calculate areas of each of the triangluar faces
+        a021 = ((fast_3x3_cross(-v01, v12)**2).sum())**0.5
+        a013 = ((fast_3x3_cross(v01, v03)**2).sum())**0.5
+        a032 = ((fast_3x3_cross(-v23, -v03)**2).sum())**0.5
+        a123 = ((fast_3x3_cross(v23, -v12)**2).sum())**0.5
+
+        return a021+a013+a032+a123
+
+    @property 
+    def volume(self):
+        v30 = self._v0 - self._v3
+        v31 = self._v1 - self._v3
+        v32 = self._v1 - self._v3
+        return (1/6)*abs((v30*fast_3x3_cross(v31,v32)).sum())
+    
+    def sdf(self, p):
+        p = np.atleast_2d(p)
+    
+        v01 = self._v1 - self._v0
+        v12 = self._v2 - self._v1
+        v03 = self._v3 - self._v0
+        v23 = self._v3 - self._v2
+
+        # Calculate normals of the tetrahedron
+        n021 = fast_3x3_cross(-v01, v12)
+        n013 = fast_3x3_cross(v01, v03)
+        n032 = fast_3x3_cross(-v23, -v03)
+        n123 = fast_3x3_cross(v23, -v12)
+
+        # Define the planes
+        nn021 = n021*(fast_sum(n021*n021))**(-0.5)
+        nn013 = n013*(fast_sum(n013*n013))**(-0.5)
+        nn032 = n032*(fast_sum(n032*n032))**(-0.5)
+        nn123 = n123*(fast_sum(n123*n123))**(-0.5)
+
+        # Calculate the vectors from the point to the planes
+        pv0 = p-self._v0
+        p021 = (nn021*pv0).sum(1)
+        p013 = (nn013*pv0).sum(1)
+        p032 = (nn032*pv0).sum(1)
+        p123 = (nn123*(p-self._v1)).sum(1)
+
+        # Intersect the planes
+        return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)
+
 class Box(Shape):
     def __init__(self, lx=10, ly=None, lz=None, **kwargs):
         super(Box, self).__init__(**kwargs)
@@ -234,8 +315,6 @@ class MeshShape(Shape):
         return self.__tree
     
     def sdf_triangle(self, p, face):
-        dot = lambda v, w: (v*w).sum()
-        dot2 = lambda v: (v*v).sum()
         
         def clamp(v, lo, hi):
             if v < lo:
