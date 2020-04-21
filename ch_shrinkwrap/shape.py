@@ -1,19 +1,6 @@
 import numpy as np
-from ch_shrinkwrap import sdf_octree
-
-def fast_3x3_cross(a,b):
-    x = a[1]*b[2] - a[2]*b[1]
-    y = a[2]*b[0] - a[0]*b[2]
-    z = a[0]*b[1] - a[1]*b[0]
-
-    vec = np.array([x,y,z])
-    return vec
-
-def fast_sum(vec):
-    return vec[0]+vec[1]+vec[2]
-
-dot = lambda v, w: (v*w).sum()
-dot2 = lambda v: (v*v).sum()
+from ch_shrinkwrap import sdf, sdf_octree
+from ch_shrinkwrap import util
 
 class Shape:
     def __init__(self, **kwargs):
@@ -21,8 +8,6 @@ class Shape:
         A general class for generating geometric shapes, and tools to compare 
         these shapes with externally-generated approximations. All Shapes are
         based in constructive solid geometry.
-
-        SDFs from http://iquilezles.org/www/articles/distfunctions/distfunctions.htm.
         """
         self._density = None  # Shape density
         self._points = None  # Point queue representing Shape
@@ -125,9 +110,7 @@ class Sphere(Shape):
         return (4.0/3.0)*np.pi*self._radius**3
     
     def sdf(self, p):
-        if len(p.shape) > 1:
-            return np.sqrt(np.sum(p*p, axis=1)) - self._radius
-        return np.sqrt(np.sum(p*p)) - self._radius
+        return sdf.sphere(p, self._radius)
 
 class Ellipsoid(Shape):
     def __init__(self, a=1, b=1, c=2, **kwargs):
@@ -149,16 +132,7 @@ class Ellipsoid(Shape):
         return (4.0/3.0)*np.pi*self._radius**3*self._a*self._b*self._c
         
     def sdf(self, p):
-        r = np.array([self._a,self._b,self._c])
-        pr = p/r
-        prr = pr/r
-        if len(p.shape) > 1:
-            k0 = np.sqrt(np.sum(pr*pr,axis=1))
-            k1 = np.sqrt(np.sum(prr*prr,axis=1))
-            return k0*(k0-1.0)/k1
-        k0 = np.sqrt(np.sum(pr*pr))
-        k1 = np.sqrt(np.sum(prr*prr))
-        return k0*(k0-1.0)/k1
+        return sdf.ellipsoid(p, self._a, self._b, self._c)
 
 class Torus(Shape):
     def __init__(self, radius=2, r=0.05, **kwargs):
@@ -175,21 +149,17 @@ class Torus(Shape):
         return 2*np.pi*np.pi*self._radius*self._r*self._r
 
     def sdf(self, p):
-        if len(p.shape) > 1:
-            q = np.array([np.sqrt(p[:,0]**2 + p[:,2]**2)-self._radius,p[:,1]])
-        else:
-            q = np.array([np.sqrt(p[0]**2 + p[2]**2)-self._radius,p[1]])
-        return np.linalg.norm(q)-self._r
+        return sdf.torus(p, self._radius, self._r)
 
 class Tetrahedron(Shape):
     def __init__(self, v0, v1, v2, v3, **kwargs):
         super(Tetrahedron, self).__init__(**kwargs)
-        d01 = dot2(v0-v1)
-        d02 = dot2(v0-v2)
-        d03 = dot2(v0-v3)
-        d12 = dot2(v1-v2)
-        d13 = dot2(v1-v3)
-        d23 = dot2(v2-v3)
+        d01 = util.dot2(v0-v1)
+        d02 = util.dot2(v0-v2)
+        d03 = util.dot2(v0-v3)
+        d12 = util.dot2(v1-v2)
+        d13 = util.dot2(v1-v3)
+        d23 = util.dot2(v2-v3)
         self._radius = np.sqrt(np.max([d01,d02,d03,d12,d13,d23]))
         self._v0 = v0
         self._v1 = v1
@@ -204,10 +174,10 @@ class Tetrahedron(Shape):
         v23 = self._v3 - self._v2
 
         # Calculate areas of each of the triangluar faces
-        a021 = ((fast_3x3_cross(-v01, v12)**2).sum())**0.5
-        a013 = ((fast_3x3_cross(v01, v03)**2).sum())**0.5
-        a032 = ((fast_3x3_cross(-v23, -v03)**2).sum())**0.5
-        a123 = ((fast_3x3_cross(v23, -v12)**2).sum())**0.5
+        a021 = ((util.fast_3x3_cross(-v01, v12)**2).sum())**0.5
+        a013 = ((util.fast_3x3_cross(v01, v03)**2).sum())**0.5
+        a032 = ((util.fast_3x3_cross(-v23, -v03)**2).sum())**0.5
+        a123 = ((util.fast_3x3_cross(v23, -v12)**2).sum())**0.5
 
         return a021+a013+a032+a123
 
@@ -216,37 +186,10 @@ class Tetrahedron(Shape):
         v30 = self._v0 - self._v3
         v31 = self._v1 - self._v3
         v32 = self._v1 - self._v3
-        return (1/6)*abs((v30*fast_3x3_cross(v31,v32)).sum())
+        return (1/6)*abs((v30*util.fast_3x3_cross(v31,v32)).sum())
     
     def sdf(self, p):
-        p = np.atleast_2d(p)
-    
-        v01 = self._v1 - self._v0
-        v12 = self._v2 - self._v1
-        v03 = self._v3 - self._v0
-        v23 = self._v3 - self._v2
-
-        # Calculate normals of the tetrahedron
-        n021 = fast_3x3_cross(-v01, v12)
-        n013 = fast_3x3_cross(v01, v03)
-        n032 = fast_3x3_cross(-v23, -v03)
-        n123 = fast_3x3_cross(v23, -v12)
-
-        # Define the planes
-        nn021 = n021*(fast_sum(n021*n021))**(-0.5)
-        nn013 = n013*(fast_sum(n013*n013))**(-0.5)
-        nn032 = n032*(fast_sum(n032*n032))**(-0.5)
-        nn123 = n123*(fast_sum(n123*n123))**(-0.5)
-
-        # Calculate the vectors from the point to the planes
-        pv0 = p-self._v0
-        p021 = (nn021*pv0).sum(1)
-        p013 = (nn013*pv0).sum(1)
-        p032 = (nn032*pv0).sum(1)
-        p123 = (nn123*(p-self._v1)).sum(1)
-
-        # Intersect the planes
-        return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)
+        return sdf.tetrahedron(p, self._v0, self._v1, self._v2, self._v3)
 
 class Box(Shape):
     def __init__(self, lx=10, ly=None, lz=None, **kwargs):
@@ -269,14 +212,7 @@ class Box(Shape):
         return 2.0*(self._lx*self._ly + self._lx*self._lz + self._ly*self._lz)
 
     def sdf(self, p):
-        b = np.array([self._lx, self._ly, self._lz])
-        if len(p.shape) > 1:
-            q = np.abs(p) - b[None,:]
-            r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[:,0],np.maximum(q[:,1],q[:,2])),0.0)
-        else:
-            q = np.abs(p) - b
-            r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[0],np.maximum(q[1],q[2])),0.0)
-        return r
+        return sdf.box(p, self._lx, self._ly, self._lz)
 
 class MeshShape(Shape):
     def __init__(self, mesh, **kwargs):
@@ -316,13 +252,6 @@ class MeshShape(Shape):
     
     def sdf_triangle(self, p, face):
         
-        def clamp(v, lo, hi):
-            if v < lo:
-                return lo
-            if hi < v:
-                return hi
-            return v
-        
         # Grab the triangle info from the mesh
         h0 = face['halfedge']
         # a = face['area']
@@ -335,27 +264,7 @@ class MeshShape(Shape):
         p1 = self._mesh._vertices[v1]['position']
         p2 = self._mesh._vertices[v2]['position']
         
-        # Calculate vector distances
-        p1p0 = p1 - p0
-        p2p1 = p2 - p1
-        p0p2 = p0 - p2
-        pp0 = p - p0
-        pp1 = p - p1
-        pp2 = p - p2
-        n = np.cross(p1p0, p0p2)
-        
-        s1 = np.sign(dot(np.cross(p1p0,n),pp0))
-        s2 = np.sign(dot(np.cross(p2p1,n),pp1))
-        s3 = np.sign(dot(np.cross(p0p2,n),pp2))
-        if (s1+s2+s3) < 2:
-            f = np.minimum(np.minimum(
-                      dot2(p1p0*clamp(dot(p2p1,pp0)/dot2(p1p0),0.0,1.0)-pp0),
-                      dot2(p2p1*clamp(dot(p2p1,pp1)/dot2(p2p1),0.0,1.0)-pp1)),
-                      dot2(p0p2*clamp(dot(p0p2,pp2)/dot2(p0p2),0.0,1.0)-pp2))
-        else:
-            f = dot(n,pp0)*dot(n,pp0)*dot2(n)
-        
-        return np.sign(dot(p,n))*np.sqrt(f)
+        return sdf.triangle(p, p0, p1, p2)
     
     def sdf(self, p):
         # Find the closest triangles in the mesh
@@ -451,3 +360,4 @@ class IntersectionShape(Shape):
             h = np.maximum(self._k-np.abs(d0-d1),0.0)
             return res + h*h*0.25/self._k
         return res
+        

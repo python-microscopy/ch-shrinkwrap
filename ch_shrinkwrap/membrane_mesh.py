@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.spatial
 
 from PYME.experimental._triangle_mesh import TriangleMesh
 
@@ -393,7 +394,6 @@ class MembraneMesh(TriangleMesh):
         # pt_weights = np.prod(pt_weight_matrix, axis=1)
 
         if self._tree is None:
-            import scipy.spatial
             # Compute a KDTree on points
             self._tree = scipy.spatial.cKDTree(points)
 
