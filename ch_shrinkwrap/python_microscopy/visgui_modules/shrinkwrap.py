@@ -27,3 +27,4 @@ def shrinkwrap(visFr):
 
 def Plug(visFr):
     visFr.AddMenuItem('Mesh', 'Shrinkwrap membrane surface', lambda e: shrinkwrap(visFr))
+    

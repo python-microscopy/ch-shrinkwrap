@@ -75,17 +75,40 @@ def triangle(p, p0, p1, p2):
     pp0 = p - p0
     pp1 = p - p1
     pp2 = p - p2
-    n = np.cross(p1p0, p0p2)
+    n = util.fast_3x3_cross(p1p0, p0p2)
     
-    s1 = np.sign(util.dot(np.cross(p1p0,n),pp0))
-    s2 = np.sign(util.dot(np.cross(p2p1,n),pp1))
-    s3 = np.sign(util.dot(np.cross(p0p2,n),pp2))
+    s1 = np.sign(util.dot(util.fast_3x3_cross(p1p0,n),pp0))
+    s2 = np.sign(util.dot(util.fast_3x3_cross(p2p1,n),pp1))
+    s3 = np.sign(util.dot(util.fast_3x3_cross(p0p2,n),pp2))
     if (s1+s2+s3) < 2:
         f = np.minimum(np.minimum(
                     util.dot2(p1p0*util.clamp(util.dot(p2p1,pp0)/util.dot2(p1p0),0.0,1.0)-pp0),
                     util.dot2(p2p1*util.clamp(util.dot(p2p1,pp1)/util.dot2(p2p1),0.0,1.0)-pp1)),
                     util.dot2(p0p2*util.clamp(util.dot(p0p2,pp2)/util.dot2(p0p2),0.0,1.0)-pp2))
     else:
-        f = util.dot(n,pp0)*util.dot(n,pp0)*util.dot2(n)
+        f = util.dot(n,pp0)*util.dot(n,pp0)/util.dot2(n)
     
-    return np.sign(util.dot(p,n))*np.sqrt(f)
+    return util.sign(util.dot(p,n))*np.sqrt(f)
+
+def triangle_sdf2(p, pv):
+    # Distances to multiple triangles
+    p1p0 = pv[:,1] - pv[:,0]
+    p2p1 = pv[:,2] - pv[:,1]
+    p0p2 = pv[:,0] - pv[:,2]
+    pp0 = p - pv[:,0]
+    pp1 = p - pv[:,1]
+    pp2 = p - pv[:,2]
+    n = np.cross(p1p0, p0p2, axis=1)
+
+    s1 = np.sign((np.cross(p1p0,n,axis=1)*pp0).sum(1))
+    s2 = np.sign((np.cross(p2p1,n,axis=1)*pp1).sum(1))
+    s3 = np.sign((np.cross(p0p2,n,axis=1)*pp2).sum(1))
+
+    f = (n*pp0).sum(1)*(n*pp0).sum(1)/(n*n).sum(1)
+    sign_mask = (s1+s2+s3) < 2
+    f[sign_mask] = np.minimum(np.minimum(
+                    ((p1p0*np.clip((p2p1*pp0).sum(1)/(p1p0*p1p0).sum(1),0.0,1.0)[:,None]-pp0)**2).sum(1),
+                    ((p2p1*np.clip((p2p1*pp1).sum(1)/(p2p1*p2p1).sum(1),0.0,1.0)[:,None]-pp1)**2).sum(1)),
+                    ((p0p2*np.clip((p0p2*pp2).sum(1)/(p0p2*p0p2).sum(1),0.0,1.0)[:,None]-pp2)**2).sum(1))[sign_mask]
+
+    return np.sign((pp0*n).sum(1))*np.sqrt(f)

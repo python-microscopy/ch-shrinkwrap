@@ -23,4 +23,9 @@ def clamp(v, lo, hi):
     if hi < v:
         return hi
     return v
+
+def sign(x):
+    if x > 0:
+        return 1
+    return -1
     
