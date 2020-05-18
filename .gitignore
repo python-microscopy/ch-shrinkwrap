@@ -1,0 +1,10 @@
+syntax: glob
+*.c
+*.pyc
+*.pyo
+*.pyd
+*~
+*.o*
+*.egg-info*
+*.vscode*
+*.cpython*
