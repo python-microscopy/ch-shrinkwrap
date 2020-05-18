@@ -1,5 +1,4 @@
 syntax: glob
-*.c
 *.pyc
 *.pyo
 *.pyd
@@ -8,3 +7,4 @@ syntax: glob
 *.egg-info*
 *.vscode*
 *.cpython*
+ch_shrinkwrap/sdf_octree/csdf_octree.c
