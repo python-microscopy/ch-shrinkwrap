@@ -38,31 +38,49 @@ def torus(p, r, R):
     return np.linalg.norm(q)-R
 
 def tetrahedron(p, v0, v1, v2, v3):
+    """
+    SDF of a tetrahedron, calculated as the intersection of the 
+    planes formed by the triangles of the tetrahedron
+    
+    Parameters
+    ----------
+        p : np.array
+            (N, 3) array of xyz coordinates to search
+        v0, v1, v2, v3 : np.array
+            (3,) array of xyz coordinates forming a tetrahedron
+    """
     p = np.atleast_2d(p)
     
     v01 = v1 - v0
     v12 = v2 - v1
     v03 = v3 - v0
     v23 = v3 - v2
+    
+    centroid = (v0 + v1 + v2 + v3)/4.
 
     # Calculate normals of the tetrahedron
+    # such that they point out of the tetrahedron
     n021 = util.fast_3x3_cross(-v01, v12)
     n013 = util.fast_3x3_cross(v01, v03)
     n032 = util.fast_3x3_cross(-v23, -v03)
     n123 = util.fast_3x3_cross(v23, -v12)
 
     # Define the planes
-    nn021 = n021*(util.fast_sum(n021*n021))**(-0.5)
-    nn013 = n013*(util.fast_sum(n013*n013))**(-0.5)
-    nn032 = n032*(util.fast_sum(n032*n032))**(-0.5)
-    nn123 = n123*(util.fast_sum(n123*n123))**(-0.5)
+    # **(-0.5) is quite a bit faster than 1/sqrt
+    # if you're willing to sacrifice some accuracy
+    # (which we are)
+    nn021 = n021*((util.fast_sum(n021*n021))**(-0.5))
+    nn013 = n013*((util.fast_sum(n013*n013))**(-0.5))
+    nn032 = n032*((util.fast_sum(n032*n032))**(-0.5))
+    nn123 = n123*((util.fast_sum(n123*n123))**(-0.5))
 
     # Calculate the vectors from the point to the planes
     pv0 = p-v0
-    p021 = (nn021*pv0).sum(1)
-    p013 = (nn013*pv0).sum(1)
-    p032 = (nn032*pv0).sum(1)
-    p123 = (nn123*(p-v1)).sum(1)
+    cv0 = v0 -centroid
+    p021 = (nn021*pv0).sum(1)*np.sign((nn021*cv0).sum())
+    p013 = (nn013*pv0).sum(1)*np.sign((nn013*cv0).sum())
+    p032 = (nn032*pv0).sum(1)*np.sign((nn032*cv0).sum())
+    p123 = (nn123*(p-v1)).sum(1)*np.sign((nn123*(v1-centroid)).sum())
 
     # Intersect the planes
     return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)
