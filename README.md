@@ -13,8 +13,8 @@ Once PYME is installed, open a command line and execute the following.
 
 0. Clone this repository and navigate to its root folder on your machine.
 
-1. `python ch_shrinkwrap/setup.py install`
+1. `python setup.py install`
 
-2. `python ch_shrinkwrap/install_plugin.py`
+2. `python ch_shrinkwrap/python_microscopy/install_plugin.py`
 
 The plugin will appear in PYMEVisualize (`pymevis`) under "Mesh-->Shrinkwrap membrane surface".
