@@ -14,7 +14,7 @@ NM2M = 1
 
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
-        super(MembraneMesh, self).__init__(vertices, faces, mesh, **kwargs)
+        TriangleMesh.__init__(self, vertices, faces, mesh, **kwargs)
 
         # Bending stiffness coefficients (in units of kbT)
         self.kc = 20.0*KBT  # eV
@@ -98,7 +98,7 @@ class MembraneMesh(TriangleMesh):
         return np.mean(self._halfedges['length'][self._halfedges['length'] != -1])
 
     def remesh(self, n=5, target_edge_length=-1, l=0.5, n_relax=10):
-        super(MembraneMesh, self).remesh(n, target_edge_length, l, n_relax)
+        TriangleMesh.remesh(self, n=n, target_edge_length=target_edge_length, l=l, n_relax=n_relax)
         # Reset H, E, K values
         self._H = None
         self._K = None
@@ -435,93 +435,6 @@ class MembraneMesh(TriangleMesh):
         dirs[self._vertices['halfedge'] == -1] = 0
 
         return dirs
-
-    # def check_puncture_candidates(self, eps=5.0):
-    #     """
-    #     Test self._puncture_candidates to see if we want to puncture the mesh.
-    #     If so, puncture.
-
-    #     Parameters
-    #     ----------
-    #         eps : float
-    #             Radius of ball epsilon we wish to clear the points
-    #     """
-    #     # p = self._vertices['position'][self._puncture_candidates]
-    #     pc = np.array(self._puncture_candidates)
-    #     eps2 = eps**2
-    #     print(pc)
-    #     for _v in self._puncture_candidates:
-    #         if _v == -1:
-    #             continue
-    #         v = self._vertices[_v]
-    #         if v['halfedge'] == -1:
-    #             continue
-    #         vp = v['position']
-    #         n = v['normal']
-    #         p = self._vertices['position'][pc[pc!=_v]]
-
-    #         print(_v)
-
-    #         # 1. Check if we can see any of the puncture candidates
-    #         # in the cylinder of radius eps around n
-    #         pn = (np.eye(3) - n[:,None]*n[None,:])  # projection vector onto plane orthogonal to normal
-    #         pv = np.matmul(pn,p.T).T
-    #         _nv = np.where((pv-np.matmul(pn,vp)**2).sum(1) < eps2)[0]
-    #         if (_nv.size == 0) or (_nv[0] == -1):
-    #             continue
-
-    #         # 2. Check if there are no points in the cylinder of
-    #         # radius eps around n
-    #         _lv = self._puncture_candidates[_nv[0]]
-    #         if _lv == -1:
-    #             continue
-    #         lv = self._vertices[_lv]  # Pick the first vertex we found in the projection
-
-    #         if lv['halfedge'] == -1:
-    #             continue
-
-    #         if (self._halfedges[v['halfedge']]['face'] == self._halfedges[lv['halfedge']]['face']):
-    #             continue
-
-    #         dv = (lv['position'] - vp)/eps
-    #         _i = 1
-    #         c = vp + dv
-    #         points = False
-    #         while (_i < eps):
-    #             nn = self._tree.query_ball_point(c, eps)
-    #             if len(nn) > 0:
-    #                 points = True
-    #                 break
-    #             c += dv
-    #             _i += 1
-
-    #         if points:
-    #             # We found points between the vertices, don't divide
-    #             continue
-
-    #         norm = (np.linalg.norm(v['normal'])*np.linalg.norm(lv['normal']))
-    #         if norm > 0:
-    #             theta = np.dot(v['normal'],lv['normal'])/norm
-    #         else:
-    #             continue
-
-    #         if np.arccos(theta) < 0.5*np.pi:
-    #             # Don't snap 
-    #             continue
-
-    #         # If 1 and 2 are satisfied, snap _v's face to the face
-    #         # of the candidate found in 1
-    #         print('Snapping {} (face {}) to {} (face {})'.format(v['halfedge'], self._halfedges[v['halfedge']]['face'], lv['halfedge'], self._halfedges[lv['halfedge']]['face']))
-    #         print(self._puncture_candidates, self._vertices['halfedge'][self._puncture_candidates])
-    #         print(lv)
-    #         self._snap_faces(v['halfedge'], lv['halfedge'])
-    #         # self._puncture_candidates.remove(_v)
-    #         # self._puncture_candidates.remove(self._puncture_candidates[_nv[0]])
-    #         # while(1):
-    #         #     try:
-    #         #         self._puncture_candidates.remove(-1)
-    #         #     except(ValueError):
-    #         #         break
 
     def grad(self, points, sigma):
         """
