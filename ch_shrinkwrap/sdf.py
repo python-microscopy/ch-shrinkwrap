@@ -40,7 +40,8 @@ def torus(p, r, R):
 def tetrahedron(p, v0, v1, v2, v3):
     """
     SDF of a tetrahedron, calculated as the intersection of the 
-    planes formed by the triangles of the tetrahedron
+    planes formed by the triangles of the tetrahedron. Requires
+    tetrahedron ordering as ordered_simps().
     
     Parameters
     ----------
@@ -55,8 +56,6 @@ def tetrahedron(p, v0, v1, v2, v3):
     v12 = v2 - v1
     v03 = v3 - v0
     v23 = v3 - v2
-    
-    centroid = (v0 + v1 + v2 + v3)/4.
 
     # Calculate normals of the tetrahedron
     # such that they point out of the tetrahedron
@@ -76,11 +75,10 @@ def tetrahedron(p, v0, v1, v2, v3):
 
     # Calculate the vectors from the point to the planes
     pv0 = p-v0
-    cv0 = v0 -centroid
-    p021 = (nn021*pv0).sum(1)*np.sign((nn021*cv0).sum())
-    p013 = (nn013*pv0).sum(1)*np.sign((nn013*cv0).sum())
-    p032 = (nn032*pv0).sum(1)*np.sign((nn032*cv0).sum())
-    p123 = (nn123*(p-v1)).sum(1)*np.sign((nn123*(v1-centroid)).sum())
+    p021 = (nn021*pv0).sum(1)
+    p013 = (nn013*pv0).sum(1)
+    p032 = (nn032*pv0).sum(1)
+    p123 = (nn123*(p-v1)).sum(1)
 
     # Intersect the planes
     return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)

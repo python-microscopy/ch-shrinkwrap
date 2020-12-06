@@ -1,9 +1,10 @@
 import numpy as np
 import scipy.spatial
 
-from PYME.experimental._triangle_mesh import TriangleMesh
+from PYME.experimental._triangle_mesh import TriangleMesh, VERTEX_DTYPE
 
 from ch_shrinkwrap import membrane_mesh_utils
+from ch_shrinkwrap import delaunay_utils
 
 # Gradient descent methods
 DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam']
@@ -11,6 +12,8 @@ DEFAULT_DESCENT_METHOD = 'euler'
 
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
+
+MAX_VERTEX_COUNT = 2**31
 
 class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -435,6 +438,60 @@ class MembraneMesh(TriangleMesh):
         dirs[self._vertices['halfedge'] == -1] = 0
 
         return dirs
+
+    def delaunay_remesh(self, points):
+        print('Delaunay remesh...')
+
+        # Generate tesselation from mesh control points
+        v = np.copy(self._vertices['position'][self._vertices['halfedge']!=-1])
+        d = scipy.spatial.Delaunay(v)
+        # Ensure all simplex vertices are wound s.t. normals point away from simplex centroid
+        tri = delaunay_utils.orient_simps(d, v)
+
+        # Remove simplices outside of our mesh
+        ext_inds = delaunay_utils.ext_simps(tri, self)
+        simps = delaunay_utils.del_simps(tri, ext_inds)
+
+        # Remove simplices that do not contain points
+        eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
+                                          # consider a point 'inside' a tetrahedron?
+                                          # TODO: /5.0 is empirical 
+        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
+        simps_ = delaunay_utils.del_simps(simps, empty_inds)
+
+        # Recover new triangulation
+        faces = delaunay_utils.surf_from_delaunay(simps_)
+
+        return v, faces
+
+        # # Reconstruct this mesh
+        # self._vertices = np.zeros(v.shape[0], dtype=VERTEX_DTYPE)
+        # self._vertices[:] = -1  
+        # self._vertices['position'] = v
+        # self._vertex_vacancies = []
+
+        # self._faces = None  # Contains a pointer to one halfedge associated with each face
+        # self._face_vacancies = []
+
+        # self._halfedges = None
+        # self._halfedge_vacancies = []
+        
+        # print('initializing halfedges ...')
+        # print('vertices.shape = %s, faces.shape = %s' % (v.shape, faces.shape))
+        # if v.shape[0] >= MAX_VERTEX_COUNT:
+        #     raise RuntimeError('Maximum vertex count is %d, mesh has %d' % (MAX_VERTEX_COUNT, v.shape[0]))
+        # self._initialize_halfedges(v, faces)
+
+        # self._faces_by_vertex = None
+        # self._manifold = None
+        # self._singular_edges = None
+        # self._singular_vertices = None
+        # self.face_normals
+        # self.vertex_neighbors
+        # self._H = None
+        # self._K = None
+        # self._E = None
+        # self._pE = None
 
     def grad(self, points, sigma):
         """

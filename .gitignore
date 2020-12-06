@@ -9,3 +9,4 @@
 *.cpython*
 ch_shrinkwrap/sdf_octree/csdf_octree.c
 build
+.DS_Store
