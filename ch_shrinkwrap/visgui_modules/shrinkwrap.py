@@ -3,7 +3,7 @@ import numpy as np
 def shrinkwrap(visFr):
     from PYME.LMVis.Extras.extra_layers import gen_isosurface
     from PYME.LMVis.layers.mesh import TriangleRenderLayer
-    from ch_shrinkwrap.python_microscopy.recipe_modules.surface_fitting import ShrinkwrapMembrane
+    from ch_shrinkwrap.recipe_modules.surface_fitting import ShrinkwrapMembrane
 
     surf_name = 'surf0'
 

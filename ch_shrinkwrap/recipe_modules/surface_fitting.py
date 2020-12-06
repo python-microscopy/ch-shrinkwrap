@@ -35,7 +35,6 @@ class ShrinkwrapMembrane(ModuleBase):
     step_size = Float(1)
     # attraction_weight = Float(1)
     # curvature_weight = Float(-1)
-    largest_component_only = Bool(True)
     search_k = Int(200)
     temperature = Float(25.0)
     kc = Float(0.514)
@@ -64,8 +63,6 @@ class ShrinkwrapMembrane(ModuleBase):
         except(KeyError):
             sigma = np.ones_like(namespace[self.points]['x'])
 
-        if self.largest_component_only:
-            mesh.keep_largest_connected_component()
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
         mesh.shrink_wrap(pts, sigma, method=self.method)
