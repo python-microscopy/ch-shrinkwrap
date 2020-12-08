@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.spatial
 
-from PYME.experimental._triangle_mesh import TriangleMesh, VERTEX_DTYPE
+from PYME.experimental._triangle_mesh import TriangleMesh, VERTEX_DTYPE, VERTEX_DTYPE2
 
 from ch_shrinkwrap import membrane_mesh_utils
 from ch_shrinkwrap import delaunay_utils
@@ -443,7 +443,7 @@ class MembraneMesh(TriangleMesh):
         print('Delaunay remesh...')
 
         # Generate tesselation from mesh control points
-        v = np.copy(self._vertices['position'][self._vertices['halfedge']!=-1])
+        v = self._vertices['position'][self._vertices['halfedge']!=-1]
         d = scipy.spatial.Delaunay(v)
         # Ensure all simplex vertices are wound s.t. normals point away from simplex centroid
         tri = delaunay_utils.orient_simps(d, v)
@@ -462,36 +462,8 @@ class MembraneMesh(TriangleMesh):
         # Recover new triangulation
         faces = delaunay_utils.surf_from_delaunay(simps_)
 
-        return v, faces
-
-        # # Reconstruct this mesh
-        # self._vertices = np.zeros(v.shape[0], dtype=VERTEX_DTYPE)
-        # self._vertices[:] = -1  
-        # self._vertices['position'] = v
-        # self._vertex_vacancies = []
-
-        # self._faces = None  # Contains a pointer to one halfedge associated with each face
-        # self._face_vacancies = []
-
-        # self._halfedges = None
-        # self._halfedge_vacancies = []
-        
-        # print('initializing halfedges ...')
-        # print('vertices.shape = %s, faces.shape = %s' % (v.shape, faces.shape))
-        # if v.shape[0] >= MAX_VERTEX_COUNT:
-        #     raise RuntimeError('Maximum vertex count is %d, mesh has %d' % (MAX_VERTEX_COUNT, v.shape[0]))
-        # self._initialize_halfedges(v, faces)
-
-        # self._faces_by_vertex = None
-        # self._manifold = None
-        # self._singular_edges = None
-        # self._singular_vertices = None
-        # self.face_normals
-        # self.vertex_neighbors
-        # self._H = None
-        # self._K = None
-        # self._E = None
-        # self._pE = None
+        # Rebuild mesh
+        self.build_from_verts_faces(v, faces, True)
 
     def grad(self, points, sigma):
         """
