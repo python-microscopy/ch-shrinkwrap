@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "Python.h"
 #include <math.h>
 #include "numpy/arrayobject.h"
@@ -64,6 +66,79 @@ static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
     Py_INCREF(Py_None);
     return Py_None;
 
+}
+
+float norm(const float *pos)
+{
+    float n = 0;
+    int i = 0;
+
+    for (i = 0; i < VECTORSIZE; ++i)
+        n += pos[i] * pos[i];
+    return sqrt(n);
+}
+
+float safe_divide(float x, float y)
+{
+    if (y==0)
+        return 0;
+    return x/y;
+}
+
+void scalar_divide(const float *a, const float b, float *d)
+{
+    int k = 0;
+    for (k=0; k < 3; ++k)
+        d[k] = a[k]/b;
+}
+
+/*
+compute_curvature_tensor_eig -- find eigenvalues/vectors of 3x3 curvature
+tensor using closed-form solution
+*/
+static void compute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
+{
+    float m00, m01, m02, m11, m12, m22, p, q, r, z1n, z1d, z1, y1n, y1d, y1, z2n, z2d, z2, y2n, y2d, y2;
+    float v2t[3];
+    float v1t[3];
+
+    m00 = Mvi[0];
+    m01 = Mvi[1];
+    m02 = Mvi[2];
+    m11 = Mvi[4];
+    m12 = Mvi[5];
+    m22 = Mvi[8];
+
+    // Here we use the fact that Mvi is symnmetric and we know
+    // one of the eigenvalues must be 0
+    p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12;
+    q = m00 + m11 + m22;
+    r = sqrt(4*p + q*q);
+
+    // Eigenvalues
+    *l1 = 0.5*(q-r);
+    *l2 = 0.5*(q+r);
+
+    // Now calculate the eigenvectors, assuming x = 1
+    z1n = ((m00 - (*l1))*(m11 - (*l1)) - (m01*m01));
+    z1d = (m01*m12 - m02*(m11 - (*l1)));
+    z1 = safe_divide(z1n, z1d);
+    y1n = (m12*z1 + m01);
+    y1d = (m11 - (*l1));
+    y1 = safe_divide(y1n, y1d);
+    
+    v1t[0] = 1; v1t[1] = y1; v1t[2] = z1;
+    scalar_divide(v1t,norm(v1t),v1);
+    
+    z2n = ((m00 - (*l2))*(m11 - (*l2)) - (m01*m01));
+    z2d = (m01*m12 - m02*(m11 - (*l2)));
+    z2 = safe_divide(z2n, z2d);
+    y2n = (m12*z2 + m01);
+    y2d = (m11 - (*l2));
+    y2 = safe_divide(y2n, y2d);
+    
+    v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
+    scalar_divide(v2t,norm(v2t),v2);
 }
 
 static PyMethodDef membrane_mesh_utils_methods[] = {

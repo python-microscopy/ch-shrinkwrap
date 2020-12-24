@@ -181,8 +181,7 @@ cdef class cSDFOctree(object):
 
             if (node_idx > 0) and (node.depth == 0):
                 # We've somehow hit the empty node zone (we shouldn't be able to do this)
-                print('Made it to the other world.')
-                break
+                raise RuntimeError('Made it to the other world.')
             
             # Distances we need
             self._sdf_arr[0] = node.center_x

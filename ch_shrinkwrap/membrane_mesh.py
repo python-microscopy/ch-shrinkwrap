@@ -146,9 +146,9 @@ class MembraneMesh(TriangleMesh):
         l2 = 0.5*(q+r)
 
         def safe_divide(x, y):
-            if y == 0:
-                return 0
-            return 1.*x/y
+            # if y == 0:
+            #     return 0
+            return (y!=0)*1.*x/y
 
         # Now calculate the eigenvectors, assuming x = 1
         z1n = ((m00 - l1)*(m11 - l1) - (m01*m01))
@@ -181,7 +181,7 @@ class MembraneMesh(TriangleMesh):
         TENSOR OF CURVATURE OF A SURFACE FROM A POLYHEDRAL 
         APPROXIMATION by Gabriel Taubin from Proceedings of IEEE 
         International Conference on Computer Vision, June 1995 and 
-        Estimating the PrincipalCurvatures and the Darboux Frame 
+        Estimating the Principal Curvatures and the Darboux Frame 
         From Real 3-D Range Data by Eyal Hameiri and Ilan Shimshon 
         from IEEE TRANSACTIONS ON SYSTEMS, MAN, AND CYBERNETICS-PART
         B: CYBERNETICS, VOL. 33, NO. 4, AUGUST 2003
@@ -306,7 +306,7 @@ class MembraneMesh(TriangleMesh):
         dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV/nm
         dEdN_K = areas*self.kg*dK  # eV/nm
         dEdN_sum = (dEdN_H + dEdN_K) # eV/nm # + dE_neighbors)
-        dEdN = -1.0*dEdN_sum  # eV/nm # *(1.0-self._pE)
+        dEdN = -1.0*dEdN_sum # eV/nm # *(1.0-self._pE)
 
         # print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))
         # print('Total energy difference: {} {} {} {}'.format(np.min(dEdN_sum), np.mean(dEdN_sum), np.max(dEdN_sum), np.max(dEdN_sum)-np.min(dEdN_sum)))

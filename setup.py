@@ -7,6 +7,7 @@ from Cython.Build import cythonize
 
 module0 = Extension('ch_shrinkwrap.membrane_mesh_utils', sources=['ch_shrinkwrap/membrane_mesh_utils.c'])
 module1 = Extension('ch_shrinkwrap.sdf_octree.csdf_octree', sources=['ch_shrinkwrap/sdf_octree/csdf_octree.pyx'], include_dirs=get_numpy_include_dirs())
+module2 = Extension('ch_shrinkwrap._membrane_mesh', sources=['ch_shrinkwrap/_membrane_mesh.pyx'], include_dirs=get_numpy_include_dirs())
 
 setup(name='ch_shrinkwrap',
       version='0.0',
@@ -14,5 +15,5 @@ setup(name='ch_shrinkwrap',
       author='Zach Marin',
       author_email='zach.marin@yale.edu',
       packages=find_packages(),
-      ext_modules = cythonize([module0, module1])
+      ext_modules = cythonize([module0, module1, module2])
      )
