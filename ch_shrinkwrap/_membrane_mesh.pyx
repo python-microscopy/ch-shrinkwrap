@@ -2,6 +2,7 @@ cimport numpy as np
 import numpy as np
 import scipy.spatial
 import cython
+import math
 
 from PYME.experimental._triangle_mesh cimport TriangleMesh
 from PYME.experimental._triangle_mesh import TriangleMesh
@@ -507,7 +508,8 @@ cdef class MembraneMesh(TriangleMesh):
             
             # attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
             attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
-            attraction_norm = np.linalg.norm(attraction)
+            # attraction_norm = np.linalg.norm(attraction)
+            attraction_norm = math.sqrt(attraction[0]*attraction[0]+attraction[1]*attraction[1]+attraction[2]*attraction[2])
             attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
             attraction[attraction_norm == 0] = 0  # div by zero
             dirs[i,:] = attraction
