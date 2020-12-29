@@ -5,7 +5,7 @@ import cython
 
 from PYME.experimental._triangle_mesh cimport TriangleMesh
 from PYME.experimental._triangle_mesh import TriangleMesh
-from PYME.experimental._triangle_mesh import VERTEX_DTYPE, VERTEX_DTYPE2
+from PYME.experimental._triangle_mesh import VERTEX_DTYPE
 
 from ch_shrinkwrap import membrane_mesh_utils
 from ch_shrinkwrap import delaunay_utils
@@ -21,8 +21,31 @@ MAX_VERTEX_COUNT = 2**31
 
 I = np.eye(3, dtype=float)
 
+cdef extern from 'triangle_mesh_utils.h':
+    const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
+    const int VECTORSIZE
+        
+    cdef struct vertex_t:
+        float position[VECTORSIZE];
+        float normal[VECTORSIZE];
+        np.int32_t halfedge;
+        np.int32_t valence;
+        np.int32_t neighbors[NEIGHBORSIZE];
+        np.int32_t component;
+        np.int32_t locally_manifold
+
+cdef extern from 'membrane_mesh_utils.h':
+    cdef struct points_t:
+        float position[VECTORSIZE]
+
+POINTS_DTYPE = np.dtype([('position', '3f4')])
+POINTS_DTYPE2 = np.dtype([('position0', 'f4'), 
+                          ('position1', 'f4'), 
+                          ('position2', 'f4')])
+
 cdef extern from "membrane_mesh_utils.c":
     void compute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
+    void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
 
 cdef class MembraneMesh(TriangleMesh):
     cdef public float kc
@@ -524,7 +547,7 @@ cdef class MembraneMesh(TriangleMesh):
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, True)
 
-    def grad(self, points, sigma):
+    cdef grad(self, points, sigma):
         """
         Gradient between points and the surface.
 
@@ -535,9 +558,22 @@ cdef class MembraneMesh(TriangleMesh):
             sigma : float
                 Localization uncertainty of points.
         """
+        attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+        cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
+        cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
+        cdef float[:] sigma_view = sigma
+
         dN = 0.1
         curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-        attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+        # attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+        c_point_attraction_grad(&(attraction_view[0]), 
+                                &(points_view[0]), 
+                                &(sigma_view[0]), 
+                                &(self._cvertices[0]), 
+                                0.95, 
+                                self._mean_edge_length/2.5, 
+                                points.shape[0], 
+                                self._vertices.shape[0])
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))

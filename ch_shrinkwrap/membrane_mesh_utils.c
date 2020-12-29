@@ -6,6 +6,30 @@
 
 #include "membrane_mesh_utils.h"
 
+float norm(const float *pos)
+{
+    float n = 0;
+    int i = 0;
+
+    for (i = 0; i < VECTORSIZE; ++i)
+        n += pos[i] * pos[i];
+    return sqrt(n);
+}
+
+float safe_divide(float x, float y)
+{
+    if (y==0)
+        return 0;
+    return x/y;
+}
+
+void scalar_divide(const float *a, const float b, float *d)
+{
+    int k = 0;
+    for (k=0; k < 3; ++k)
+        d[k] = a[k]/b;
+}
+
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
 {
     PyArrayObject *points=0, *vertices=0, *pt_cnt_dist_2=0;
@@ -68,28 +92,104 @@ static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
 
 }
 
-float norm(const float *pos)
+/*
+calc_pt_weight_matrix -- calculate point weight matrix and point weights
+for point attraction force
+*/
+static void calc_pt_weight_matrix(points_t *points, 
+                                  void *vertices_, 
+                                  float *pt_weight_matrix, 
+                                  float *pt_weights, 
+                                  float w, 
+                                  float charge_sigma, 
+                                  int n_points, 
+                                  int n_vertices)
 {
-    float n = 0;
-    int i = 0;
+    int i, j, k;
+    float charge_sigma_2, tmp, tmp_diff;
+    points_t *curr_point;
+    vertex_t *curr_vertex;
+    vertex_t *vertices = (vertex_t*) vertices_;
 
-    for (i = 0; i < VECTORSIZE; ++i)
-        n += pos[i] * pos[i];
-    return sqrt(n);
+    charge_sigma_2 = 2*charge_sigma*charge_sigma;
+
+    // pre-fill pt_weights for *= operations
+    for (i=0;i<n_points;++i)
+        pt_weights[i] = 1;
+
+    for (j = 0; j < n_vertices; ++j)
+    {
+        curr_vertex = &(vertices[j]);
+        for (i = 0; i < n_points; ++i)
+        {
+            // printf("i: %d     j: %d\n", i, j);
+            curr_point = &(points[i]);
+            tmp = 0;
+            for (k = 0; k < VECTORSIZE; ++k)
+                tmp_diff = (curr_point->position[k]) - (curr_vertex->position[k]);
+                tmp += 1 - w*exp(-tmp_diff*tmp_diff/charge_sigma_2);
+            // printf("tmp: %f\n", tmp);
+            pt_weight_matrix[i*n_vertices+j] = tmp;
+            //*(p_pt_cnt_dist_2 + (i*s_vertices + j*s_points)) = tmp;
+            pt_weights[i] *= tmp;
+        }
+    }
+
 }
 
-float safe_divide(float x, float y)
+static void c_point_attraction_grad(points_t *attraction, 
+                             points_t *points, 
+                             float *sigma, 
+                             vertex_t *vertices, 
+                             float w, 
+                             float charge_sigma, 
+                             int n_points, 
+                             int n_vertices)
 {
-    if (y==0)
-        return 0;
-    return x/y;
-}
+    int i, j, k;
+    int32_t curr_idx;
+    float *pt_weight_matrix;
+    float *pt_weights;
+    vertex_t *curr_vertex;
+    points_t *curr_point, *curr_attraction;
+    float d[VECTORSIZE];
+    float dd, r, r2, r12, rf;
 
-void scalar_divide(const float *a, const float b, float *d)
-{
-    int k = 0;
-    for (k=0; k < 3; ++k)
-        d[k] = a[k]/b;
+    pt_weight_matrix = (float *)malloc(sizeof(float)*n_points*n_vertices);  // n_points x n_vertices
+    pt_weights = (float *)malloc(sizeof(float)*n_points); // n_points
+    calc_pt_weight_matrix(points, vertices, pt_weight_matrix, pt_weights, w, charge_sigma, n_points, n_vertices);
+
+    for (i=0;i<n_vertices;++i)
+    {
+        curr_vertex = &(vertices[i]);
+        curr_idx = curr_vertex->halfedge;
+
+        curr_attraction = &(attraction[i]);
+
+        if (curr_idx == -1) 
+        {
+            for (k=0;k<VECTORSIZE;++k)
+                (curr_attraction->position[k]) = 0;
+            continue;
+        }
+
+        for (j=0;j<n_points;++j)
+        {
+            curr_point = &(points[j]);
+            for (k=0;k<VECTORSIZE;++k)
+                d[k] = curr_vertex->position[k] - curr_point->position[k];
+            dd = norm(d);
+
+            r = dd/sigma[j];
+            r2 = r*r; r12 = (r-1)*(r-1);
+            rf = -(1-r2)*exp(-r2/2) + (1-exp(-r12/2))*(r/(r2*r + 1));
+            rf *= (pt_weights[j]/pt_weight_matrix[j*n_vertices+i]);
+            for (k=0;k<VECTORSIZE;++k)
+                curr_attraction->position[k] += -d[k]*(rf/dd);
+        }
+    }
+    free(pt_weight_matrix);
+    free(pt_weights);
 }
 
 /*

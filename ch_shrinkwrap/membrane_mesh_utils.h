@@ -84,7 +84,7 @@ typedef struct vertex_d { //flat version of vertex_t
 } vertex_d;
 
 #endif
-typedef struct {
+typedef struct points_t {
     float position[VECTORSIZE];
 } points_t;
 
