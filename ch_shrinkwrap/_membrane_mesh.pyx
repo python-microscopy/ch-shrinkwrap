@@ -399,7 +399,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def point_attraction_grad_kdtree(self, points, sigma, w=0.95, search_k=200):
+    cdef point_attraction_grad_kdtree(self, points, sigma, float w=0.95, int search_k=200):
         """
         Attractive force of membrane to points.
 
@@ -407,15 +407,19 @@ cdef class MembraneMesh(TriangleMesh):
         ----------
             points : np.array
                 3D point cloud to fit (nm).
-            sigma : float
+            sigma : np.array
                 Localization uncertainty of points (nm).
             w : float
                 Weight (unitless)
             search_k : int
                 Number of vertex point neighbors to consider
         """
+        cdef int i, n_verts
 
-        dirs = []
+        n_verts = self._vertices.shape[0]
+        #dirs = []
+        dirs = np.zeros((n_verts,3), dtype=np.float32)
+        attraction = np.zeros(3, dtype=np.float32)
 
         # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
         # first loop iteration when we add a matrix to this scalar
@@ -434,42 +438,43 @@ cdef class MembraneMesh(TriangleMesh):
             # Compute a KDTree on points
             self._tree = scipy.spatial.cKDTree(points)
 
-        for i in np.arange(self._vertices.shape[0]):
-            if self._vertices['halfedge'][i] != -1:
-                _, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
-                # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
-                try:
-                    d = self._vertices['position'][i,:] - points[neighbors]  # nm
-                except(IndexError):
-                    print('whaaa?')
-                    print(self._vertices[i])
-                    print(i, neighbors)
-                dd = (d*d).sum(1)  # nm^2
-                # if self._puncture_test:
-                #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
-                #     if np.min(dvn) < np.min(dd):
-                #         self._puncture_candidates.append(i)
-                pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
-                pt_weights = np.prod(pt_weight_matrix)  # unitless
-                r = np.sqrt(dd)/sigma[neighbors]  # unitless
+        for i in np.arange(n_verts):
+            if self._cvertices[i].halfedge == -1:
+                continue
                 
-                rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
-
-                # Points at the vertex we're interested in are not de-weighted by the
-                # pt_weight_matrix
-                rf = rf*(pt_weights/pt_weight_matrix) # unitless
-                
-                attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
-                attraction_norm = np.linalg.norm(attraction)
-                attraction = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
-                attraction[attraction_norm == 0] = 0  # div by zero
-            else:
-                attraction = np.array([0,0,0])
+            _, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
+            # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
+            try:
+                d = self._vertices['position'][i,:] - points[neighbors]  # nm
+            except(IndexError):
+                raise IndexError('Count not access neighbors.')
+            dd = (d*d).sum(1)  # nm^2
+            # if self._puncture_test:
+            #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
+            #     if np.min(dvn) < np.min(dd):
+            #         self._puncture_candidates.append(i)
+            pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
+            pt_weights = np.prod(pt_weight_matrix)  # unitless
+            r = np.sqrt(dd)/sigma[neighbors]  # unitless
             
-            dirs.append(attraction)
+            rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
 
-        dirs = np.vstack(dirs)
-        dirs[self._vertices['halfedge'] == -1] = 0
+            # Points at the vertex we're interested in are not de-weighted by the
+            # pt_weight_matrix
+            rf = rf*(pt_weights/pt_weight_matrix) # unitless
+            
+            attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+            attraction_norm = np.linalg.norm(attraction)
+            attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
+            attraction[attraction_norm == 0] = 0  # div by zero
+            dirs[i,:] = attraction
+            # else:
+            #     attraction = np.array([0,0,0])
+            
+            # dirs.append(attraction)
+
+        # dirs = np.vstack(dirs)
+        # dirs[self._vertices['halfedge'] == -1] = 0
 
         return dirs
 
@@ -512,7 +517,7 @@ cdef class MembraneMesh(TriangleMesh):
         """
         dN = 0.1
         curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-        attraction = self.point_attraction_grad_kdtree(points, sigma, search_k=self.search_k)
+        attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
