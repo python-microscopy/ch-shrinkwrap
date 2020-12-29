@@ -558,22 +558,22 @@ cdef class MembraneMesh(TriangleMesh):
             sigma : float
                 Localization uncertainty of points.
         """
-        attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
-        cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
-        cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
-        cdef float[:] sigma_view = sigma
+        # attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+        # cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
+        # cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
+        # cdef float[:] sigma_view = sigma
 
         dN = 0.1
         curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-        # attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
-        c_point_attraction_grad(&(attraction_view[0]), 
-                                &(points_view[0]), 
-                                &(sigma_view[0]), 
-                                &(self._cvertices[0]), 
-                                0.95, 
-                                self._mean_edge_length/2.5, 
-                                points.shape[0], 
-                                self._vertices.shape[0])
+        attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+        # c_point_attraction_grad(&(attraction_view[0]), 
+        #                        &(points_view[0]), 
+        #                        &(sigma_view[0]), 
+        #                        &(self._cvertices[0]), 
+        #                        0.95, 
+        #                        self._mean_edge_length/2.5, 
+        #                        points.shape[0], 
+        #                        self._vertices.shape[0])
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
