@@ -115,6 +115,18 @@ cdef class MembraneMesh(TriangleMesh):
     def _mean_edge_length(self):
         return np.mean(self._halfedges['length'][self._halfedges['length'] != -1])
 
+    @property
+    def curvature_mean(self):
+        if not np.any(self._H):
+            self.curvature_grad()
+        return self._H
+    
+    @property
+    def curvature_gaussian(self):
+        if not np.any(self._K):
+            self.curvature_grad()
+        return self._K
+
     def _initialize_curvature_vectors(self):
         sz = self._vertices.shape[0]
         self._H = np.zeros(sz, dtype=np.float32)
@@ -273,6 +285,8 @@ cdef class MembraneMesh(TriangleMesh):
             Tijs[np.sum(T_thetas,axis=1) == 0, :] = 0
 
             # Edge normals subtracted from vertex normals
+            # FIXME: If Nvi = [-1,-1,-1] and the surrounding area is flat the inner square  
+            #        root will produce a nan. This only happens on non-manifold meshes.
             Ni_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvi[None,:]*dvs_hat).sum(1))**2))  # unitless 
             Nj_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_hat).sum(1))**2))  # unitless
             Nj_1_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_1_hat).sum(1))**2))  # unitless
@@ -291,7 +305,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Compute the change in bending energy along the edge (assumes no perpendicular contributions and thus no Gaussian curvature)
             dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV/nm
             Mvi[:] = ((w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)).astype(np.float32)  # nm
-            
+
             # l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
             compute_curvature_tensor_eig(&Mvi_view[0,0], &l1, &l2, &v1_view[0], &v2_view[0])
 
@@ -440,22 +454,27 @@ cdef class MembraneMesh(TriangleMesh):
 
         for i in np.arange(n_verts):
             if self._cvertices[i].halfedge == -1:
+                attraction[:] = 0
                 continue
                 
-            _, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
+            dists, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
             # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
+            
             try:
                 d = self._vertices['position'][i,:] - points[neighbors]  # nm
             except(IndexError):
-                raise IndexError('Count not access neighbors.')
-            dd = (d*d).sum(1)  # nm^2
+                raise IndexError('Could not access neighbors.')
+            # dd = (d*d).sum(1)  # nm^2
+            dd = dists*dists
+
             # if self._puncture_test:
             #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
             #     if np.min(dvn) < np.min(dd):
             #         self._puncture_candidates.append(i)
             pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
             pt_weights = np.prod(pt_weight_matrix)  # unitless
-            r = np.sqrt(dd)/sigma[neighbors]  # unitless
+            # r = np.sqrt(dd)/sigma[neighbors]  # unitless
+            r = dists/sigma[neighbors]
             
             rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
 
@@ -463,7 +482,8 @@ cdef class MembraneMesh(TriangleMesh):
             # pt_weight_matrix
             rf = rf*(pt_weights/pt_weight_matrix) # unitless
             
-            attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+            # attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+            attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
             attraction_norm = np.linalg.norm(attraction)
             attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
             attraction[attraction_norm == 0] = 0  # div by zero

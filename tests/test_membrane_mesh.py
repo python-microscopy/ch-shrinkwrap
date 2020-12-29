@@ -10,7 +10,7 @@ def spherical_mesh(R=1, n_subdivision=3):
     from PYME.Analysis.points.spherical_harmonics import icosahedron_mesh
     from PYME.Analysis.points.coordinate_tools import spherical_to_cartesian
 
-    from ch_shrinkwrap import membrane_mesh
+    from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 
     # Quasi-regular sample points on a unit sphere with icosahedron subdivision
     azimuth, zenith, f = icosahedron_mesh(n_subdivision)
@@ -22,7 +22,7 @@ def spherical_mesh(R=1, n_subdivision=3):
 
 def planar_mesh(a=1, n_subdivision=1):
     # Generate a plane from subdividing a square
-    from ch_shrinkwrap import membrane_mesh
+    from ch_shrinkwrap import _membrane_mesh as membrane_mesh
     
     step = 1/n_subdivision
     p = np.arange(0,1+step,step)
