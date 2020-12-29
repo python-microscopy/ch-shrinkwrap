@@ -35,11 +35,11 @@ def orient_simps(d, v):
     v21 = v_tri[:,1,:]-v_tri[:,2,:]
     v23 = v_tri[:,3,:]-v_tri[:,2,:]
     n123 = np.cross(v23,v21,axis=1)
-    orientation = np.sign((n123*(v_tri[:,1,:]-centroid)).sum(1))
+    orientation = np.sign((n123*(centroid-v_tri[:,1,:])).sum(1))
     
     # If it's pointing away, flip a single edge. The triangle should now be oriented.
     tri = d
-    orientation_mask = orientation == -1
+    orientation_mask = (orientation == -1)
     tmp_3 = np.copy(tri[orientation_mask,3])
     tri[orientation_mask,3] = tri[orientation_mask,2]
     tri[orientation_mask,2] = tmp_3
