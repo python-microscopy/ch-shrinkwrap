@@ -1,3 +1,9 @@
+/** @file membrane_mesh_utils.h
+ *  @brief function prototypes for membrane_mesh_utils.c
+ *
+ * @author zacsimile
+ */
+
 #ifndef _membrane_mesh_utils_h_
 #define _membrane_mesh_utils_h_
 
@@ -7,6 +13,11 @@
 extern "C" {
 #endif
 
+#define PRECISION float  // all functions currently return floating point precision, 
+                         // but this can change. this will need to be separately
+                         // updated in the structs, both in c and python
+
+/* triangle_mesh_utils.h may already make these functions available globally */
 #ifndef _triangle_mesh_utils_h_
 
 #define VECTORSIZE 3
@@ -89,6 +100,8 @@ typedef struct points_t {
 } points_t;
 
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args);
+
+
 
 #ifdef __cplusplus
 }
