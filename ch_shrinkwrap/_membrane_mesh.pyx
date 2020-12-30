@@ -537,12 +537,10 @@ cdef class MembraneMesh(TriangleMesh):
         simps = delaunay_utils.del_simps(tri, ext_inds)
 
         # Remove simplices that do not contain points
-        # eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
+        eps = self._mean_edge_length*0.612  # How far outside of a tetrahedron do we 
                                           # consider a point 'inside' a tetrahedron?
-                                          # TODO: 5.0 is empirical 
-        eps = 5.0 # How far outside of a tetrahedron do we 
-                  # consider a point 'inside' a tetrahedron?
-                  # TODO: 5.0 is empirical 
+                                          # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
+        print('Guessed eps: {}'.format(eps))
         empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
