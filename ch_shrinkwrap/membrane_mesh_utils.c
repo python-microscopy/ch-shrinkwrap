@@ -8,6 +8,7 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "Python.h"
 #include <math.h>
@@ -54,7 +55,6 @@ PRECISION sign(PRECISION x)
 {
     return (PRECISION)((0<x)-(x<0));
 }
-
 
 /** @brief Elementwise division of a vector by a scalar
  *
@@ -194,6 +194,249 @@ PRECISION r2()
 {
     return (PRECISION)rand() / (PRECISION)((unsigned)RAND_MAX + 1);
 }
+
+/* begin SVD functions from numerical recipes */
+
+// exception handling
+
+#ifndef _USENRERRORCLASS_
+#define throw(message) \
+{printf("ERROR: %s\n     in file %s at line %d\n", message,__FILE__,__LINE__); return;}
+#else
+struct NRerror {
+	char *message;
+	char *file;
+	int line;
+	NRerror(char *m, char *f, int l) : message(m), file(f), line(l) {}
+};
+#define throw(message) throw(NRerror(message,__FILE__,__LINE__));
+void NRcatch(NRerror err) {
+	printf("ERROR: %s\n     in file %s at line %d\n",
+		err.message, err.file, err.line);
+	exit(1);
+}
+#endif
+
+PRECISION SIGN(PRECISION a, PRECISION b)
+{
+    return b >= 0 ? (a >= 0 ? a : -a) : (a >= 0 ? -a : a);
+}
+
+PRECISION MAX(PRECISION a, PRECISION b)
+{
+    return b > a ? (b) : (a);
+}
+
+PRECISION MIN(PRECISION a, PRECISION b)
+{
+    return b < a ? (b) : (a);
+}
+
+PRECISION SQR(const PRECISION a) {return a*a;}
+
+eps = 1e-9;  // precision
+
+PRECISION pythag(const PRECISION a, const PRECISION b) {
+    PRECISION absa, absb;
+    absa = abs(a);
+    absb = abs(b);
+    return (absa > absb ? absa*sqrt(1.0+SQR(absb/absa)) : (absb == 0.0 ? 0.0 : absb*sqrt(1.0+SQR(absa/absb))));
+}
+
+/** @brief Decompose an (m x n) matrix A
+ * 
+ *  This is part of the SVD implementation in numerical recipes webnote 2,
+ *  http://numerical.recipes/webnotes/nr3web2.pdf. There is a slight
+ *  modification (row_length) to allow for SVD on matrices of varying size
+ *  that are all stored within matrices of fixed size NEIGHBORSIZExNEIGHBORSIZE.
+ *  also to move away from 2D indexing.
+ *  
+ *  @param u PRECISION (m x m) matrix (matrix A is initially stored in here as an m x n)
+ *  @param v PRECISION (n x n) matrix
+ *  @param w PRECISION vector representing (m x n) diagonal
+ *  @param m int number of rows to access in u
+ *  @param n int number of columns to access in u
+ *  @param row_length int actual number of columns in u
+ *  @return Void
+ */
+void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
+{
+    bool flag;
+    int i, its, j, jj, k, l, nm;
+    PRECISION anorm, c, f, g, h, s, scale, x, y, z;
+    PRECISION rv1[n];
+    g = scale = anorm = 0.0;
+    for(i=0;i<n;i++) {
+        l = i+2;
+        rv1[i]=scale*g;
+        g=s=scale=0.0;
+        if (i<m) {
+            for (k=i;k<m;k++) scale += abs(u[k*row_length+i]);
+            if (scale != 0.0) {
+                for (k=i;k<m;k++) {
+                    u[k*row_length+i] /= scale;
+                    s += u[k*row_length+i]*u[k*row_length+i];
+                }
+                f = u[i*row_length+i];
+                g = -SIGN(sqrt(s),f);
+                h = f*g-s;
+                u[i*row_length+i] = f-g;
+                for (j=l-1;j<n;j++) {
+                    for (s=0.0,k=i;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
+                    f = s/h;
+                    for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
+                }
+                for (k=i;k<m;k++) u[k*row_length+i] *= scale;
+            }
+        }
+        w[i] = scale*g;
+        g=s=scale=0.0;
+        if (i+1 <= m && i+1 != n) {
+            for (k=l-1;k<n;k++) scale += abs(u[i*row_length+k]);
+            if (scale != 0.0) {
+                for (k=l-1;k<n;k++) {
+                    u[i*row_length+k] /= scale;
+                    s+= u[i*row_length+k]*u[i*row_length+k];
+                }
+                f = u[i*row_length+(l-1)];
+                g = -SIGN(sqrt(s),f);
+                h = f*g-s;
+                u[i*row_length+(l-1)] = f-g;
+                for (k=l-1;k<n;k++) rv1[k] = u[i*row_length+k]/h;
+                for (j=l-1;j<m;j++) {
+                    for (s=0.0,k=l-1;k<n;k++) s += u[j*row_length+k]*u[i*row_length+k];
+                    for (k=l-1;k<n;k++) u[j*row_length+k] += s*rv1[k];
+                }
+                for (k=l-1; k<n;k++) u[i*row_length+k] *= scale;
+            }
+        }
+        anorm = MAX(anorm,(abs(w[i])+abs(rv1[i])));
+    }
+    for (i=n-1;i>=0;i--) {
+        if (i < n-1) {
+            if (g != 0.0) {
+                for (j=l;j<n;j++)
+                    v[j*row_length+i] = (u[i*row_length+j]/u[i*row_length+l])/g;
+                for (j=l;j<n;j++) {
+                    for (s=0.0,k=l;k<n;k++) s += u[i*row_length+k]*v[k*row_length+j];
+                    for (k=l;k<n;k++) v[k*row_length+j] += s*v[k*row_length+i];
+                }
+            }
+            for (j=l;j<n;j++) v[i*row_length+j]=v[j*row_length+i]=0.0;
+        }
+        v[i*row_length+i] = 1.0;
+        g = rv1[i];
+        l = i;
+    }
+    for (i=MIN(m,n)-1;i>=0;i--) {
+        l = i + 1;
+        g = w[i];
+        for (j=l;j<n;j++) u[i*row_length+j] = 0.0;
+        if (g != 0.0) {
+            g = 1.0/g;
+            for (j=1;j<n;j++) {
+                for (s=0.0,k=l;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
+                f = (s/u[i*row_length+i])*g;
+                for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
+            }
+            for (j=i;j<m;j++) u[j*row_length+i] *= g;
+        } else for (j=i;j<m;j++) u[j*row_length+i] = 0.0;
+        ++u[i*row_length+i];
+    }
+    for (k=n-1;k>=0;k--) {
+        for (its=0;its<30;its++) {
+            flag = true;
+            for (l=k;l>=0;l--) {
+                nm = l-1;
+                if (l==0 || abs(rv1[1]) <= eps*anorm) {
+                    flag = false;
+                    break;
+                }
+                if (abs(w[nm]) <= eps*anorm) break;
+            }
+            if (flag) {
+                c = 0.0;
+                s = 1.0;
+                for (i=l; i<k+1; i++) {
+                    f = s*rv1[i];
+                    rv1[i] = c*rv1[i];
+                    if (abs(f) <= eps*anorm) break;
+                    g = w[i];
+                    h = pythag(f,g);
+                    w[i] = h;
+                    h = 1.0/h;
+                    c = g*h;
+                    s = -f*h;
+                    for (j=0;j<m;j++) {
+                        y = u[j*row_length+nm];
+                        z = u[j*row_length+i];
+                        u[j*row_length+nm] = y*c+z*s;
+                        u[j*row_length+i] = z*c-y*s;
+                    }
+                }
+            }
+            z = w[k];
+            if (l == k) {
+                if (z < 0.0) {
+                    w[k] = -z;
+                    for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
+                    break;
+                }
+            }
+            if (its == 29) throw("no convergence in 30 svdcomp iterations.");
+            x = w[l];
+            nm = k-1;
+            y = w[nm];
+            g = rv1[nm];
+            h = rv1[k];
+            f=((y-z)*(y+z)+(g-h)*(g+h))/(2.0*h*y);
+            g=pythag(f,1.0);
+            f=((x-z)*(x+z)+h*((y/(f+SIGN(g,f)))-h))/x;
+            c=s=1.0;
+            for (j=l;j<=nm;j++) {
+                i = j+1;
+                g = rv1[i];
+                y = w[i];
+                h = s*g;
+                g = c*g;
+                z = pythag(f,h);
+                rv1[j] = z;
+                c = f/z;
+                s = h/z;
+                f = x*c+g*s;
+                g = g*c-x*s;
+                h = y*s;
+                y *= c;
+                for (jj=0;jj<n;jj++) {
+                    x = v[jj*row_length+j];
+                    z = v[jj*row_length+i];
+                    v[jj*row_length+j] = x*c+z*s;
+                    v[jj*row_length+i] = z*c-x*s;
+                }
+                z = pythag(f,h);
+                w[j] = z;
+                if (z) {
+                    z = 1.0/z;
+                    c = f*z;
+                    s = h*z;
+                }
+                f = c*g+s*y;
+                x = c*y-s*g;
+                for (jj=0;jj<m;jj++) {
+                    y = u[jj*row_length+j];
+                    z = u[jj*row_length+i];
+                    u[jj*row_length+j] = y*c+z*s;
+                    u[jj*row_length+i] = z*c-y*s;
+                }
+            }
+            rv1[l] = 0.0;
+            rv1[k] = f;
+            w[k] = x;
+        }
+    }
+}
+
+/* end SVD functions                         */
 
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
 {
@@ -568,10 +811,10 @@ static void c_curvature_grad(void *vertices_,
             }
 
             // edge normals subtracted from vertex normals
-            Ni_diff = sqrt(2.0-2.0*sqrt(1.0-pow(dot(Nvi,dv_hat,VECTORSIZE),2.0)));  // 1/nm
+            Ni_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvi,dv_hat,VECTORSIZE))));  // 1/nm
             Nvj = neighbor_vertex->normal;  // unitless
-            Nj_diff = sqrt(2.0-2.0*sqrt(1.0-pow(dot(Nvj,dv_hat,VECTORSIZE),2.0)));  // 1/nm
-            Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-pow(dot(Nvj,dv_1_hat,VECTORSIZE),2.0)));  // 1/nm
+            Nj_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvj,dv_hat,VECTORSIZE))));  // 1/nm
+            Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvj,dv_1_hat,VECTORSIZE))));  // 1/nm
 
             // Compute the principal curvatures from the difference in normals (same as difference in tangents)
             kj = 2.0*Nj_diff/dv_norm;  // 1/nm
