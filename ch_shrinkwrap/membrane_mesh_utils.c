@@ -436,6 +436,55 @@ void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_l
     }
 }
 
+/** @brief Sort decomposition of matrix A
+ * 
+ *  Given the output of decompose, this routine sorts the singular values, and corresponding columns
+ *  of u and v, by decreasing magnitude. Also, signs of corresponding columns are flipped so as to
+ *  maximize the number of positive elements.
+ *  
+ *  @param u PRECISION (m x m) matrix 
+ *  @param v PRECISION (n x n) matrix
+ *  @param w PRECISION vector representing (m x n) diagonal
+ *  @param m int number of rows to access in u
+ *  @param n int number of columns to access in v
+ *  @param row_length int actual number of columns in u, v
+ *  @return Void
+ */
+void reorder(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
+{
+    int i, j, k, s, inc=1;
+    PRECISION sw, su[m], sv[n];
+    do { inc *= 3; inc++; } while (inc <= n);
+    do {
+        inc /= 3;
+        for (i = inc; i < n; i++) {
+            sw = w[i];
+            for (k=0;k<m;k++) su[k] = u[k*row_length+i];
+            for (k=0;k<n;k++) sv[k] = v[k*row_length+i];
+            j = i;
+            while (w[j-inc] < sw) {
+                w[j] = w[j-inc];
+                for (k=0;k<m;k++) u[k*row_length+j] = u[k*row_length+(j-inc)];
+                for (k=0;k<n;k++) v[k*row_length+j] = v[k*row_length+(j-inc)];
+                j -= inc;
+                if (j < inc) break;
+            }
+            w[j] = sw;
+            for (k=0;k<m;k++) u[k*row_length+j] = su[k];
+            for (k=0;k<n;k++) v[k*row_length+j] = sv[k];
+        }
+    } while (inc > 1);
+    for (k=0;k<n;k++) {
+        s = 0;
+        for (i=0;i<m;i++) if (u[i*row_length+k] < 0.0) s++;
+        for (j=0;j<m;i++) if (v[j*row_length+k] < 0.0) s++;
+        if (s > (m+n)/2) {
+            for (i=0;i<m;i++) u[i*row_length+k] = -u[i*row_length+k];
+            for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
+        }
+    }
+}
+
 /* end SVD functions                         */
 
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
