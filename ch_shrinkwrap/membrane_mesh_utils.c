@@ -939,7 +939,7 @@ static void c_curvature_grad(void *vertices_,
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
 
             vj = neighbor_vertex->position;  // nm
-            subtract(vi,vj,dv,VECTORSIZE); // nm
+            subtract(vj,vi,dv,VECTORSIZE); // nm
             dv_norm = norm(dv);  // nm
             // radial weighting
             r_sum += 1.0/dv_norm;  // 1/nm
@@ -962,7 +962,7 @@ static void c_curvature_grad(void *vertices_,
             curr_neighbor = &(halfedges[neighbor]);
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
             vj = neighbor_vertex->position;  // nm
-            subtract(vi,vj,dv,VECTORSIZE); // nm
+            subtract(vj,vi,dv,VECTORSIZE); // nm
             subtract(dv,NvidN,dv_1,VECTORSIZE);  // nm
 
             dv_norm = norm(dv);  // nm
@@ -974,7 +974,7 @@ static void c_curvature_grad(void *vertices_,
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
-            project3(p, dv, T_theta); // nm^2
+            project3(p, ndv, T_theta); // nm^2
             T_theta_norm = norm(T_theta); // nm^2
             if (T_theta_norm>0)
                 scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
