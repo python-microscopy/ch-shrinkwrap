@@ -843,12 +843,21 @@ void invert_2x2(const PRECISION *A, PRECISION *Ainv)
 {
     PRECISION a, b, c, d, det;
     a = A[0]; b = A[1]; c = A[2]; d = A[3];
-    det = 1.0/(a*d-b*c);
+    det = (a*d-b*c);
+    if (det > eps)
+    {
+        det = 1.0/det;
 
-    Ainv[0] = det*d;
-    Ainv[1] = -1.0*det*b;
-    Ainv[2] = -1.0*det*c;
-    Ainv[3] = det*a;
+        Ainv[0] = det*d;
+        Ainv[1] = -1.0*det*b;
+        Ainv[2] = -1.0*det*c;
+        Ainv[3] = det*a;
+    }
+    else
+    {
+        Ainv[0] = Ainv[1] = Ainv[2] = Ainv[3] = 0.0;  // pseudoinverse
+    }
+    
 }
 
 /** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
