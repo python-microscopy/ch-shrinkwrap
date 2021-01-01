@@ -293,6 +293,8 @@ PRECISION pythag(const PRECISION a, const PRECISION b) {
  *  modification (row_length) to allow for SVD on matrices of varying size
  *  that are all stored within matrices of fixed size NEIGHBORSIZExNEIGHBORSIZE.
  *  also to move away from 2D indexing.
+ * 
+ *  NOTE: untested
  *  
  *  @param u PRECISION (m x m) matrix (matrix A is initially stored in here as an m x n)
  *  @param v PRECISION (n x n) matrix
@@ -486,6 +488,8 @@ void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_l
  *  Given the output of decompose, this routine sorts the singular values, and corresponding columns
  *  of u and v, by decreasing magnitude. Also, signs of corresponding columns are flipped so as to
  *  maximize the number of positive elements.
+ * 
+ *  NOTE: untested
  *  
  *  @param u PRECISION (m x m) matrix 
  *  @param v PRECISION (n x n) matrix
@@ -778,6 +782,8 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
 }
 
 /** @brief Compute Moore-Penrose inverse of square matrix
+ * 
+ *  NOTE: untested
  *
  *  @param A PRECISION m x m matrix
  *  @param At PREICISON m x m matrix
@@ -825,6 +831,14 @@ void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_leng
     
 }
 
+/** @brief Compute inverse of 2 x 2 matrix
+ * 
+ *  We can use this instead of moore_penrose_square() if we have a 2x2.
+ *
+ *  @param A PRECISION matrix
+ *  @param Ainv PREICISON inverted matrix
+ *  @return Void
+ */
 void invert_2x2(const PRECISION *A, PRECISION *Ainv)
 {
     PRECISION a, b, c, d, det;
@@ -988,7 +1002,7 @@ static void c_curvature_grad(void *vertices_,
             outer3(Tij,Tij,Mvi_temp);
             scalar_mult(Mvi_temp,w*k,Mvi_temp2,VECTORSIZE*VECTORSIZE);
             for (jj=0;jj<VECTORSIZE*VECTORSIZE;++jj)
-                Mvi[jj] += Mvi_temp[jj];
+                Mvi[jj] += Mvi_temp2[jj];
         }
 
         // Interlude: calculate curvature tensor
