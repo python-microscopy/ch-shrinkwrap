@@ -791,7 +791,11 @@ cdef class MembraneMesh(TriangleMesh):
 
             if _i % 2:
                 dN = 0.1
-                grad = self.c*self.curvature_grad(dN=dN)
+                # grad = self.c*self.curvature_grad(dN=dN)
+                if USE_C:
+                    grad = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+                else:
+                    grad = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
             else:
                 grad = self.a*self.point_attraction_grad_kdtree(points, sigma)
 
