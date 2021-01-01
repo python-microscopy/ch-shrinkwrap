@@ -107,6 +107,46 @@ void outer3(const PRECISION *a, const PRECISION *b, PRECISION *m)
     }
 }
 
+/** @brief Multiply two matrices
+ * 
+ *  @param a PRECISION vector (m x n)
+ *  @param b PRECISION vector (n x p)
+ *  @param c PRECISION outer product
+ *  @param m int first dimension of a
+ *  @param n int second dimension of a/first of b
+ *  @param p int second dimension of b
+ *  @return Void
+ */
+void matmul(const PRECISION *a, const PRECISION *b, PRECISION *c, int m, int n, int p)
+{
+    int i, j, k;
+    for (i=0;i<m;++i)
+    {
+        for (j=0;j<p;++j)
+        {
+            for (k=0;k<n;++k)
+                c[i*p+j] += a[i*n+k]*b[k*p+j];
+        }
+    }
+}
+
+/** @brief Transpose a matrix
+ * 
+ *  @param a PRECISION matrix (m x n)
+ *  @param at PRECISION matrix (n x p)
+ *  @param m int first dimension of a
+ *  @param n int second dimension of a
+ *  @return Void
+ */
+void transpose(const PRECISION *a, PRECISION *at, int m, int n)
+{
+    int i, j;
+    for (i=0;i<m;++i) {
+        for (j=0;j<n;++j)
+            at[j*m+i] = a[i*n+j];
+    }
+}
+
 /** @brief Construct an orthogonal projection matrix
  *
  *  For a unit-normalized vector v, I-v*v.T is the projection
@@ -183,6 +223,7 @@ PRECISION dot(const PRECISION *a, const PRECISION *b, const int length)
         c += a[i]*b[i];
     return c;
 }
+
 
 /** @brief Generate a pseudo-random number in [0,1)
  *
@@ -264,7 +305,8 @@ void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_l
     bool flag;
     int i, its, j, jj, k, l, nm;
     PRECISION anorm, c, f, g, h, s, scale, x, y, z;
-    PRECISION rv1[n];
+    PRECISION *rv1;
+    rv1 = (PRECISION *)malloc(sizeof(PRECISION)*n);
     g = scale = anorm = 0.0;
     for(i=0;i<n;i++) {
         l = i+2;
@@ -434,6 +476,7 @@ void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_l
             w[k] = x;
         }
     }
+    free(rv1);
 }
 
 /** @brief Sort decomposition of matrix A
@@ -453,7 +496,11 @@ void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_l
 void reorder(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
 {
     int i, j, k, s, inc=1;
-    PRECISION sw, su[m], sv[n];
+    PRECISION sw, *su, *sv;
+
+    su = (PRECISION *)malloc(sizeof(PRECISION)*m);
+    sv = (PRECISION *)malloc(sizeof(PRECISION)*n);
+    
     do { inc *= 3; inc++; } while (inc <= n);
     do {
         inc /= 3;
@@ -483,6 +530,8 @@ void reorder(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_len
             for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
         }
     }
+    free(su);
+    free(sv);
 }
 
 /* end SVD functions                         */
@@ -724,6 +773,54 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     
     v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
     scalar_divide(v2t,norm(v2t),v2,VECTORSIZE);
+}
+
+/** @brief Compute Moore-Penrose inverse of square matrix
+ *
+ *  @param A PRECISION m x m matrix
+ *  @param At PREICISON m x m matrix
+ *  @param m int number of rows to access in u
+ *  @param n int number of columns to access in v
+ *  @param row_length int actual number of columns in u, v
+ *  @return Void
+ */
+void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_length)
+{
+    PRECISION *u;
+    PRECISION *v;
+    PRECISION *w;
+    int i, j;
+    PRECISION thresh;
+    
+    u = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
+    v = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
+    w = (PRECISION *)malloc(sizeof(PRECISION)*m);
+
+    // copy A into u so we can modify it without compromising A
+    for (i=0;i<m*m;++i)
+        u[i] = A[i];
+
+    // svd
+    decompose(u, v, w, m, m, row_length);
+    reorder(u, v, w, m, m, row_length);
+
+    thresh = 0.5*sqrt(2.0*m+1.0)*w[0]*eps;
+
+    // Now compute inverse
+    for (i=0;i<m;++i) {
+        if (w[i] > thresh) {
+            for (j=0;j<m;++j)
+                At[i*m+j] = v[i*m+j]*u[j*m+i]/w[i];  // V diag(1/w) U^T
+        } else {
+            for (j=0;j<m;++j)
+                At[i*m+j] = 0.0;
+        }
+    }
+
+    free(u);
+    free(v);
+    free(w);
+    
 }
 
 /** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
