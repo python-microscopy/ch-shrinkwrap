@@ -553,6 +553,7 @@ cdef class MembraneMesh(TriangleMesh):
                 Number of vertex point neighbors to consider
         """
         cdef int i, n_verts
+        # cdef float charge_sigma, charge_var, attraction_norm
 
         n_verts = self._vertices.shape[0]
         #dirs = []
@@ -649,6 +650,8 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, True)
+
+        self._initialize_curvature_vectors()
 
     cdef grad(self, points, sigma):
         """
