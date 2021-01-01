@@ -120,10 +120,12 @@ void outer3(const PRECISION *a, const PRECISION *b, PRECISION *m)
 void matmul(const PRECISION *a, const PRECISION *b, PRECISION *c, int m, int n, int p)
 {
     int i, j, k;
+
     for (i=0;i<m;++i)
     {
         for (j=0;j<p;++j)
         {
+            c[i*p+j] = 0.0;  // zero it out first
             for (k=0;k<n;++k)
                 c[i*p+j] += a[i*n+k]*b[k*p+j];
         }
@@ -218,7 +220,7 @@ void subtract(const PRECISION *a, const PRECISION *b, PRECISION *c, const int le
 PRECISION dot(const PRECISION *a, const PRECISION *b, const int length)
 {
     int i;
-    PRECISION c;
+    PRECISION c = 0.0;
     for (i=0;i<length;++i)
         c += a[i]*b[i];
     return c;
@@ -273,7 +275,7 @@ PRECISION MIN(PRECISION a, PRECISION b)
     return b < a ? (b) : (a);
 }
 
-PRECISION SQR(const PRECISION a) {return a*a;}
+PRECISION SQR(const PRECISION a) {return (a)*(a);}
 
 eps = 1e-9;  // precision
 
@@ -823,6 +825,18 @@ void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_leng
     
 }
 
+void invert_2x2(const PRECISION *A, PRECISION *Ainv)
+{
+    PRECISION a, b, c, d, det;
+    a = A[0]; b = A[1]; c = A[2]; d = A[3];
+    det = 1.0/(a*d-b*c);
+
+    Ainv[0] = det*d;
+    Ainv[1] = -1.0*det*b;
+    Ainv[2] = -1.0*det*c;
+    Ainv[3] = det*a;
+}
+
 /** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
  * 
  *  Where possible, I have tried to match the code (order, variable names) to the original python code.
@@ -864,16 +878,18 @@ static void c_curvature_grad(void *vertices_,
                              PRECISION c0,
                              points_t *dEdN)
 {
-    int i, j, q, neighbor, n_neighbors;
+    int i, j, jj, neighbor, n_neighbors;
     PRECISION l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
     PRECISION kj, kj_1, k, Aj, areas, w, k_1, k_2;
+    PRECISION dEdN_H, dEdN_K, dEdN_sum, dEdNs;
     PRECISION v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
     PRECISION Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
     PRECISION m[VECTORSIZE*VECTORSIZE];
     PRECISION p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], ndv[VECTORSIZE];
     PRECISION dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
     PRECISION NvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
-    PRECISION A[NEIGHBORSIZE], b[NEIGHBORSIZE];
+    PRECISION A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
+    PRECISION b[NEIGHBORSIZE], k_p[2];
     PRECISION *vi, *vj, *Nvi, *Nvj;
     vertex_t *curr_vertex, *neighbor_vertex;
     halfedge_t *curr_neighbor;
@@ -886,7 +902,6 @@ static void c_curvature_grad(void *vertices_,
         if ((curr_vertex->halfedge) == -1)
             continue;
 
-        // Monte carlo selection of vertices to update
         // Stochastically choose which vertices to adjust
         if ((skip_prob>0)&&(r2()<skip_prob))
             continue;
@@ -899,7 +914,8 @@ static void c_curvature_grad(void *vertices_,
         scalar_mult(Nvi, dN, NvidN, VECTORSIZE);  // unitless
         orthogonal_projection_matrix3(Nvi, p);  // unitless
 
-        // Need a three-pass over the neighbors: 1. get the radial weights
+        // Need a three-pass over the neighbors
+        // 1. get the radial weights
         r_sum = 0; // 1/nm
         j = 0;
         neighbor = (curr_vertex->neighbors)[j];
@@ -920,7 +936,7 @@ static void c_curvature_grad(void *vertices_,
         n_neighbors = j;  // record the number of neighbors for later passes
 
         // zero out Mvi
-        for (j=0;j<VECTORSIZE*VECTORSIZE;++j)
+        for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
             Mvi[j] = 0;
 
         // 2. Compute Mvi
@@ -947,14 +963,9 @@ static void c_curvature_grad(void *vertices_,
             project3(p, dv, T_theta); // nm^2
             T_theta_norm = norm(T_theta); // nm^2
             if (T_theta_norm>0)
-            {
                 scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
-            } 
             else
-            {
-                for (q=0;q<VECTORSIZE;++q)
-                    Tij[q] = 0;
-            }
+                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0;
 
             // edge normals subtracted from vertex normals
             Ni_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvi,dv_hat,VECTORSIZE))));  // 1/nm
@@ -976,8 +987,8 @@ static void c_curvature_grad(void *vertices_,
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
             scalar_mult(Mvi_temp,w*k,Mvi_temp2,VECTORSIZE*VECTORSIZE);
-            for (q=0;q<VECTORSIZE*VECTORSIZE;++q)
-                Mvi[q] += Mvi_temp[q];
+            for (jj=0;jj<VECTORSIZE*VECTORSIZE;++jj)
+                Mvi[jj] += Mvi_temp[jj];
         }
 
         // Interlude: calculate curvature tensor
@@ -996,6 +1007,10 @@ static void c_curvature_grad(void *vertices_,
         m[1] = v2[1]; m[4] = v2[1]; m[7] = v2[2];
         m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
 
+        // since we're operating at a fixed size, zero out A and At so we don't add
+        // extra values to our matrix
+        for (j=0;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = 0.0;
+
         // 3. Compute shift
         for (j=0;j<n_neighbors;++j)
         {
@@ -1013,6 +1028,30 @@ static void c_curvature_grad(void *vertices_,
             // Update the equation y-intercept to displace athe curve along the normal direction
             b[j] = A[2*j+0]*k_1+A[2*j+1]*k_2;
         }
+
+        // solve 
+        transpose(A, At, NEIGHBORSIZE, 2);  // construct A transpose
+        matmul(At, A, AtA, 2, NEIGHBORSIZE, 2);  // construct AtA
+        invert_2x2(AtA, AtAinv);  // construct inverted matrix
+        matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
+        matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
+
+        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm^2
+        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm
+
+        E[i] = areas*(0.5*kc*SQR(2.0*H[i] - c0) + kg*K[i]);
+
+        pE[i] = exp(-(1.0/KBT)*E[i]);
+
+        // Take into account the change in neighboring energies for each vertex shift
+        // Compute dEdN by component
+        dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm
+        dEdN_K = areas*kg*dK[i];  // eV/nm
+        dEdN_sum = (dEdN_H + dEdN_K); // eV/nm # + dE_neighbors)
+        dEdNs = -1.0*dEdN_sum; // eV/nm # *(1.0-pE[i]);
+
+        for (jj=0;jj<VECTORSIZE;++jj)
+            (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
 
     }
 }

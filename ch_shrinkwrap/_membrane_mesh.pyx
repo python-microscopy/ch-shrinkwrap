@@ -22,6 +22,8 @@ MAX_VERTEX_COUNT = 2**31
 
 I = np.eye(3, dtype=float)
 
+USE_C = True
+
 cdef extern from 'triangle_mesh_utils.h':
     const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
     const int VECTORSIZE
@@ -35,6 +37,15 @@ cdef extern from 'triangle_mesh_utils.h':
         np.int32_t component;
         np.int32_t locally_manifold
 
+    cdef struct halfedge_t:
+        np.int32_t vertex
+        np.int32_t face
+        np.int32_t twin
+        np.int32_t next
+        np.int32_t prev
+        np.float32_t length
+        np.int32_t component
+
 cdef extern from 'membrane_mesh_utils.h':
     cdef struct points_t:
         float position[VECTORSIZE]
@@ -47,6 +58,23 @@ POINTS_DTYPE2 = np.dtype([('position0', 'f4'),
 cdef extern from "membrane_mesh_utils.c":
     void compute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
     void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
+    void c_curvature_grad(void *vertices_, 
+                            void *faces_,
+                            halfedge_t *halfedges,
+                            float dN,
+                            float skip_prob,
+                            int n_vertices,
+                            float *H,
+                            float *K,
+                            float *dH,
+                            float *dK,
+                            float *E,
+                            float *pE,
+                            float *dE_neighbors,
+                            float kc,
+                            float kg,
+                            float c0,
+                            points_t *dEdN)
 
 cdef class MembraneMesh(TriangleMesh):
     cdef public float kc
@@ -64,6 +92,13 @@ cdef class MembraneMesh(TriangleMesh):
     cdef object _dH
     cdef object _dK
     cdef object _dE_neighbors
+    cdef float * _cH
+    cdef float * _cK
+    cdef float * _cE
+    cdef float * _cpE
+    cdef float * _cdH
+    cdef float * _cdK
+    cdef float * _cdE_neighbors
     cdef public int search_k
     cdef public float skip_prob
     cdef object _tree
@@ -124,15 +159,21 @@ cdef class MembraneMesh(TriangleMesh):
     @property
     def E(self):
         if self._E is None:
-            self.curvature_grad()
-        self._E[np.isnan(self._E)] = 0
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+                self._E[np.isnan(self._E)] = 0
         return self._E
 
     @property
     def pE(self):
         if self._pE is None:
-            self.curvature_grad()
-            self._pE[np.isnan(self._pE)] = 0
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+                self._pE[np.isnan(self._pE)] = 0
         return self._pE
 
     @property
@@ -142,13 +183,19 @@ cdef class MembraneMesh(TriangleMesh):
     @property
     def curvature_mean(self):
         if not np.any(self._H):
-            self.curvature_grad()
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
         return self._H
     
     @property
     def curvature_gaussian(self):
         if not np.any(self._K):
-            self.curvature_grad()
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
         return self._K
 
     def _initialize_curvature_vectors(self):
@@ -156,9 +203,39 @@ cdef class MembraneMesh(TriangleMesh):
         self._H = np.zeros(sz, dtype=np.float32)
         self._K = np.zeros(sz, dtype=np.float32)
         self._E = np.zeros(sz, dtype=np.float32)
+        self._pE = np.zeros(sz, dtype=np.float32)
         self._dH = np.zeros(sz, dtype=np.float32)
         self._dK = np.zeros(sz, dtype=np.float32)
         self._dE_neighbors = np.zeros(sz, dtype=np.float32)
+
+        self._set_cH(self._H)
+        self._set_cK(self._K)
+        self._set_cE(self._E)
+        self._set_cpE(self._pE)
+        self._set_cdH(self._dH)
+        self._set_cdK(self._dK)
+        self._set_cdE_neighbors(self._dE_neighbors)
+
+    def _set_cH(self, float[:] vec):
+        self._cH = &vec[0]
+    
+    def _set_cK(self, float[:] vec):
+        self._cK = &vec[0]
+
+    def _set_cE(self, float[:] vec):
+        self._cE = &vec[0]
+
+    def _set_cpE(self, float[:] vec):
+        self._cpE = &vec[0]
+
+    def _set_cdH(self, float[:] vec):
+        self._cdH = &vec[0]
+
+    def _set_cdK(self, float[:] vec):
+        self._cdK = &vec[0]
+
+    def _set_cdE_neighbors(self, float[:] vec):
+        self._cdE_neighbors = &vec[0]
 
     def remesh(self, n=5, target_edge_length=-1, l=0.5, n_relax=10):
         TriangleMesh.remesh(self, n=n, target_edge_length=target_edge_length, l=l, n_relax=n_relax)
@@ -236,6 +313,28 @@ cdef class MembraneMesh(TriangleMesh):
 
         return l1, l2, v1, v2
 
+    cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
+        dEdN = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+        cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
+        c_curvature_grad(&(self._cvertices[0]), 
+                        &(self._cfaces[0]),
+                        &(self._chalfedges[0]),
+                        dN,
+                        self.skip_prob,
+                        self._vertices.shape[0],
+                        &(self._cH[0]),
+                        &(self._cK[0]),
+                        &(self._cdH[0]),
+                        &(self._cdK[0]),
+                        &(self._cE[0]),
+                        &(self._cpE[0]),
+                        &(self._cdE_neighbors[0]),
+                        self.kc,
+                        self.kg,
+                        self.c0,
+                        &(cdEdN[0]))
+        return dEdN
+
     cdef curvature_grad(self, float dN=0.1, float skip_prob=0.0):
         """
         Estimate curvature. Here we follow a mix of ESTIMATwG THE 
@@ -249,6 +348,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         Units of energy are in kg*nm^2/s^2
         """
+
         cdef int iv
         cdef float l1, l2
         # cdef float[3] v1
@@ -567,7 +667,10 @@ cdef class MembraneMesh(TriangleMesh):
         # cdef float[:] sigma_view = sigma
 
         dN = 0.1
-        curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
+        if USE_C:
+            curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+        else:
+            curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
         attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
         # c_point_attraction_grad(&(attraction_view[0]), 
         #                        &(points_view[0]), 
