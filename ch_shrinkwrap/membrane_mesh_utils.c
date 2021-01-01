@@ -1040,7 +1040,7 @@ static void c_curvature_grad(void *vertices_,
             A[2*j+1] = dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7];
 
             // Update the equation y-intercept to displace athe curve along the normal direction
-            b[j] = A[2*j+0]*k_1+A[2*j+1]*k_2;
+            b[j] = A[2*j+0]*k_1+A[2*j+1]*k_2 - dN;
         }
 
         // solve 
