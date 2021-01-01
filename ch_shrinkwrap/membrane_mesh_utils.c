@@ -25,11 +25,11 @@
  */
 PRECISION norm(const PRECISION *pos)
 {
-    PRECISION n = 0;
-    int i = 0;
+    int i;
+    PRECISION n = 0.0;
 
     for (i = 0; i < VECTORSIZE; ++i)
-        n += pos[i] * pos[i];
+        n += (pos[i]) * (pos[i]);
     return sqrt(n);
 }
 
@@ -41,9 +41,9 @@ PRECISION norm(const PRECISION *pos)
  */
 PRECISION safe_divide(PRECISION x, PRECISION y)
 {
-    if (y==0)
+    if ((y)==0)
         return 0;
-    return x/y;
+    return (x)/(y);
 }
 
 /** @brief Sign of a scalar
@@ -53,7 +53,7 @@ PRECISION safe_divide(PRECISION x, PRECISION y)
  */
 PRECISION sign(PRECISION x)
 {
-    return (PRECISION)((0<x)-(x<0));
+    return (PRECISION)((0<(x))-((x)<0));
 }
 
 /** @brief Elementwise division of a vector by a scalar
@@ -69,7 +69,7 @@ void scalar_divide(const PRECISION *a, const PRECISION b, PRECISION *c, const in
 {
     int k = 0;
     for (k=0; k < length; ++k)
-        c[k] = a[k]/b;
+        c[k] = (a[k])/(b);
 }
 
 /** @brief Elementwise multiplication of a scalar times a vector
@@ -85,7 +85,7 @@ void scalar_mult(const PRECISION *a, const PRECISION b, PRECISION *c, const int 
 {
     int k = 0;
     for (k=0; k < length; ++k)
-        c[k] = a[k]*b;
+        c[k] = (a[k])*(b);
 }
 
 /** @brief Construct outer product of vectors
@@ -135,7 +135,7 @@ void matmul(const PRECISION *a, const PRECISION *b, PRECISION *c, int m, int n, 
 /** @brief Transpose a matrix
  * 
  *  @param a PRECISION matrix (m x n)
- *  @param at PRECISION matrix (n x p)
+ *  @param at PRECISION matrix (n x m)
  *  @param m int first dimension of a
  *  @param n int second dimension of a
  *  @return Void
@@ -162,19 +162,19 @@ void orthogonal_projection_matrix3(const PRECISION *v, PRECISION *m)
 {
     PRECISION xy, xz, yz;
 
-    xy = -v[0]*v[1];
-    xz = -v[0]*v[2];
-    yz = -v[1]*v[2];
+    xy = -1.0*v[0]*v[1];
+    xz = -1.0*v[0]*v[2];
+    yz = -1.0*v[1]*v[2];
 
-    m[0] = 1-v[0]*v[0];
+    m[0] = 1.0-v[0]*v[0];
     m[1] = xy;
     m[2] = xz;
     m[3] = xy;
-    m[4] = 1-v[1]*v[1];
+    m[4] = 1.0-v[1]*v[1];
     m[5] = yz;
     m[6] = xz;
     m[7] = yz;
-    m[8] = 1-v[2]*v[2];
+    m[8] = 1.0-v[2]*v[2];
 }
 
 /** @brief Apply a 3x3 projection matrix to a 3-vector
@@ -1008,7 +1008,7 @@ static void c_curvature_grad(void *vertices_,
         // Interlude: calculate curvature tensor
         compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
 
-        // principal curvatures
+        // principal curvatures (1/nm)
         k_1 = 3.0*l1 - l2;
         k_2 = 3.0*l2 - l1;
 
@@ -1036,11 +1036,11 @@ static void c_curvature_grad(void *vertices_,
             subtract(vj,vi,dv,VECTORSIZE); // nm
 
             // construct a quadratic in the space of T_1 vs. T_2
-            A[2*j+0] = dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6];
-            A[2*j+1] = dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7];
+            A[2*j] = SQR(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQR(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
             // Update the equation y-intercept to displace athe curve along the normal direction
-            b[j] = A[2*j+0]*k_1+A[2*j+1]*k_2 - dN;
+            b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - dN;
         }
 
         // solve 

@@ -22,7 +22,7 @@ MAX_VERTEX_COUNT = 2**31
 
 I = np.eye(3, dtype=float)
 
-USE_C = True
+USE_C = False
 
 cdef extern from 'triangle_mesh_utils.h':
     const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
