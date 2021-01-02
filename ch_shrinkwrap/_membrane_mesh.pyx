@@ -370,10 +370,20 @@ cdef class MembraneMesh(TriangleMesh):
         # skip = np.random.rand(self._vertices.shape[0])
         for iv in range(self._vertices.shape[0]):
             if self._cvertices[iv].halfedge == -1:
+                self._H[iv] = 0.0
+                self._K[iv] = 0.0
+                self._dH[iv] = 0.0
+                self._dK[iv] = 0.0
+                self._dE_neighbors[iv] = 0.0
                 continue
             # Monte carlo selection of vertices to update
             # Stochastically choose which vertices to adjust
             if (skip_prob > 0) and (np.random.rand() < skip_prob):
+                self._H[iv] = 0.0
+                self._K[iv] = 0.0
+                self._dH[iv] = 0.0
+                self._dK[iv] = 0.0
+                self._dE_neighbors[iv] = 0.0
                 continue
             # Vertex and its normal
             vi = self._vertices['position'][iv,:]  # nm

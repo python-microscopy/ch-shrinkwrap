@@ -977,13 +977,20 @@ static void c_curvature_grad(void *vertices_,
     for (i=0;i<n_vertices;++i)
     {
         curr_vertex = &(vertices[i]);
-        if ((curr_vertex->halfedge) == -1)
+        // Skip unused vertices || stochastically choose which vertices to adjust
+        if ( ((curr_vertex->halfedge) == -1) || ((skip_prob>0)&&(r2()<skip_prob)) ) {
+            H[i] = 0.0;
+            K[i] = 0.0;
+            dH[i] = 0.0;
+            dK[i] = 0.0;
+            dE_neighbors[i] = 0.0;
+            E[i] = 0.0;
+            pE[i] = 0.0;
+            for (jj=0;jj<VECTORSIZE;++jj)
+                (dEdN[i]).position[jj] = 0.0;
             continue;
+        }
 
-        // Stochastically choose which vertices to adjust
-        if ((skip_prob>0)&&(r2()<skip_prob))
-            continue;
-        
         // Vertex and its normal
         vi = curr_vertex->position; // nm
         Nvi = curr_vertex->normal;  // unitless
@@ -1068,7 +1075,6 @@ static void c_curvature_grad(void *vertices_,
                 Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // 1/nm
 
             // Compute the principal curvatures from the difference in normals (same as difference in tangents)
-            
             kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
             kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
 
