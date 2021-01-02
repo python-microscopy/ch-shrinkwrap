@@ -1073,7 +1073,7 @@ static void c_curvature_grad(void *vertices_,
             kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
 
             // weights/areas
-            w = safe_divide((1.0/dv_norm),r_sum);
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum);
             k = safe_divide(2.0*sign(dot(Nvi,dv,VECTORSIZE))*Ni_diff,dv_norm);  // 1/nm
             Aj = faces[curr_neighbor->face].area;  // nm^2
             areas += Aj;  // nm^2
@@ -1099,7 +1099,7 @@ static void c_curvature_grad(void *vertices_,
 
         // create little m (eigenvector matrix)
         m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
-        m[1] = v2[1]; m[4] = v2[1]; m[7] = v2[2];
+        m[1] = v2[0]; m[4] = v2[1]; m[7] = v2[2];
         m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
 
         // since we're operating at a fixed size, zero out A and At so we don't add
