@@ -18,6 +18,7 @@ extern "C" {
                          // updated in the structs, both in c and python
 
 #define KBT 0.0257
+#define KBTINV 38.911
 
 /* triangle_mesh_utils.h may already make these functions available globally */
 #ifndef _triangle_mesh_utils_h_

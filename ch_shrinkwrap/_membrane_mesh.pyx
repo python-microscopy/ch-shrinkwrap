@@ -22,7 +22,7 @@ MAX_VERTEX_COUNT = 2**31
 
 I = np.eye(3, dtype=float)
 
-USE_C = False
+USE_C = True
 
 cdef extern from 'triangle_mesh_utils.h':
     const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
@@ -314,7 +314,7 @@ cdef class MembraneMesh(TriangleMesh):
         return l1, l2, v1, v2
 
     cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
-        dEdN = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+        dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
         cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
         c_curvature_grad(&(self._cvertices[0]), 
                         &(self._cfaces[0]),
@@ -588,7 +588,7 @@ cdef class MembraneMesh(TriangleMesh):
             try:
                 d = self._vertices['position'][i,:] - points[neighbors]  # nm
             except(IndexError):
-                raise IndexError('Could not access neighbors.')
+                raise IndexError('Could not access neighbors for position {}.'.format(self._vertices['position'][i,:]))
             # dd = (d*d).sum(1)  # nm^2
             dd = dists*dists
 

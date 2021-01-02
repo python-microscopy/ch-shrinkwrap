@@ -779,6 +779,7 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     
     v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
     scalar_divide(v2t,norm(v2t),v2,VECTORSIZE);
+    
 }
 
 /** @brief Compute Moore-Penrose inverse of square matrix
@@ -833,7 +834,7 @@ void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_leng
 
 /** @brief Compute inverse of 2 x 2 matrix
  * 
- *  We can use this instead of moore_penrose_square() if we have a 2x2.
+ *  We can use this if we have a well-behaved 2x2.
  *
  *  @param A PRECISION matrix
  *  @param Ainv PREICISON inverted matrix
@@ -857,6 +858,59 @@ void invert_2x2(const PRECISION *A, PRECISION *Ainv)
     {
         Ainv[0] = Ainv[1] = Ainv[2] = Ainv[3] = 0.0;  // pseudoinverse
     }
+    
+}
+
+/** @brief Compute pseudoinverse of 2 x 2 matrix
+ * 
+ *  We can use this instead of moore_penrose_square() if we have a 2x2.
+ *
+ *  @param A PRECISION matrix
+ *  @param Ainv PREICISON inverted matrix
+ *  @return Void
+ */
+void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
+{
+    PRECISION a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
+    PRECISION theta, phi, ctheta, cphi, stheta, sphi;
+    PRECISION ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd;
+    PRECISION sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
+    a = A[0]; b = A[1]; c = A[2]; d = A[3];
+
+    a2 = a*a; b2 = b*b; c2 = c*c; d2 = d*d;
+    
+    a2b2 = a2+b2; c2d2 = c2+d2;
+    a2b2nc2nd2 = a2b2-c2d2;
+    tacbd = 2*(a*c+b*d);
+    
+    theta = 0.5*atan2(2*(a*b+c*d),a2+c2-b2-d2);
+    phi = 0.5*atan2(tacbd, a2b2nc2nd2);
+    
+    ctheta = cos(theta); cphi = cos(phi);
+    stheta = sin(theta); sphi = sin(phi);
+    
+    ctcp = ctheta*cphi; ctsp = ctheta*sphi;
+    stcp = stheta*cphi; stsp = stheta*sphi;
+    
+    sign0 = sign(ctcp*a+ctsp*c+stcp*b+stsp*d);
+    sign1 = sign(stsp*a-stcp*c-ctsp*b+ctcp*d);
+    
+    ss = a2b2+c2d2;
+    sd = sqrt(SQR(a2b2nc2nd2)+SQR(tacbd));
+    
+    sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
+    
+    thresh = eps*2*sig0;
+    
+    siginv0 = (sig0 > thresh) ? (1.0/sig0) : 0.0;
+    siginv1 = (sig1 > thresh) ? (1.0/sig1) : 0.0;
+    
+    s0s0 = sign0*siginv0; s1s1 = sign1*siginv1;
+    
+    Ainv[0] = ctcp*s0s0+stsp*s1s1;
+    Ainv[1] = ctsp*s0s0-stcp*s1s1;
+    Ainv[2] = stcp*s0s0-ctsp*s1s1;
+    Ainv[3] = stsp*s0s0+ctcp*s1s1;
     
 }
 
@@ -905,6 +959,7 @@ static void c_curvature_grad(void *vertices_,
     PRECISION l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
     PRECISION kj, kj_1, k, Aj, areas, w, k_1, k_2;
     PRECISION dEdN_H, dEdN_K, dEdN_sum, dEdNs;
+    PRECISION Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     PRECISION v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
     PRECISION Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
     PRECISION m[VECTORSIZE*VECTORSIZE];
@@ -939,10 +994,10 @@ static void c_curvature_grad(void *vertices_,
 
         // Need a three-pass over the neighbors
         // 1. get the radial weights
-        r_sum = 0; // 1/nm
+        r_sum = 0.0; // 1/nm
         j = 0;
         neighbor = (curr_vertex->neighbors)[j];
-        while(neighbor!=-1)
+        while((neighbor!=-1) && (j<NEIGHBORSIZE))
         {
             curr_neighbor = &(halfedges[neighbor]);
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
@@ -951,7 +1006,8 @@ static void c_curvature_grad(void *vertices_,
             subtract(vj,vi,dv,VECTORSIZE); // nm
             dv_norm = norm(dv);  // nm
             // radial weighting
-            r_sum += 1.0/dv_norm;  // 1/nm
+            if (dv_norm > 0.0)
+                r_sum += 1.0/dv_norm;  // 1/nm
 
             ++j;
             neighbor = (curr_vertex->neighbors)[j];
@@ -960,11 +1016,11 @@ static void c_curvature_grad(void *vertices_,
 
         // zero out Mvi
         for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
-            Mvi[j] = 0;
+            Mvi[j] = 0.0;
 
         // 2. Compute Mvi
-        areas = 0;  // nm^2
-        dE_neighbors[i] = 0;  // eV/nm
+        areas = 0.0;  // nm^2
+        dE_neighbors[i] = 0.0;  // eV/nm
         for(j=0;j<n_neighbors;++j)
         {
             neighbor = (curr_vertex->neighbors)[j];
@@ -978,31 +1034,47 @@ static void c_curvature_grad(void *vertices_,
             dv_1_norm = norm(dv_1);  // nm
 
             // normalized vectors
-            scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
-            scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
+            if (dv_norm > 0.0)
+                scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
+            if (dv_1_norm > 0.0)
+                scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
             project3(p, ndv, T_theta); // nm^2
             T_theta_norm = norm(T_theta); // nm^2
-            if (T_theta_norm>0)
+            if (T_theta_norm > 0.0)
                 scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
             else
                 for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0;
 
             // edge normals subtracted from vertex normals
-            Ni_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvi,dv_hat,VECTORSIZE))));  // 1/nm
+            // the square root checks are only needed for non-manifold meshes
+            Nvidv_hat = SQR(dot(Nvi,dv_hat,VECTORSIZE));
+            if (Nvidv_hat > 1.0)
+                Ni_diff = 0.0;
+            else
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // 1/nm
             Nvj = neighbor_vertex->normal;  // unitless
-            Nj_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvj,dv_hat,VECTORSIZE))));  // 1/nm
-            Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-SQR(dot(Nvj,dv_1_hat,VECTORSIZE))));  // 1/nm
+            Nvjdv_hat = SQR(dot(Nvj,dv_hat,VECTORSIZE));
+            if (Nvjdv_hat > 1.0)
+                Nj_diff = 0.0;
+            else
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // 1/nm
+            Nvjdv_1_hat = SQR(dot(Nvj,dv_1_hat,VECTORSIZE));
+            if (Nvjdv_1_hat > 1.0)
+                Nj_1_diff = 0.0;
+            else
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // 1/nm
 
             // Compute the principal curvatures from the difference in normals (same as difference in tangents)
-            kj = 2.0*Nj_diff/dv_norm;  // 1/nm
-            kj_1 = 2.0*Nj_1_diff/dv_1_norm; // 1/nm
+            
+            kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
+            kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
 
             // weights/areas
-            w = (1.0/dv_norm)/r_sum;
-            k = 2.0*sign(dot(Nvi,dv,VECTORSIZE))*Ni_diff/dv_norm;  // 1/nm
+            w = safe_divide((1.0/dv_norm),r_sum);
+            k = safe_divide(2.0*sign(dot(Nvi,dv,VECTORSIZE))*Ni_diff,dv_norm);  // 1/nm
             Aj = faces[curr_neighbor->face].area;  // nm^2
             areas += Aj;  // nm^2
             dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV/nm
@@ -1032,7 +1104,8 @@ static void c_curvature_grad(void *vertices_,
 
         // since we're operating at a fixed size, zero out A and At so we don't add
         // extra values to our matrix
-        for (j=0;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = 0.0;
+        for (j=0;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
+        for (j=0;j<NEIGHBORSIZE;++j) b[j] = 0.0;
 
         // 3. Compute shift
         for (j=0;j<n_neighbors;++j)
@@ -1048,14 +1121,14 @@ static void c_curvature_grad(void *vertices_,
             A[2*j] = SQR(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
             A[2*j+1] = SQR(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
-            // Update the equation y-intercept to displace athe curve along the normal direction
+            // Update the equation y-intercept to displace the curve along the normal direction
             b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - dN;
         }
 
         // solve 
         transpose(A, At, NEIGHBORSIZE, 2);  // construct A transpose
         matmul(At, A, AtA, 2, NEIGHBORSIZE, 2);  // construct AtA
-        invert_2x2(AtA, AtAinv);  // construct inverted matrix
+        moore_penrose_2x2(AtA, AtAinv);  // construct inverted matrix
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
@@ -1073,9 +1146,16 @@ static void c_curvature_grad(void *vertices_,
         dEdN_sum = (dEdN_H + dEdN_K); // eV/nm # + dE_neighbors)
         dEdNs = -1.0*dEdN_sum; // eV/nm # *(1.0-pE[i]);
 
-        for (jj=0;jj<VECTORSIZE;++jj)
+        for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
-
+            // if isnan((dEdN[i]).position[jj]) {
+            //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);
+            //     printf("%.3f %.3f\n", AtA[0], AtA[1]);
+            //     printf("%.3f %.3f\n", AtA[2], AtA[3]);
+            //     printf("%.3f %.3f\n", AtAinv[0], AtAinv[1]);
+            //     printf("%.3f %.3f\n", AtAinv[2], AtAinv[3]);
+            // }
+        }
     }
 }
 
