@@ -87,6 +87,8 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public float beta_2
     cdef public float eps
     cdef public int max_iter
+    cdef public int remesh_frequency
+    cdef public int delaunay_remesh_frequency
     cdef public object _E
     cdef public object _pE
     cdef object _dH
@@ -124,6 +126,8 @@ cdef class MembraneMesh(TriangleMesh):
         self.beta_2 = 0.7
         self.eps = 1e-8
         self.max_iter = 250
+        self.remesh_frequency = 100
+        self.delaunay_remesh_frequency = 150
 
         # Coloring info
         #self._H = None
@@ -651,6 +655,7 @@ cdef class MembraneMesh(TriangleMesh):
         eps = self._mean_edge_length*0.612  # How far outside of a tetrahedron do we 
                                           # consider a point 'inside' a tetrahedron?
                                           # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
+                                          # TODO: account for sigma?
         print('Guessed eps: {}'.format(eps))
         empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
@@ -766,10 +771,13 @@ cdef class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
 
-        # Calculate target lengths for remesh steps
-        # initial_length = self._mean_edge_length
-        # final_length = np.max(sigma)
-        # m = (final_length - initial_length)/max_iter
+        # Precalc 
+        dr = (self.delaunay_remesh_frequency != 0)
+        r = (self.remesh_frequency != 0)
+        if r:
+            initial_length = self._mean_edge_length
+            final_length = np.max(sigma)
+            m = (final_length - initial_length)/max_iter
         
         for _i in np.arange(max_iter):
 
@@ -790,12 +798,20 @@ cdef class MembraneMesh(TriangleMesh):
             if np.all(shift < eps):
                 break
 
-            # # Remesh
-            # if (np.mod(_i, 19) == 0) and (_i != 0):
-            #     target_length = initial_length + m*_i
-            #     print('Target length: ' + str(target_length))
-            #     self.remesh(5, target_length, 0.5, 10)
-            #     print('Mean length: ' + str(self._mean_edge_length))
+            if (_i == 0):
+                # Don't remesh
+                continue
+
+            # Remesh
+            if r and ((_i % self.remesh_frequency) == 0):
+                target_length = initial_length + m*_i
+                self.remesh(5, target_length, 0.5, 10)
+                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+                                                                                str(self._mean_edge_length)))
+
+            # Delaunay remesh
+            if dr and ((_i % self.delaunay_remesh_frequency) == 0):
+                self.delaunay_remesh(points)
 
     def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):

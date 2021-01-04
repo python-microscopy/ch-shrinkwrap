@@ -36,10 +36,11 @@ class ShrinkwrapMembrane(ModuleBase):
     # attraction_weight = Float(1)
     # curvature_weight = Float(-1)
     search_k = Int(200)
-    temperature = Float(25.0)
     kc = Float(0.514)
     kg = Float(0.0)
     skip_prob = Float(0.0)
+    remesh_frequency = Int(0)
+    delaunay_remesh_frequency = Int(0)
     method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):
@@ -48,12 +49,13 @@ class ShrinkwrapMembrane(ModuleBase):
 
         mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
                                           search_k=self.search_k,
-                                          temp=self.temperature,
                                           kc=self.kc,
                                           kg=self.kg,
                                           max_iter=self.max_iters,
                                           step_size=self.step_size,
-                                          skip_prob=self.skip_prob)
+                                          skip_prob=self.skip_prob,
+                                          remesh_frequency=self.remesh_frequency,
+                                          delaunay_remesh_frequency=self.delaunay_remesh_frequency)
 
         pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
                                               namespace[self.points]['y'],
