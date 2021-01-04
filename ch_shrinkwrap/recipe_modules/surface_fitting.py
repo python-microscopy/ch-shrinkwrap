@@ -32,7 +32,7 @@ class ShrinkwrapMembrane(ModuleBase):
     points = Input('filtered_localizations')
 
     max_iters = Int(100)
-    step_size = Float(1)
+    step_size = Float(0.1)
     # attraction_weight = Float(1)
     # curvature_weight = Float(-1)
     search_k = Int(200)
@@ -45,7 +45,7 @@ class ShrinkwrapMembrane(ModuleBase):
 
     def execute(self, namespace):
         import numpy as np
-        from ch_shrinkwrap import membrane_mesh
+        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 
         mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
                                           search_k=self.search_k,
