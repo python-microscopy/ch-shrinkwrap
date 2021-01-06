@@ -1014,7 +1014,7 @@ static void c_curvature_grad(void *vertices_,
             subtract(vj,vi,dv,VECTORSIZE); // nm
             dv_norm = norm(dv);  // nm
             // radial weighting
-            if (dv_norm > 0.0)
+            if (dv_norm > FLT_EPSILON)
                 r_sum += 1.0/dv_norm;  // 1/nm
 
             ++j;
@@ -1042,19 +1042,19 @@ static void c_curvature_grad(void *vertices_,
             dv_1_norm = norm(dv_1);  // nm
 
             // normalized vectors
-            if (dv_norm > 0.0)
+            if (dv_norm > FLT_EPSILON)
                 scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
-            if (dv_1_norm > 0.0)
+            if (dv_1_norm > FLT_EPSILON)
                 scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
             project3(p, ndv, T_theta); // nm^2
             T_theta_norm = norm(T_theta); // nm^2
-            if (T_theta_norm > 0.0)
+            if (T_theta_norm > FLT_EPSILON)
                 scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
             else
-                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0;
+                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
 
             // edge normals subtracted from vertex normals
             // the square root checks are only needed for non-manifold meshes
@@ -1096,9 +1096,17 @@ static void c_curvature_grad(void *vertices_,
         // Interlude: calculate curvature tensor
         compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
 
-        // principal curvatures (1/nm)
-        k_1 = 3.0*l1 - l2;
-        k_2 = 3.0*l2 - l1;
+        if isnan(l1) {
+            // weird tensor
+            k_1 = 0.0; k_2 = 0.0;
+            v1[0] = v1[1] = v1[2] = 0.0;
+            v2[0] = v2[1] = v2[2] = 0.0;
+        } else {
+
+            // principal curvatures (1/nm)
+            k_1 = 3.0*l1 - l2;
+            k_2 = 3.0*l2 - l1;
+        }
 
         // mean and gaussian curvatures
         H[i] = 0.5*(k_1+k_2);
@@ -1156,11 +1164,18 @@ static void c_curvature_grad(void *vertices_,
         for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
             // if isnan((dEdN[i]).position[jj]) {
+            //     printf("%e %e\n", l1, l2);
             //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);
-            //     printf("%.3f %.3f\n", AtA[0], AtA[1]);
-            //     printf("%.3f %.3f\n", AtA[2], AtA[3]);
-            //     printf("%.3f %.3f\n", AtAinv[0], AtAinv[1]);
-            //     printf("%.3f %.3f\n", AtAinv[2], AtAinv[3]);
+            //     printf("%e %e\n", AtA[0], AtA[1]);
+            //     printf("%e %e\n", AtA[2], AtA[3]);
+            //     printf("%e %e\n", AtAinv[0], AtAinv[1]);
+            //     printf("%e %e\n", AtAinv[2], AtAinv[3]);
+            //     for (j=0;j<2*NEIGHBORSIZE;++j)
+            //         printf("%e ", A[j]);
+            //     printf("\n");
+            //     for (j=0;j<NEIGHBORSIZE;++j)
+            //         printf("%e ", b[j]);
+            //     printf("\n");
             // }
         }
     }
