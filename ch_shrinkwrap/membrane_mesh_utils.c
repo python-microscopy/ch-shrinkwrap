@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <float.h>
 
 #include "Python.h"
 #include <math.h>
@@ -41,8 +42,8 @@ PRECISION norm(const PRECISION *pos)
  */
 PRECISION safe_divide(PRECISION x, PRECISION y)
 {
-    if ((y)==0)
-        return 0;
+    if (abs(y)<FLT_EPSILON)
+        return 0.0;
     return (x)/(y);
 }
 
@@ -900,7 +901,7 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     
     sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
     
-    thresh = eps*2*sig0;
+    thresh = FLT_EPSILON*0.5*sqrt(5.0)*sig0;
     
     siginv0 = (sig0 > thresh) ? (1.0/sig0) : 0.0;
     siginv1 = (sig1 > thresh) ? (1.0/sig1) : 0.0;
