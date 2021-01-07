@@ -638,7 +638,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def delaunay_remesh(self, points):
+    def delaunay_remesh(self, points, sigma):
         print('Delaunay remesh...')
 
         # Generate tesselation from mesh control points
@@ -652,12 +652,12 @@ cdef class MembraneMesh(TriangleMesh):
         simps = delaunay_utils.del_simps(tri, ext_inds)
 
         # Remove simplices that do not contain points
-        eps = self._mean_edge_length*0.612  # How far outside of a tetrahedron do we 
+        # eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
                                           # consider a point 'inside' a tetrahedron?
                                           # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
                                           # TODO: account for sigma?
-        print('Guessed eps: {}'.format(eps))
-        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
+        #print('Guessed eps: {}'.format(eps))
+        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=np.mean(sigma))
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
@@ -811,7 +811,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Delaunay remesh
             if dr and ((_i % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points)
+                self.delaunay_remesh(points, sigma)
 
     def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):

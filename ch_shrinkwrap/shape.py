@@ -185,7 +185,7 @@ class Tetrahedron(Shape):
     def volume(self):
         v30 = self._v0 - self._v3
         v31 = self._v1 - self._v3
-        v32 = self._v1 - self._v3
+        v32 = self._v2 - self._v3
         return (1/6)*abs((v30*util.fast_3x3_cross(v31,v32)).sum())
     
     def sdf(self, p):

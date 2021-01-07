@@ -1,9 +1,10 @@
+from math import sqrt
 import numpy as np
 import scipy.spatial
 
 from PYME.experimental import isosurface
 
-from ch_shrinkwrap import sdf
+from ch_shrinkwrap import sdf, util
 
 def orient_simps(d, v):
     """
@@ -35,7 +36,7 @@ def orient_simps(d, v):
     v21 = v_tri[:,1,:]-v_tri[:,2,:]
     v23 = v_tri[:,3,:]-v_tri[:,2,:]
     n123 = np.cross(v23,v21,axis=1)
-    orientation = np.sign((n123*(centroid-v_tri[:,1,:])).sum(1))
+    orientation = np.sign((n123*(v_tri[:,1,:]-centroid)).sum(1))
     
     # If it's pointing away, flip a single edge. The triangle should now be oriented.
     tri = d
@@ -171,6 +172,8 @@ def empty_simps(d, v, pts, eps=0.0):
         pts : np.array
             (L,3) array of x,y,z coordinates of points
             to test 
+        eps : float
+            Multiplier of circumradius 
             
     Returns
     -------
@@ -194,9 +197,47 @@ def empty_simps(d, v, pts, eps=0.0):
     for _i in range(d.shape[0]):
         _vs = d[_i,:]
         vs = v[_vs]
+
+        # v30 = vs[0,:] - vs[3,:]  # DA
+        # v31 = vs[1,:] - vs[3,:]  # DB
+        # v32 = vs[2,:] - vs[3,:]  # DC
+        # a2 = util.fast_3x3_cross(v31,v32)
+
+        # V = (1.0/6.0)*abs((v30*a2).sum())
+        # a = sqrt((v30*v30).sum())
+        # b = sqrt((v31*v31).sum())
+        # c = sqrt((v32*v32).sum())
+        # v12 = vs[2,:] - vs[1,:]
+        # v20 = vs[0,:] - vs[2,:]
+        # v01 = vs[1,:] - vs[0,:]
+        # A = sqrt((v12*v12).sum()) # BC
+        # B = sqrt((v20*v20).sum()) # CA
+        # C = sqrt((v01*v01).sum()) # AB
+        # aA = a*A
+        # bB = b*B
+        # cC = c*C
+        # t0 = aA+bB+cC
+        # t1 = aA+bB-cC
+        # t2 = aA-bB+cC
+        # t3 = bB+cC-aA
+        # R = sqrt(t0*t1*t2*t3)/(24*V)  # circumradius
+
+        # a1 = util.fast_3x3_cross(v30,v31)
+        # a3 = util.fast_3x3_cross(v32,v30)
+        # a4 = util.fast_3x3_cross(-v01,v12)
+        # A1 = 0.5*sqrt((a1*a1).sum())
+        # A2 = 0.5*sqrt((a2*a2).sum())
+        # A3 = 0.5*sqrt((a3*a3).sum())
+        # A4 = 0.5*sqrt((a4*a4).sum())
+        # r = 3*V/(A1+A2+A3+A4)  # inradius
+
+        # print('R: {} r: {} R-r: {}'.format(R,r,(R-r)))
+
         # If all the original points lie outside this tetrahedron,
         # remove this tetrahedron
-        if np.all(sdf.tetrahedron(pts, *vs)>eps):
+        n_inside = np.sum(sdf.tetrahedron(pts, *vs)<=eps)
+        # print('n_inside: {}'.format(n_inside))
+        if n_inside == 0:
             d_mask[_i] = True
             
     return np.where(d_mask)[0]
