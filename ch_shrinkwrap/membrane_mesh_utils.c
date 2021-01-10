@@ -1158,8 +1158,8 @@ static void c_curvature_grad(void *vertices_,
         // Compute dEdN by component
         dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm
         dEdN_K = areas*kg*dK[i];  // eV/nm
-        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm # + dE_neighbors[i])
-        dEdNs = -1.0*dEdN_sum*(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
+        dEdN_sum = (dEdN_H + dEdN_K); // + dE_neighbors[i]); // eV/nm # + dE_neighbors[i])
+        dEdNs = -1.0*dEdN_sum; //*(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
 
         for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];

@@ -33,11 +33,11 @@ class ShrinkwrapMembrane(ModuleBase):
 
     max_iters = Int(100)
     step_size = Float(0.1)
-    # attraction_weight = Float(1)
-    # curvature_weight = Float(-1)
+    attraction_weight = Float(1)
+    curvature_weight = Float(1)
     search_k = Int(200)
     kc = Float(0.514)
-    kg = Float(0.0)
+    kg = Float(-0.514)
     skip_prob = Float(0.0)
     remesh_frequency = Int(0)
     delaunay_remesh_frequency = Int(0)
@@ -55,7 +55,9 @@ class ShrinkwrapMembrane(ModuleBase):
                                           step_size=self.step_size,
                                           skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
-                                          delaunay_remesh_frequency=self.delaunay_remesh_frequency)
+                                          delaunay_remesh_frequency=self.delaunay_remesh_frequency,
+                                          a=self.attraction_weight,
+                                          c=self.curvature_weight)
 
         pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
                                               namespace[self.points]['y'],

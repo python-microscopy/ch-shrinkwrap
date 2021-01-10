@@ -109,11 +109,11 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Bending stiffness coefficients (in units of kbT)
         self.kc = 20.0*KBT  # eV
-        self.kg = 0.0  # eV
+        self.kg = -20.0*KBT  # eV
 
         # Gradient weight
         self.a = 1.0
-        self.c = -1.0
+        self.c = 1.0
 
         # Spotaneous curvature
         # Keep in mind the curvature convention we're using. Into the surface is
@@ -665,6 +665,10 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, True)
+
+        # Delaunay remeshing has a penchant for flanges
+        # while np.any(self.singular):
+        #     self._remove_singularities()
 
         self._initialize_curvature_vectors()
 
