@@ -91,8 +91,8 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public int delaunay_remesh_frequency
     cdef public object _E
     cdef public object _pE
-    cdef object _dH
-    cdef object _dK
+    cdef public object _dH
+    cdef public object _dK
     cdef object _dE_neighbors
     cdef float * _cH
     cdef float * _cK
@@ -800,7 +800,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # If we've reached precision, terminate
             if np.all(shift < eps):
-                break
+               break
 
             if (_i == 0):
                 # Don't remesh

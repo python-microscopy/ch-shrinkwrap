@@ -17,6 +17,8 @@
 
 #include "membrane_mesh_utils.h"
 
+#define EPSILON 1e-15
+
 /** @brief Calculates the Euclidean norm of a vector.
  *
  *  Vector length is set by VECTORSIZE define.
@@ -42,7 +44,7 @@ PRECISION norm(const PRECISION *pos)
  */
 PRECISION safe_divide(PRECISION x, PRECISION y)
 {
-    if (abs(y)<FLT_EPSILON)
+    if (abs(y)<EPSILON)
         return 0.0;
     return (x)/(y);
 }
@@ -901,7 +903,7 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     
     sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
     
-    thresh = FLT_EPSILON*0.5*sqrt(5.0)*sig0;
+    thresh = EPSILON*0.5*sqrt(5.0)*sig0;
     
     siginv0 = (sig0 > thresh) ? (1.0/sig0) : 0.0;
     siginv1 = (sig1 > thresh) ? (1.0/sig1) : 0.0;
@@ -1014,7 +1016,7 @@ static void c_curvature_grad(void *vertices_,
             subtract(vj,vi,dv,VECTORSIZE); // nm
             dv_norm = norm(dv);  // nm
             // radial weighting
-            if (dv_norm > FLT_EPSILON)
+            if (dv_norm > EPSILON)
                 r_sum += 1.0/dv_norm;  // 1/nm
 
             ++j;
@@ -1042,16 +1044,16 @@ static void c_curvature_grad(void *vertices_,
             dv_1_norm = norm(dv_1);  // nm
 
             // normalized vectors
-            if (dv_norm > FLT_EPSILON)
+            if (dv_norm > EPSILON)
                 scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
-            if (dv_1_norm > FLT_EPSILON)
+            if (dv_1_norm > EPSILON)
                 scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
             project3(p, ndv, T_theta); // nm^2
             T_theta_norm = norm(T_theta); // nm^2
-            if (T_theta_norm > FLT_EPSILON)
+            if (T_theta_norm > EPSILON)
                 scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
             else
                 for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
