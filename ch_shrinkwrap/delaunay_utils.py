@@ -73,7 +73,8 @@ def tris_from_delaunay(d, return_index=False, oriented=False):
         d = d.simplices
     if oriented:
         # Return triangles so normals point out of tetrahedron
-        tris = np.vstack([d[:,[2,1,0]], d[:,1:], d[:,[3,2,0]], d[:,[0,1,3]]])
+        # tris = np.vstack([d[:,[2,1,0]], d[:,1:], d[:,[3,2,0]], d[:,[0,1,3]]])
+        tris = np.vstack([d[:,[0,1,2]], d[:,[1,3,2]], d[:,[3,0,2]], d[:,[0,3,1]]])
     else:
         # Return order such that it is easy to find unique triangles
         tris = np.vstack([d[:,:3], d[:,1:], d[:,[0,2,3]], d[:,[0,1,3]]])
@@ -82,7 +83,7 @@ def tris_from_delaunay(d, return_index=False, oriented=False):
         return tris, inds
     return tris
 
-def surf_from_delaunay(d):
+def surf_from_delaunay(d, oriented=True):
     """
     Find the surface of the Delaunay triangulation.
     
@@ -99,7 +100,7 @@ def surf_from_delaunay(d):
             corresponding to the same vertices as the Delaunay 
             triangulation
     """
-    tris = tris_from_delaunay(d, oriented=True)
+    tris = tris_from_delaunay(d, oriented=oriented)
     _, inds, counts = np.unique(np.sort(tris, axis=1),axis=0,return_index=True,return_counts=True)
     # Extract the valence one faces, ordered
     return tris[inds[counts==1]]
