@@ -673,29 +673,29 @@ static void c_curvature_grad(void *vertices_,
             if (Nvidv_hat > 1.0)
                 Ni_diff = sqrt(2.0);
             else
-                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // 1/nm
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // unitless
             Nvj = neighbor_vertex->normal;  // unitless
             Nvjdv_hat = SQUARE(dot3(Nvj,dv_hat));
             if (Nvjdv_hat > 1.0)
                 Nj_diff = sqrt(2.0);
             else
-                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // 1/nm
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // unitless
             Nvjdv_1_hat = SQUARE(dot3(Nvj,dv_1_hat));
             if (Nvjdv_1_hat > 1.0)
                 Nj_1_diff = sqrt(2.0);
             else
-                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // 1/nm
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // unitless
 
             // Compute the principal curvatures from the difference in normals (same as difference in tangents)
             kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
             kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
 
             // weights/areas
-            w = safe_divide(safe_divide(1.0,dv_norm),r_sum);
-            k = safe_divide(2.0*SIGN(dot3(Nvi,dv))*Ni_diff,dv_norm);  // 1/nm
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
+            k = safe_divide(2.0*SIGN(dot3(Nvi,dv))*Ni_diff,dv_norm);  // unitless
             Aj = faces[curr_neighbor->face].area;  // nm^2
             areas += Aj;  // nm^2
-            dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV/nm
+            dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
@@ -720,8 +720,8 @@ static void c_curvature_grad(void *vertices_,
         }
 
         // mean and gaussian curvatures
-        H[i] = 0.5*(k_1+k_2);
-        K[i] = k_1*k_2;
+        H[i] = 0.5*(k_1+k_2);  // 1/nm
+        K[i] = k_1*k_2; // 1/nm^2
 
         // create little m (eigenvector matrix)
         m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
@@ -730,8 +730,8 @@ static void c_curvature_grad(void *vertices_,
 
         // since we're operating at a fixed size, zero out A and At so we don't add
         // extra values to our matrix
-        for (j=0;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
-        for (j=0;j<NEIGHBORSIZE;++j) b[j] = 0.0;
+        for (j=0;j<NEIGHBORSIZE;++j) A[j] = At[j] = AtAinvAt[j] = b[j] = 0.0;
+        for (j=NEIGHBORSIZE;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
 
         // 3. Compute shift
         for (j=0;j<n_neighbors;++j)
@@ -758,8 +758,8 @@ static void c_curvature_grad(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm^2
-        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm
+        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm
+        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm^2
 
         E[i] = areas*(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i]);
 
@@ -767,10 +767,10 @@ static void c_curvature_grad(void *vertices_,
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
-        dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm
-        dEdN_K = areas*kg*dK[i];  // eV/nm
-        dEdN_sum = (dEdN_H + dEdN_K); // + dE_neighbors[i]); // eV/nm # + dE_neighbors[i])
-        dEdNs = -1.0*dEdN_sum; //*(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
+        dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm^2
+        dEdN_K = areas*kg*dK[i];  // eV/nm^2
+        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdNs = -1.0*dEdN_sum;  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
 
         for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
