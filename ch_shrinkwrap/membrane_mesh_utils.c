@@ -17,6 +17,7 @@
 
 #include "membrane_mesh_utils.h"
 
+#define ABS(x) (((x) < 0) ? -x : x)
 #define SQUARE(a) ((a)*(a))
 #define SIGN(x) (((x) < 0) ? -1 : 1)
 
@@ -47,7 +48,7 @@ PRECISION norm3(const PRECISION *pos)
  */
 PRECISION safe_divide(PRECISION x, PRECISION y)
 {
-    if (abs(y)<EPSILON)
+    if (ABS(y)<EPSILON)
         return 0.0;
     return (x)/(y);
 }
