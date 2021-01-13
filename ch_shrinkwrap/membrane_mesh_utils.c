@@ -17,7 +17,7 @@
 
 #include "membrane_mesh_utils.h"
 
-#define SQR(a) ((a)*(a))
+#define SQUARE(a) ((a)*(a))
 #define SIGN(x) (((x) < 0) ? -1 : 1)
 
 #define EPSILON 1e-15
@@ -507,7 +507,7 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     sign1 = SIGN(stsp*a-stcp*c-ctsp*b+ctcp*d);
     
     ss = a2b2+c2d2;
-    sd = sqrt(SQR(a2b2nc2nd2)+SQR(tacbd));
+    sd = sqrt(SQUARE(a2b2nc2nd2)+SQUARE(tacbd));
     
     sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
     
@@ -668,18 +668,18 @@ static void c_curvature_grad(void *vertices_,
 
             // edge normals subtracted from vertex normals
             // the square root checks are only needed for non-manifold meshes
-            Nvidv_hat = SQR(dot3(Nvi,dv_hat));
+            Nvidv_hat = SQUARE(dot3(Nvi,dv_hat));
             if (Nvidv_hat > 1.0)
                 Ni_diff = sqrt(2.0);
             else
                 Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // 1/nm
             Nvj = neighbor_vertex->normal;  // unitless
-            Nvjdv_hat = SQR(dot3(Nvj,dv_hat));
+            Nvjdv_hat = SQUARE(dot3(Nvj,dv_hat));
             if (Nvjdv_hat > 1.0)
                 Nj_diff = sqrt(2.0);
             else
                 Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // 1/nm
-            Nvjdv_1_hat = SQR(dot3(Nvj,dv_1_hat));
+            Nvjdv_1_hat = SQUARE(dot3(Nvj,dv_1_hat));
             if (Nvjdv_1_hat > 1.0)
                 Nj_1_diff = sqrt(2.0);
             else
@@ -743,8 +743,8 @@ static void c_curvature_grad(void *vertices_,
             subtract3(vj,vi,dv); // nm
 
             // construct a quadratic in the space of T_1 vs. T_2
-            A[2*j] = SQR(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
-            A[2*j+1] = SQR(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
+            A[2*j] = SQUARE(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
             // Update the equation y-intercept to displace the curve along the normal direction
             b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - dN;
@@ -760,7 +760,7 @@ static void c_curvature_grad(void *vertices_,
         dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm^2
         dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm
 
-        E[i] = areas*(0.5*kc*SQR(2.0*H[i] - c0) + kg*K[i]);
+        E[i] = areas*(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i]);
 
         pE[i] = exp(-(1.0/KBT)*E[i]);
 
