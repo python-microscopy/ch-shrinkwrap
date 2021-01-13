@@ -44,12 +44,8 @@ class MembraneMesh(TriangleMesh):
         self._K = None
         self._E = None
         self._pE = None
-        
-<<<<<<< HEAD
 
-        self.vertex_properties.extend(['E', 'pE', 'R'])
-=======
-        self.vertex_properties.extend(['E', 'pE']) #, 'puncture_candidates'])
+        self.vertex_properties.extend(['E', 'pE', 'R']) #, 'puncture_candidates'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -62,7 +58,6 @@ class MembraneMesh(TriangleMesh):
 
         # self._puncture_test = False  # Toggle puncture testing
         # self._puncture_candidates = []
->>>>>>> 2c15bd40e70b04b0840591d4d4c971d7b92373a3
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -315,19 +310,16 @@ class MembraneMesh(TriangleMesh):
         self._E = E  # eV
         self._K = K  # 1/nm^2
         
-<<<<<<< HEAD
         #intuitively this weighting feels wrong - I think there is a scaling factor off somewhere
-        pEi = np.exp(-250.*E)
-        pE = np.sum(pEi)*pEi #what is this supposed to do?
+        #pEi = np.exp(-250.*E)
+        #pE = np.sum(pEi)*pEi #what is this supposed to do?
         
-        pE = np.exp(-E)
+        #pE = np.exp(-E)
         
-        # Take into account the change in neighboring energies for each
-=======
         self._pE = np.exp(-(1.0/KBT)*E)  # unitless
         
         ## Take into account the change in neighboring energies for each
->>>>>>> 2c15bd40e70b04b0840591d4d4c971d7b92373a3
+
         # vertex shift
         # Compute dEdN by component
         dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV/nm
