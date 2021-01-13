@@ -1,0 +1,14 @@
+*.pyc
+*.pyo
+*.pyd
+*.egg
+*~
+*.o*
+*.egg-info*
+*.vscode*
+*.cpython*
+ch_shrinkwrap/sdf_octree/csdf_octree.c
+build
+.DS_Store
+notebooks/.ipynb_checkpoints
+ch_shrinkwrap/_membrane_mesh.c

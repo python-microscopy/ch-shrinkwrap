@@ -1,7 +1,12 @@
+cimport numpy as np
 import numpy as np
 import scipy.spatial
+import cython
+import math
 
-from PYME.experimental._triangle_mesh import TriangleMesh, VERTEX_DTYPE, VERTEX_DTYPE2
+from PYME.experimental._triangle_mesh cimport TriangleMesh
+from PYME.experimental._triangle_mesh import TriangleMesh
+from PYME.experimental._triangle_mesh import VERTEX_DTYPE
 
 from ch_shrinkwrap import membrane_mesh_utils
 from ch_shrinkwrap import delaunay_utils
@@ -15,17 +20,100 @@ NM2M = 1
 
 MAX_VERTEX_COUNT = 2**31
 
-class MembraneMesh(TriangleMesh):
+I = np.eye(3, dtype=float)
+
+USE_C = True
+
+cdef extern from 'triangle_mesh_utils.h':
+    const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
+    const int VECTORSIZE
+        
+    cdef struct vertex_t:
+        float position[VECTORSIZE];
+        float normal[VECTORSIZE];
+        np.int32_t halfedge;
+        np.int32_t valence;
+        np.int32_t neighbors[NEIGHBORSIZE];
+        np.int32_t component;
+        np.int32_t locally_manifold
+
+    cdef struct halfedge_t:
+        np.int32_t vertex
+        np.int32_t face
+        np.int32_t twin
+        np.int32_t next
+        np.int32_t prev
+        np.float32_t length
+        np.int32_t component
+
+cdef extern from 'membrane_mesh_utils.h':
+    cdef struct points_t:
+        float position[VECTORSIZE]
+
+POINTS_DTYPE = np.dtype([('position', '3f4')])
+POINTS_DTYPE2 = np.dtype([('position0', 'f4'), 
+                          ('position1', 'f4'), 
+                          ('position2', 'f4')])
+
+cdef extern from "membrane_mesh_utils.c":
+    void compute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
+    void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
+    void c_curvature_grad(void *vertices_, 
+                            void *faces_,
+                            halfedge_t *halfedges,
+                            float dN,
+                            float skip_prob,
+                            int n_vertices,
+                            float *H,
+                            float *K,
+                            float *dH,
+                            float *dK,
+                            float *E,
+                            float *pE,
+                            float *dE_neighbors,
+                            float kc,
+                            float kg,
+                            float c0,
+                            points_t *dEdN)
+
+cdef class MembraneMesh(TriangleMesh):
+    cdef public float kc
+    cdef public float kg
+    cdef public float a
+    cdef public float c
+    cdef public float c0
+    cdef public float step_size
+    cdef public float beta_1
+    cdef public float beta_2
+    cdef public float eps
+    cdef public int max_iter
+    cdef public int remesh_frequency
+    cdef public int delaunay_remesh_frequency
+    cdef public object _E
+    cdef public object _pE
+    cdef public object _dH
+    cdef public object _dK
+    cdef object _dE_neighbors
+    cdef float * _cH
+    cdef float * _cK
+    cdef float * _cE
+    cdef float * _cpE
+    cdef float * _cdH
+    cdef float * _cdK
+    cdef float * _cdE_neighbors
+    cdef public int search_k
+    cdef public float skip_prob
+    cdef object _tree
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         TriangleMesh.__init__(self, vertices, faces, mesh, **kwargs)
 
         # Bending stiffness coefficients (in units of kbT)
         self.kc = 20.0*KBT  # eV
-        self.kg = 0.0  # eV
+        self.kg = -20.0*KBT  # eV
 
         # Gradient weight
         self.a = 1.0
-        self.c = -1.0
+        self.c = 1.0
 
         # Spotaneous curvature
         # Keep in mind the curvature convention we're using. Into the surface is
@@ -38,17 +126,17 @@ class MembraneMesh(TriangleMesh):
         self.beta_2 = 0.7
         self.eps = 1e-8
         self.max_iter = 250
+        self.remesh_frequency = 100
+        self.delaunay_remesh_frequency = 150
 
         # Coloring info
-        self._H = None
-        self._K = None
-        self._E = None
-        self._pE = None
-        
-<<<<<<< HEAD
+        #self._H = None
+        #self._K = None
+        #self._E = None
+        #self._pE = None
 
-        self.vertex_properties.extend(['E', 'pE', 'R'])
-=======
+        self._initialize_curvature_vectors()
+        
         self.vertex_properties.extend(['E', 'pE']) #, 'puncture_candidates'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
@@ -62,7 +150,6 @@ class MembraneMesh(TriangleMesh):
 
         # self._puncture_test = False  # Toggle puncture testing
         # self._puncture_candidates = []
->>>>>>> 2c15bd40e70b04b0840591d4d4c971d7b92373a3
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -76,53 +163,91 @@ class MembraneMesh(TriangleMesh):
     @property
     def E(self):
         if self._E is None:
-            self.curvature_grad()
-        self._E[np.isnan(self._E)] = 0
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+                self._E[np.isnan(self._E)] = 0
         return self._E
 
     @property
     def pE(self):
-        #pEi = np.exp(-250. * self.E)
-        #pE = np.sum(pEi) * pEi
-        
-        pEi = np.exp(-self.E)
-        return pEi
-    
-    @property
-    def R(self):
-        return 1.0/(np.abs(self.H) + 1e-9)
-
-    @property
-    def H(self):
-        if self._H is None:
-            self.curvature_grad()
-        self._H[np.isnan(self._H)] = 0
-        return self._H
-
-    @property
-    def K(self):
-        if self._K is None:
-            self.curvature_grad()
-        self._K[np.isnan(self._K)] = 0
-        return self._K
-
-    @property
-    def pE(self):
         if self._pE is None:
-            self.curvature_grad()
-            self._pE[np.isnan(self._pE)] = 0
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+                self._pE[np.isnan(self._pE)] = 0
         return self._pE
 
     @property
     def _mean_edge_length(self):
         return np.mean(self._halfedges['length'][self._halfedges['length'] != -1])
 
+    @property
+    def curvature_mean(self):
+        if not np.any(self._H):
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+        return self._H
+    
+    @property
+    def curvature_gaussian(self):
+        if not np.any(self._K):
+            if USE_C:
+                self.curvature_grad_c()
+            else:
+                self.curvature_grad()
+        return self._K
+
+    def _initialize_curvature_vectors(self):
+        sz = self._vertices.shape[0]
+        self._H = np.zeros(sz, dtype=np.float32)
+        self._K = np.zeros(sz, dtype=np.float32)
+        self._E = np.zeros(sz, dtype=np.float32)
+        self._pE = np.zeros(sz, dtype=np.float32)
+        self._dH = np.zeros(sz, dtype=np.float32)
+        self._dK = np.zeros(sz, dtype=np.float32)
+        self._dE_neighbors = np.zeros(sz, dtype=np.float32)
+
+        self._set_cH(self._H)
+        self._set_cK(self._K)
+        self._set_cE(self._E)
+        self._set_cpE(self._pE)
+        self._set_cdH(self._dH)
+        self._set_cdK(self._dK)
+        self._set_cdE_neighbors(self._dE_neighbors)
+
+    def _set_cH(self, float[:] vec):
+        self._cH = &vec[0]
+    
+    def _set_cK(self, float[:] vec):
+        self._cK = &vec[0]
+
+    def _set_cE(self, float[:] vec):
+        self._cE = &vec[0]
+
+    def _set_cpE(self, float[:] vec):
+        self._cpE = &vec[0]
+
+    def _set_cdH(self, float[:] vec):
+        self._cdH = &vec[0]
+
+    def _set_cdK(self, float[:] vec):
+        self._cdK = &vec[0]
+
+    def _set_cdE_neighbors(self, float[:] vec):
+        self._cdE_neighbors = &vec[0]
+
     def remesh(self, n=5, target_edge_length=-1, l=0.5, n_relax=10):
         TriangleMesh.remesh(self, n=n, target_edge_length=target_edge_length, l=l, n_relax=n_relax)
         # Reset H, E, K values
-        self._H = None
-        self._K = None
-        self._E = None
+        # self._H = None
+        # self._K = None
+        # self._E = None
+        self._initialize_curvature_vectors()
 
     def _compute_curvature_tensor_eig(self, Mvi):
         """
@@ -192,9 +317,31 @@ class MembraneMesh(TriangleMesh):
 
         return l1, l2, v1, v2
 
-    def curvature_grad(self, dN=0.1, skip_prob=0.0):
+    cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
+        dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
+        cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
+        c_curvature_grad(&(self._cvertices[0]), 
+                        &(self._cfaces[0]),
+                        &(self._chalfedges[0]),
+                        dN,
+                        self.skip_prob,
+                        self._vertices.shape[0],
+                        &(self._cH[0]),
+                        &(self._cK[0]),
+                        &(self._cdH[0]),
+                        &(self._cdK[0]),
+                        &(self._cE[0]),
+                        &(self._cpE[0]),
+                        &(self._cdE_neighbors[0]),
+                        self.kc,
+                        self.kg,
+                        self.c0,
+                        &(cdEdN[0]))
+        return dEdN
+
+    cdef curvature_grad(self, float dN=0.1, float skip_prob=0.0):
         """
-        Estimate curvature. Here we follow a mix of ESTIMATING THE 
+        Estimate curvature. Here we follow a mix of ESTIMATwG THE 
         TENSOR OF CURVATURE OF A SURFACE FROM A POLYHEDRAL 
         APPROXIMATION by Gabriel Taubin from Proceedings of IEEE 
         International Conference on Computer Vision, June 1995 and 
@@ -205,23 +352,43 @@ class MembraneMesh(TriangleMesh):
 
         Units of energy are in kg*nm^2/s^2
         """
-        H = np.zeros(self._vertices.shape[0])
-        K = np.zeros(self._vertices.shape[0])
-        dH = np.zeros(self._vertices.shape[0])
-        dK = np.zeros(self._vertices.shape[0])
-        dE_neighbors = np.zeros(self._vertices.shape[0])
-        I = np.eye(3)
-        areas = np.zeros(self._vertices.shape[0])
-        skip = np.random.rand(self._vertices.shape[0])
-        for iv in range(self._vertices.shape[0]):
-            if self._vertices['halfedge'][iv] == -1:
-                continue
 
+        cdef int iv
+        cdef float l1, l2
+        # cdef float[3] v1
+        # cdef float[3] v2
+        v1 = np.zeros(3, dtype=np.float32)
+        v2 = np.zeros(3, dtype=np.float32)
+        cdef float[:] v1_view = v1
+        cdef float[:] v2_view = v2
+        
+        Mvi = np.zeros((3,3), dtype=np.float32)
+        cdef float[:,:] Mvi_view = Mvi
+
+        # H = np.zeros(self._vertices.shape[0])
+        # K = np.zeros(self._vertices.shape[0])
+        # dH = np.zeros(self._vertices.shape[0])
+        # dK = np.zeros(self._vertices.shape[0])
+        # dE_neighbors = np.zeros(self._vertices.shape[0])
+        areas = np.zeros(self._vertices.shape[0], dtype=np.float32)
+        # skip = np.random.rand(self._vertices.shape[0])
+        for iv in range(self._vertices.shape[0]):
+            if self._cvertices[iv].halfedge == -1:
+                self._H[iv] = 0.0
+                self._K[iv] = 0.0
+                self._dH[iv] = 0.0
+                self._dK[iv] = 0.0
+                self._dE_neighbors[iv] = 0.0
+                continue
             # Monte carlo selection of vertices to update
             # Stochastically choose which vertices to adjust
-            if skip[iv] < skip_prob:
+            if (skip_prob > 0) and (np.random.rand() < skip_prob):
+                self._H[iv] = 0.0
+                self._K[iv] = 0.0
+                self._dH[iv] = 0.0
+                self._dK[iv] = 0.0
+                self._dE_neighbors[iv] = 0.0
                 continue
-
             # Vertex and its normal
             vi = self._vertices['position'][iv,:]  # nm
             Nvi = self._vertices['normal'][iv,:]  # unitless
@@ -256,6 +423,8 @@ class MembraneMesh(TriangleMesh):
             Tijs[np.sum(T_thetas,axis=1) == 0, :] = 0
 
             # Edge normals subtracted from vertex normals
+            # FIXME: If Nvi = [-1,-1,-1] and the surrounding area is flat the inner square  
+            #        root will produce a nan. This only happens on non-manifold meshes.
             Ni_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvi[None,:]*dvs_hat).sum(1))**2))  # unitless 
             Nj_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_hat).sum(1))**2))  # unitless
             Nj_1_diffs = np.sqrt(2. - 2.*np.sqrt(1.-((Nvjs*dvs_1_hat).sum(1))**2))  # unitless
@@ -273,10 +442,10 @@ class MembraneMesh(TriangleMesh):
 
             # Compute the change in bending energy along the edge (assumes no perpendicular contributions and thus no Gaussian curvature)
             dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV/nm
+            Mvi[:] = ((w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)).astype(np.float32)  # nm
 
-            Mvi = (w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)  # nm
-
-            l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
+            # l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
+            compute_curvature_tensor_eig(&Mvi_view[0,0], &l1, &l2, &v1_view[0], &v2_view[0])
 
             # Eigenvectors
             m = np.vstack([v1, v2, Nvi]).T  # nm, nm, unitless
@@ -286,15 +455,15 @@ class MembraneMesh(TriangleMesh):
             k_2 = 3.*l2 - l1  # 1/nm
 
             # Mean and Gaussian curvatures
-            H[iv] = 0.5*(k_1 + k_2)  # 1/nm
-            K[iv] = k_1*k_2  # 1/nm^2
+            self._H[iv] = 0.5*(k_1 + k_2)  # 1/nm
+            self._K[iv] = k_1*k_2  # 1/nm^2
 
             # Now calculate the shift
             # We construct a quadratic in the space of T_1 vs. T_2
             t_1, t_2, _ = np.dot(vjs-vi,m).T  # nm^2
             A = np.array([t_1**2, t_2**2]).T  # nm^2
             
-            # Update the equation y-intercept to displace the curve along
+            # Update the equation y-intercept to displace athe curve along
             # the normal direction
             b = np.dot(A,np.array([k_1,k_2])) - dN  # nm
             
@@ -303,35 +472,25 @@ class MembraneMesh(TriangleMesh):
             k_p = np.dot(np.dot(np.linalg.pinv(np.dot(A.T,A)),A.T),b)  # 1/nm
 
             # Finite differences of displaced curve and original curve
-            dH[iv] = (0.5*(k_p[0] + k_p[1]) - H[iv])/dN  # 1/nm^2
-            dK[iv] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN  # 1/nm
+            self._dH[iv] = (0.5*(k_p[0] + k_p[1]) - self._H[iv])/dN  # 1/nm^2
+            self._dK[iv] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN  # 1/nm
 
-            dE_neighbors[iv] = np.sum(dEj)  # eV/nm
+            self._dE_neighbors[iv] = np.sum(dEj)  # eV/nm
 
         # Calculate Canham-Helfrich energy functional
-        E = areas*(0.5*self.kc*(2.0*H - self.c0)**2 + self.kg*K)  # eV
+        self._E = areas*(0.5*self.kc*(2.0*self._H - self.c0)**2 + self.kg*self._K)  # eV
 
-        self._H = H  # 1/nm
-        self._E = E  # eV
-        self._K = K  # 1/nm^2
+        #self._H = H  # 1/nm
+        #self._E = E  # eV
+        #self._K = K  # 1/nm^2
         
-<<<<<<< HEAD
-        #intuitively this weighting feels wrong - I think there is a scaling factor off somewhere
-        pEi = np.exp(-250.*E)
-        pE = np.sum(pEi)*pEi #what is this supposed to do?
-        
-        pE = np.exp(-E)
-        
-        # Take into account the change in neighboring energies for each
-=======
-        self._pE = np.exp(-(1.0/KBT)*E)  # unitless
+        self._pE = np.exp(-(1.0/KBT)*self._E)  # unitless
         
         ## Take into account the change in neighboring energies for each
->>>>>>> 2c15bd40e70b04b0840591d4d4c971d7b92373a3
         # vertex shift
         # Compute dEdN by component
-        dEdN_H = areas*self.kc*(2.0*H-self.c0)*dH  # eV/nm
-        dEdN_K = areas*self.kg*dK  # eV/nm
+        dEdN_H = areas*self.kc*(2.0*self._H-self.c0)*self._dH  # eV/nm
+        dEdN_K = areas*self.kg*self._dK  # eV/nm
         dEdN_sum = (dEdN_H + dEdN_K) # eV/nm # + dE_neighbors)
         dEdN = -1.0*dEdN_sum # eV/nm # *(1.0-self._pE)
 
@@ -392,7 +551,7 @@ class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def point_attraction_grad_kdtree(self, points, sigma, w=0.95, search_k=200):
+    cdef point_attraction_grad_kdtree(self, points, sigma, float w=0.95, int search_k=200):
         """
         Attractive force of membrane to points.
 
@@ -400,15 +559,20 @@ class MembraneMesh(TriangleMesh):
         ----------
             points : np.array
                 3D point cloud to fit (nm).
-            sigma : float
+            sigma : np.array
                 Localization uncertainty of points (nm).
             w : float
                 Weight (unitless)
             search_k : int
                 Number of vertex point neighbors to consider
         """
+        cdef int i, n_verts
+        # cdef float charge_sigma, charge_var, attraction_norm
 
-        dirs = []
+        n_verts = self._vertices.shape[0]
+        #dirs = []
+        dirs = np.zeros((n_verts,3), dtype=np.float32)
+        attraction = np.zeros(3, dtype=np.float32)
 
         # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
         # first loop iteration when we add a matrix to this scalar
@@ -427,46 +591,54 @@ class MembraneMesh(TriangleMesh):
             # Compute a KDTree on points
             self._tree = scipy.spatial.cKDTree(points)
 
-        for i in np.arange(self._vertices.shape[0]):
-            if self._vertices['halfedge'][i] != -1:
-                _, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
-                # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
-                try:
-                    d = self._vertices['position'][i,:] - points[neighbors]  # nm
-                except(IndexError):
-                    print('whaaa?')
-                    print(self._vertices[i])
-                    print(i, neighbors)
-                dd = (d*d).sum(1)  # nm^2
-                # if self._puncture_test:
-                #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
-                #     if np.min(dvn) < np.min(dd):
-                #         self._puncture_candidates.append(i)
-                pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
-                pt_weights = np.prod(pt_weight_matrix)  # unitless
-                r = np.sqrt(dd)/sigma[neighbors]  # unitless
+        for i in np.arange(n_verts):
+            if self._cvertices[i].halfedge == -1:
+                attraction[:] = 0
+                continue
                 
-                rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
-
-                # Points at the vertex we're interested in are not de-weighted by the
-                # pt_weight_matrix
-                rf = rf*(pt_weights/pt_weight_matrix) # unitless
-                
-                attraction = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
-                attraction_norm = np.linalg.norm(attraction)
-                attraction = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
-                attraction[attraction_norm == 0] = 0  # div by zero
-            else:
-                attraction = np.array([0,0,0])
+            dists, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
+            # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
             
-            dirs.append(attraction)
+            try:
+                d = self._vertices['position'][i,:] - points[neighbors]  # nm
+            except(IndexError):
+                raise IndexError('Could not access neighbors for position {}.'.format(self._vertices['position'][i,:]))
+            # dd = (d*d).sum(1)  # nm^2
+            dd = dists*dists
 
-        dirs = np.vstack(dirs)
-        dirs[self._vertices['halfedge'] == -1] = 0
+            # if self._puncture_test:
+            #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
+            #     if np.min(dvn) < np.min(dd):
+            #         self._puncture_candidates.append(i)
+            pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
+            pt_weights = np.prod(pt_weight_matrix)  # unitless
+            # r = np.sqrt(dd)/sigma[neighbors]  # unitless
+            r = dists/sigma[neighbors]
+            
+            rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
+
+            # Points at the vertex we're interested in are not de-weighted by the
+            # pt_weight_matrix
+            rf = rf*(pt_weights/pt_weight_matrix) # unitless
+            
+            # attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+            attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
+            # attraction_norm = np.linalg.norm(attraction)
+            attraction_norm = math.sqrt(attraction[0]*attraction[0]+attraction[1]*attraction[1]+attraction[2]*attraction[2])
+            attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
+            attraction[attraction_norm == 0] = 0  # div by zero
+            dirs[i,:] = attraction
+            # else:
+            #     attraction = np.array([0,0,0])
+            
+            # dirs.append(attraction)
+
+        # dirs = np.vstack(dirs)
+        # dirs[self._vertices['halfedge'] == -1] = 0
 
         return dirs
 
-    def delaunay_remesh(self, points):
+    def delaunay_remesh(self, points, sigma):
         print('Delaunay remesh...')
 
         # Generate tesselation from mesh control points
@@ -480,10 +652,12 @@ class MembraneMesh(TriangleMesh):
         simps = delaunay_utils.del_simps(tri, ext_inds)
 
         # Remove simplices that do not contain points
-        eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
+        # eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
                                           # consider a point 'inside' a tetrahedron?
-                                          # TODO: /5.0 is empirical 
-        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
+                                          # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
+                                          # TODO: account for sigma?
+        #print('Guessed eps: {}'.format(eps))
+        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=np.mean(sigma))
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
@@ -492,7 +666,13 @@ class MembraneMesh(TriangleMesh):
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, True)
 
-    def grad(self, points, sigma):
+        # Delaunay remeshing has a penchant for flanges
+        while np.any(self.singular):
+            self._remove_singularities()
+
+        self._initialize_curvature_vectors()
+
+    cdef grad(self, points, sigma):
         """
         Gradient between points and the surface.
 
@@ -503,9 +683,25 @@ class MembraneMesh(TriangleMesh):
             sigma : float
                 Localization uncertainty of points.
         """
+        # attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+        # cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
+        # cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
+        # cdef float[:] sigma_view = sigma
+
         dN = 0.1
-        curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-        attraction = self.point_attraction_grad_kdtree(points, sigma, search_k=self.search_k)
+        if USE_C:
+            curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+        else:
+            curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
+        attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+        # c_point_attraction_grad(&(attraction_view[0]), 
+        #                        &(points_view[0]), 
+        #                        &(sigma_view[0]), 
+        #                        &(self._cvertices[0]), 
+        #                        0.95, 
+        #                        self._mean_edge_length/2.5, 
+        #                        points.shape[0], 
+        #                        self._vertices.shape[0])
 
         # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
         # print('Ratio: ' + str(ratio))
@@ -579,12 +775,16 @@ class MembraneMesh(TriangleMesh):
                 Localization uncertainty of points.
         """
 
-        # Calculate target lengths for remesh steps
-        # initial_length = self._mean_edge_length
-        # final_length = np.max(sigma)
-        # m = (final_length - initial_length)/max_iter
+        # Precalc 
+        dr = (self.delaunay_remesh_frequency != 0)
+        r = (self.remesh_frequency != 0)
+        if r:
+            initial_length = self._mean_edge_length
+            final_length = np.max(sigma)
+            m = (final_length - initial_length)/max_iter
         
         for _i in np.arange(max_iter):
+
             print('Iteration %d ...' % _i)
             
             # Calculate the weighted gradient
@@ -600,14 +800,22 @@ class MembraneMesh(TriangleMesh):
 
             # If we've reached precision, terminate
             if np.all(shift < eps):
-                break
+               break
 
-            # # Remesh
-            # if (np.mod(_i, 19) == 0) and (_i != 0):
-            #     target_length = initial_length + m*_i
-            #     print('Target length: ' + str(target_length))
-            #     self.remesh(5, target_length, 0.5, 10)
-            #     print('Mean length: ' + str(self._mean_edge_length))
+            if (_i == 0):
+                # Don't remesh
+                continue
+
+            # Remesh
+            if r and ((_i % self.remesh_frequency) == 0):
+                target_length = initial_length + m*_i
+                self.remesh(5, target_length, 0.5, 10)
+                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+                                                                                str(self._mean_edge_length)))
+
+            # Delaunay remesh
+            if dr and ((_i % self.delaunay_remesh_frequency) == 0):
+                self.delaunay_remesh(points, sigma)
 
     def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):
@@ -616,7 +824,11 @@ class MembraneMesh(TriangleMesh):
 
             if _i % 2:
                 dN = 0.1
-                grad = self.c*self.curvature_grad(dN=dN)
+                # grad = self.c*self.curvature_grad(dN=dN)
+                if USE_C:
+                    grad = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+                else:
+                    grad = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
             else:
                 grad = self.a*self.point_attraction_grad_kdtree(points, sigma)
 
