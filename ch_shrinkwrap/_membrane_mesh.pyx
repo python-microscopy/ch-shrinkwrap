@@ -324,7 +324,7 @@ cdef class MembraneMesh(TriangleMesh):
                         &(self._cfaces[0]),
                         &(self._chalfedges[0]),
                         dN,
-                        self.skip_prob,
+                        skip_prob,
                         self._vertices.shape[0],
                         &(self._cH[0]),
                         &(self._cK[0]),
@@ -491,7 +491,7 @@ cdef class MembraneMesh(TriangleMesh):
         # Compute dEdN by component
         dEdN_H = areas*self.kc*(2.0*self._H-self.c0)*self._dH  # eV/nm
         dEdN_K = areas*self.kg*self._dK  # eV/nm
-        dEdN_sum = (dEdN_H + dEdN_K) # eV/nm # + dE_neighbors)
+        dEdN_sum = (dEdN_H + dEdN_K + self._dE_neighbors) # eV/nm # + dE_neighbors)
         dEdN = -1.0*dEdN_sum # eV/nm # *(1.0-self._pE)
 
         # print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))

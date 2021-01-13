@@ -42,7 +42,7 @@ def planar_mesh(a=1, n_subdivision=1):
 
 def test_mean_curvature_plane():
     a = int(100*np.random.rand()+1)
-    n_subdivision = int(10*np.random.rand()+1)
+    n_subdivision = int(5*np.random.rand()+1)
 
     mesh = planar_mesh(a, n_subdivision)
 
@@ -52,7 +52,7 @@ def test_mean_curvature_plane():
 def test_mean_curvature_sphere():
     # confirm sphere of radius R has mean curvature of 1/R
     R = int(100*np.random.rand()+1)
-    n_subdivision = int(10*np.random.rand()+2)
+    n_subdivision = int(4*np.random.rand()+2)
 
     mesh = spherical_mesh(R, n_subdivision)
 
@@ -63,7 +63,7 @@ def test_mean_curvature_sphere():
 
 def test_gaussian_curvature_plane():
     a = int(100*np.random.rand()+1)
-    n_subdivision = int(10*np.random.rand()+2)
+    n_subdivision = int(4*np.random.rand()+2)
 
     mesh = planar_mesh(a, n_subdivision)
 
@@ -73,7 +73,7 @@ def test_gaussian_curvature_plane():
 def test_gaussian_curvature_sphere():
     # confirm sphere of radius R has Gaussian curvature of 1/R**2
     R = int(100*np.random.rand()+1)
-    n_subdivision = int(10*np.random.rand()+2)
+    n_subdivision = int(4*np.random.rand()+2)
 
     mesh = spherical_mesh(R, n_subdivision)
 

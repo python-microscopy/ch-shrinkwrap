@@ -17,6 +17,9 @@
 
 #include "membrane_mesh_utils.h"
 
+#define SQR(a) ((a)*(a))
+#define SIGN(x) (((x) < 0) ? -1 : 1)
+
 #define EPSILON 1e-15
 
 /** @brief Calculates the Euclidean norm of a vector.
@@ -26,12 +29,12 @@
  *  @param pos A length VECTORSIZE vector (conventionally a position vector).
  *  @return PRECISION norm of the vector
  */
-PRECISION norm(const PRECISION *pos)
+PRECISION norm3(const PRECISION *pos)
 {
     int i;
     PRECISION n = 0.0;
 
-    for (i = 0; i < VECTORSIZE; ++i)
+    for (i = 0; i<3; ++i)
         n += (pos[i]) * (pos[i]);
     return sqrt(n);
 }
@@ -49,29 +52,18 @@ PRECISION safe_divide(PRECISION x, PRECISION y)
     return (x)/(y);
 }
 
-/** @brief Sign of a scalar
- *
- *  @param x PRECISION scalar
- *  @return PRECISION sign of x
- */
-PRECISION sign(PRECISION x)
-{
-    return (PRECISION)((0<(x))-((x)<0));
-}
-
 /** @brief Elementwise division of a vector by a scalar
  *
  *
  *  @param a PRECISION vector
  *  @param b PRECISION scalar
  *  @param c PRECISION vector b/a
- *  @param length int length of vector a
  *  @return Void
  */
-void scalar_divide(const PRECISION *a, const PRECISION b, PRECISION *c, const int length)
+void scalar_divide3(const PRECISION *a, const PRECISION b, PRECISION *c)
 {
     int k = 0;
-    for (k=0; k < length; ++k)
+    for (k=0; k<3; ++k)
         c[k] = (a[k])/(b);
 }
 
@@ -202,13 +194,12 @@ void project3(const PRECISION *p, const PRECISION *v, PRECISION *r)
  *  @param a PRECISION vector
  *  @param b PRECISION vector
  *  @param c PRECISION a-b
- *  @param length int length of vectors a and b
  *  @return Void
  */
-void subtract(const PRECISION *a, const PRECISION *b, PRECISION *c, const int length)
+void subtract3(const PRECISION *a, const PRECISION *b, PRECISION *c)
 {
     int i;
-    for (i=0;i<length;++i)
+    for (i=0;i<3;++i)
         c[i] = a[i]-b[i];
 }
 
@@ -220,11 +211,11 @@ void subtract(const PRECISION *a, const PRECISION *b, PRECISION *c, const int le
  *  @param length int length of vectors a and b
  *  @return Void
  */
-PRECISION dot(const PRECISION *a, const PRECISION *b, const int length)
+PRECISION dot3(const PRECISION *a, const PRECISION *b)
 {
     int i;
     PRECISION c = 0.0;
-    for (i=0;i<length;++i)
+    for (i=0;i<3;++i)
         c += a[i]*b[i];
     return c;
 }
@@ -240,310 +231,6 @@ PRECISION r2()
 {
     return (PRECISION)rand() / (PRECISION)((unsigned)RAND_MAX + 1);
 }
-
-/* begin SVD functions from numerical recipes */
-
-// exception handling
-
-#ifndef _USENRERRORCLASS_
-#define throw(message) \
-{printf("ERROR: %s\n     in file %s at line %d\n", message,__FILE__,__LINE__); return;}
-#else
-struct NRerror {
-	char *message;
-	char *file;
-	int line;
-	NRerror(char *m, char *f, int l) : message(m), file(f), line(l) {}
-};
-#define throw(message) throw(NRerror(message,__FILE__,__LINE__));
-void NRcatch(NRerror err) {
-	printf("ERROR: %s\n     in file %s at line %d\n",
-		err.message, err.file, err.line);
-	exit(1);
-}
-#endif
-
-PRECISION SIGN(PRECISION a, PRECISION b)
-{
-    return b >= 0 ? (a >= 0 ? a : -a) : (a >= 0 ? -a : a);
-}
-
-PRECISION MAX(PRECISION a, PRECISION b)
-{
-    return b > a ? (b) : (a);
-}
-
-PRECISION MIN(PRECISION a, PRECISION b)
-{
-    return b < a ? (b) : (a);
-}
-
-PRECISION SQR(const PRECISION a) {return (a)*(a);}
-
-eps = 1e-12;  // precision
-
-PRECISION pythag(const PRECISION a, const PRECISION b) {
-    PRECISION absa, absb;
-    absa = abs(a);
-    absb = abs(b);
-    return (absa > absb ? absa*sqrt(1.0+SQR(absb/absa)) : (absb == 0.0 ? 0.0 : absb*sqrt(1.0+SQR(absa/absb))));
-}
-
-/** @brief Decompose an (m x n) matrix A
- * 
- *  This is part of the SVD implementation in numerical recipes webnote 2,
- *  http://numerical.recipes/webnotes/nr3web2.pdf. There is a slight
- *  modification (row_length) to allow for SVD on matrices of varying size
- *  that are all stored within matrices of fixed size NEIGHBORSIZExNEIGHBORSIZE.
- *  also to move away from 2D indexing.
- * 
- *  NOTE: untested
- *  
- *  @param u PRECISION (m x m) matrix (matrix A is initially stored in here as an m x n)
- *  @param v PRECISION (n x n) matrix
- *  @param w PRECISION vector representing (m x n) diagonal
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in u
- *  @param row_length int actual number of columns in u
- *  @return Void
- */
-void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
-{
-    bool flag;
-    int i, its, j, jj, k, l, nm;
-    PRECISION anorm, c, f, g, h, s, scale, x, y, z;
-    PRECISION *rv1;
-    rv1 = (PRECISION *)malloc(sizeof(PRECISION)*n);
-    g = scale = anorm = 0.0;
-    for(i=0;i<n;i++) {
-        l = i+2;
-        rv1[i]=scale*g;
-        g=s=scale=0.0;
-        if (i<m) {
-            for (k=i;k<m;k++) scale += abs(u[k*row_length+i]);
-            if (scale != 0.0) {
-                for (k=i;k<m;k++) {
-                    u[k*row_length+i] /= scale;
-                    s += u[k*row_length+i]*u[k*row_length+i];
-                }
-                f = u[i*row_length+i];
-                g = -SIGN(sqrt(s),f);
-                h = f*g-s;
-                u[i*row_length+i] = f-g;
-                for (j=l-1;j<n;j++) {
-                    for (s=0.0,k=i;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
-                    f = s/h;
-                    for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
-                }
-                for (k=i;k<m;k++) u[k*row_length+i] *= scale;
-            }
-        }
-        w[i] = scale*g;
-        g=s=scale=0.0;
-        if (i+1 <= m && i+1 != n) {
-            for (k=l-1;k<n;k++) scale += abs(u[i*row_length+k]);
-            if (scale != 0.0) {
-                for (k=l-1;k<n;k++) {
-                    u[i*row_length+k] /= scale;
-                    s+= u[i*row_length+k]*u[i*row_length+k];
-                }
-                f = u[i*row_length+(l-1)];
-                g = -SIGN(sqrt(s),f);
-                h = f*g-s;
-                u[i*row_length+(l-1)] = f-g;
-                for (k=l-1;k<n;k++) rv1[k] = u[i*row_length+k]/h;
-                for (j=l-1;j<m;j++) {
-                    for (s=0.0,k=l-1;k<n;k++) s += u[j*row_length+k]*u[i*row_length+k];
-                    for (k=l-1;k<n;k++) u[j*row_length+k] += s*rv1[k];
-                }
-                for (k=l-1; k<n;k++) u[i*row_length+k] *= scale;
-            }
-        }
-        anorm = MAX(anorm,(abs(w[i])+abs(rv1[i])));
-    }
-    for (i=n-1;i>=0;i--) {
-        if (i < n-1) {
-            if (g != 0.0) {
-                for (j=l;j<n;j++)
-                    v[j*row_length+i] = (u[i*row_length+j]/u[i*row_length+l])/g;
-                for (j=l;j<n;j++) {
-                    for (s=0.0,k=l;k<n;k++) s += u[i*row_length+k]*v[k*row_length+j];
-                    for (k=l;k<n;k++) v[k*row_length+j] += s*v[k*row_length+i];
-                }
-            }
-            for (j=l;j<n;j++) v[i*row_length+j]=v[j*row_length+i]=0.0;
-        }
-        v[i*row_length+i] = 1.0;
-        g = rv1[i];
-        l = i;
-    }
-    for (i=MIN(m,n)-1;i>=0;i--) {
-        l = i + 1;
-        g = w[i];
-        for (j=l;j<n;j++) u[i*row_length+j] = 0.0;
-        if (g != 0.0) {
-            g = 1.0/g;
-            for (j=1;j<n;j++) {
-                for (s=0.0,k=l;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
-                f = (s/u[i*row_length+i])*g;
-                for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
-            }
-            for (j=i;j<m;j++) u[j*row_length+i] *= g;
-        } else for (j=i;j<m;j++) u[j*row_length+i] = 0.0;
-        ++u[i*row_length+i];
-    }
-    for (k=n-1;k>=0;k--) {
-        for (its=0;its<30;its++) {
-            flag = true;
-            for (l=k;l>=0;l--) {
-                nm = l-1;
-                if (l==0 || abs(rv1[1]) <= eps*anorm) {
-                    flag = false;
-                    break;
-                }
-                if (abs(w[nm]) <= eps*anorm) break;
-            }
-            if (flag) {
-                c = 0.0;
-                s = 1.0;
-                for (i=l; i<k+1; i++) {
-                    f = s*rv1[i];
-                    rv1[i] = c*rv1[i];
-                    if (abs(f) <= eps*anorm) break;
-                    g = w[i];
-                    h = pythag(f,g);
-                    w[i] = h;
-                    h = 1.0/h;
-                    c = g*h;
-                    s = -f*h;
-                    for (j=0;j<m;j++) {
-                        y = u[j*row_length+nm];
-                        z = u[j*row_length+i];
-                        u[j*row_length+nm] = y*c+z*s;
-                        u[j*row_length+i] = z*c-y*s;
-                    }
-                }
-            }
-            z = w[k];
-            if (l == k) {
-                if (z < 0.0) {
-                    w[k] = -z;
-                    for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
-                    break;
-                }
-            }
-            if (its == 29) throw("no convergence in 30 svdcomp iterations.");
-            x = w[l];
-            nm = k-1;
-            y = w[nm];
-            g = rv1[nm];
-            h = rv1[k];
-            f=((y-z)*(y+z)+(g-h)*(g+h))/(2.0*h*y);
-            g=pythag(f,1.0);
-            f=((x-z)*(x+z)+h*((y/(f+SIGN(g,f)))-h))/x;
-            c=s=1.0;
-            for (j=l;j<=nm;j++) {
-                i = j+1;
-                g = rv1[i];
-                y = w[i];
-                h = s*g;
-                g = c*g;
-                z = pythag(f,h);
-                rv1[j] = z;
-                c = f/z;
-                s = h/z;
-                f = x*c+g*s;
-                g = g*c-x*s;
-                h = y*s;
-                y *= c;
-                for (jj=0;jj<n;jj++) {
-                    x = v[jj*row_length+j];
-                    z = v[jj*row_length+i];
-                    v[jj*row_length+j] = x*c+z*s;
-                    v[jj*row_length+i] = z*c-x*s;
-                }
-                z = pythag(f,h);
-                w[j] = z;
-                if (z) {
-                    z = 1.0/z;
-                    c = f*z;
-                    s = h*z;
-                }
-                f = c*g+s*y;
-                x = c*y-s*g;
-                for (jj=0;jj<m;jj++) {
-                    y = u[jj*row_length+j];
-                    z = u[jj*row_length+i];
-                    u[jj*row_length+j] = y*c+z*s;
-                    u[jj*row_length+i] = z*c-y*s;
-                }
-            }
-            rv1[l] = 0.0;
-            rv1[k] = f;
-            w[k] = x;
-        }
-    }
-    free(rv1);
-}
-
-/** @brief Sort decomposition of matrix A
- * 
- *  Given the output of decompose, this routine sorts the singular values, and corresponding columns
- *  of u and v, by decreasing magnitude. Also, signs of corresponding columns are flipped so as to
- *  maximize the number of positive elements.
- * 
- *  NOTE: untested
- *  
- *  @param u PRECISION (m x m) matrix 
- *  @param v PRECISION (n x n) matrix
- *  @param w PRECISION vector representing (m x n) diagonal
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in v
- *  @param row_length int actual number of columns in u, v
- *  @return Void
- */
-void reorder(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
-{
-    int i, j, k, s, inc=1;
-    PRECISION sw, *su, *sv;
-
-    su = (PRECISION *)malloc(sizeof(PRECISION)*m);
-    sv = (PRECISION *)malloc(sizeof(PRECISION)*n);
-    
-    do { inc *= 3; inc++; } while (inc <= n);
-    do {
-        inc /= 3;
-        for (i = inc; i < n; i++) {
-            sw = w[i];
-            for (k=0;k<m;k++) su[k] = u[k*row_length+i];
-            for (k=0;k<n;k++) sv[k] = v[k*row_length+i];
-            j = i;
-            while (w[j-inc] < sw) {
-                w[j] = w[j-inc];
-                for (k=0;k<m;k++) u[k*row_length+j] = u[k*row_length+(j-inc)];
-                for (k=0;k<n;k++) v[k*row_length+j] = v[k*row_length+(j-inc)];
-                j -= inc;
-                if (j < inc) break;
-            }
-            w[j] = sw;
-            for (k=0;k<m;k++) u[k*row_length+j] = su[k];
-            for (k=0;k<n;k++) v[k*row_length+j] = sv[k];
-        }
-    } while (inc > 1);
-    for (k=0;k<n;k++) {
-        s = 0;
-        for (i=0;i<m;i++) if (u[i*row_length+k] < 0.0) s++;
-        for (j=0;j<m;i++) if (v[j*row_length+k] < 0.0) s++;
-        if (s > (m+n)/2) {
-            for (i=0;i<m;i++) u[i*row_length+k] = -u[i*row_length+k];
-            for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
-        }
-    }
-    free(su);
-    free(sv);
-}
-
-/* end SVD functions                         */
 
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
 {
@@ -716,7 +403,7 @@ static void c_point_attraction_grad(points_t *attraction,
             curr_point = &(points[j]);
             for (k=0;k<VECTORSIZE;++k)
                 d[k] = curr_vertex->position[k] - curr_point->position[k];
-            dd = norm(d);
+            dd = norm3(d);
 
             r = dd/sigma[j];
             r2 = r*r; r12 = (r-1)*(r-1);
@@ -771,7 +458,7 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     y1 = safe_divide(y1n, y1d);
     
     v1t[0] = 1; v1t[1] = y1; v1t[2] = z1;
-    scalar_divide(v1t,norm(v1t),v1,VECTORSIZE);
+    scalar_divide3(v1t,norm3(v1t),v1);
     
     z2n = ((m00 - (*l2))*(m11 - (*l2)) - (m01*m01));
     z2d = (m01*m12 - m02*(m11 - (*l2)));
@@ -781,92 +468,13 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     y2 = safe_divide(y2n, y2d);
     
     v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
-    scalar_divide(v2t,norm(v2t),v2,VECTORSIZE);
-    
-}
-
-/** @brief Compute Moore-Penrose inverse of square matrix
- * 
- *  NOTE: untested
- *
- *  @param A PRECISION m x m matrix
- *  @param At PREICISON m x m matrix
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in v
- *  @param row_length int actual number of columns in u, v
- *  @return Void
- */
-void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_length)
-{
-    PRECISION *u;
-    PRECISION *v;
-    PRECISION *w;
-    int i, j;
-    PRECISION thresh;
-    
-    u = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
-    v = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
-    w = (PRECISION *)malloc(sizeof(PRECISION)*m);
-
-    // copy A into u so we can modify it without compromising A
-    for (i=0;i<m*m;++i)
-        u[i] = A[i];
-
-    // svd
-    decompose(u, v, w, m, m, row_length);
-    reorder(u, v, w, m, m, row_length);
-
-    thresh = 0.5*sqrt(2.0*m+1.0)*w[0]*eps;
-
-    // Now compute inverse
-    for (i=0;i<m;++i) {
-        if (w[i] > thresh) {
-            for (j=0;j<m;++j)
-                At[i*m+j] = v[i*m+j]*u[j*m+i]/w[i];  // V diag(1/w) U^T
-        } else {
-            for (j=0;j<m;++j)
-                At[i*m+j] = 0.0;
-        }
-    }
-
-    free(u);
-    free(v);
-    free(w);
-    
-}
-
-/** @brief Compute inverse of 2 x 2 matrix
- * 
- *  We can use this if we have a well-behaved 2x2.
- *
- *  @param A PRECISION matrix
- *  @param Ainv PREICISON inverted matrix
- *  @return Void
- */
-void invert_2x2(const PRECISION *A, PRECISION *Ainv)
-{
-    PRECISION a, b, c, d, det;
-    a = A[0]; b = A[1]; c = A[2]; d = A[3];
-    det = (a*d-b*c);
-    if (det > eps)
-    {
-        det = 1.0/det;
-
-        Ainv[0] = det*d;
-        Ainv[1] = -1.0*det*b;
-        Ainv[2] = -1.0*det*c;
-        Ainv[3] = det*a;
-    }
-    else
-    {
-        Ainv[0] = Ainv[1] = Ainv[2] = Ainv[3] = 0.0;  // pseudoinverse
-    }
+    scalar_divide3(v2t,norm3(v2t),v2);
     
 }
 
 /** @brief Compute pseudoinverse of 2 x 2 matrix
  * 
- *  We can use this instead of moore_penrose_square() if we have a 2x2.
+ *  Closed form of Moore-Penrose pseudoinverse for a 2x2 matrix.
  *
  *  @param A PRECISION matrix
  *  @param Ainv PREICISON inverted matrix
@@ -895,8 +503,8 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     ctcp = ctheta*cphi; ctsp = ctheta*sphi;
     stcp = stheta*cphi; stsp = stheta*sphi;
     
-    sign0 = sign(ctcp*a+ctsp*c+stcp*b+stsp*d);
-    sign1 = sign(stsp*a-stcp*c-ctsp*b+ctcp*d);
+    sign0 = SIGN(ctcp*a+ctsp*c+stcp*b+stsp*d);
+    sign1 = SIGN(stsp*a-stcp*c-ctsp*b+ctcp*d);
     
     ss = a2b2+c2d2;
     sd = sqrt(SQR(a2b2nc2nd2)+SQR(tacbd));
@@ -1013,8 +621,8 @@ static void c_curvature_grad(void *vertices_,
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
 
             vj = neighbor_vertex->position;  // nm
-            subtract(vj,vi,dv,VECTORSIZE); // nm
-            dv_norm = norm(dv);  // nm
+            subtract3(vj,vi,dv); // nm
+            dv_norm = norm3(dv);  // nm
             // radial weighting
             if (dv_norm > EPSILON)
                 r_sum += 1.0/dv_norm;  // 1/nm
@@ -1037,43 +645,43 @@ static void c_curvature_grad(void *vertices_,
             curr_neighbor = &(halfedges[neighbor]);
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
             vj = neighbor_vertex->position;  // nm
-            subtract(vj,vi,dv,VECTORSIZE); // nm
-            subtract(dv,NvidN,dv_1,VECTORSIZE);  // nm
+            subtract3(vj,vi,dv); // nm
+            subtract3(dv,NvidN,dv_1);  // nm
 
-            dv_norm = norm(dv);  // nm
-            dv_1_norm = norm(dv_1);  // nm
+            dv_norm = norm3(dv);  // nm
+            dv_1_norm = norm3(dv_1);  // nm
 
             // normalized vectors
             if (dv_norm > EPSILON)
-                scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
+                scalar_divide3(dv,dv_norm,dv_hat);  // unitless
             if (dv_1_norm > EPSILON)
-                scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
+                scalar_divide3(dv_1,dv_1_norm,dv_1_hat);  // unitless
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
             project3(p, ndv, T_theta); // nm^2
-            T_theta_norm = norm(T_theta); // nm^2
+            T_theta_norm = norm3(T_theta); // nm^2
             if (T_theta_norm > EPSILON)
-                scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
+                scalar_divide3(T_theta,T_theta_norm,Tij); // unitless
             else
                 for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
 
             // edge normals subtracted from vertex normals
             // the square root checks are only needed for non-manifold meshes
-            Nvidv_hat = SQR(dot(Nvi,dv_hat,VECTORSIZE));
+            Nvidv_hat = SQR(dot3(Nvi,dv_hat));
             if (Nvidv_hat > 1.0)
-                Ni_diff = 0.0;
+                Ni_diff = sqrt(2.0);
             else
                 Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // 1/nm
             Nvj = neighbor_vertex->normal;  // unitless
-            Nvjdv_hat = SQR(dot(Nvj,dv_hat,VECTORSIZE));
+            Nvjdv_hat = SQR(dot3(Nvj,dv_hat));
             if (Nvjdv_hat > 1.0)
-                Nj_diff = 0.0;
+                Nj_diff = sqrt(2.0);
             else
                 Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // 1/nm
-            Nvjdv_1_hat = SQR(dot(Nvj,dv_1_hat,VECTORSIZE));
+            Nvjdv_1_hat = SQR(dot3(Nvj,dv_1_hat));
             if (Nvjdv_1_hat > 1.0)
-                Nj_1_diff = 0.0;
+                Nj_1_diff = sqrt(2.0);
             else
                 Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // 1/nm
 
@@ -1083,15 +691,15 @@ static void c_curvature_grad(void *vertices_,
 
             // weights/areas
             w = safe_divide(safe_divide(1.0,dv_norm),r_sum);
-            k = safe_divide(2.0*sign(dot(Nvi,dv,VECTORSIZE))*Ni_diff,dv_norm);  // 1/nm
+            k = safe_divide(2.0*SIGN(dot3(Nvi,dv))*Ni_diff,dv_norm);  // 1/nm
             Aj = faces[curr_neighbor->face].area;  // nm^2
             areas += Aj;  // nm^2
             dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV/nm
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
-            scalar_mult(Mvi_temp,w*k,Mvi_temp2,VECTORSIZE*VECTORSIZE);
-            for (jj=0;jj<VECTORSIZE*VECTORSIZE;++jj)
+            scalar_mult(Mvi_temp,w*k,Mvi_temp2,(VECTORSIZE*VECTORSIZE));
+            for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
                 Mvi[jj] += Mvi_temp2[jj];
         }
 
@@ -1132,7 +740,7 @@ static void c_curvature_grad(void *vertices_,
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
             vj = neighbor_vertex->position;  // nm
 
-            subtract(vj,vi,dv,VECTORSIZE); // nm
+            subtract3(vj,vi,dv); // nm
 
             // construct a quadratic in the space of T_1 vs. T_2
             A[2*j] = SQR(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
