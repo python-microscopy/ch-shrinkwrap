@@ -209,7 +209,6 @@ void subtract3(const PRECISION *a, const PRECISION *b, PRECISION *c)
  *  @param a PRECISION vector
  *  @param b PRECISION vector
  *  @param c PRECISION a <dot> b
- *  @param length int length of vectors a and b
  *  @return Void
  */
 PRECISION dot3(const PRECISION *a, const PRECISION *b)
@@ -219,6 +218,20 @@ PRECISION dot3(const PRECISION *a, const PRECISION *b)
     for (i=0;i<3;++i)
         c += a[i]*b[i];
     return c;
+}
+
+/** @brief cross product of two vectors of equivalent length
+ * 
+ *  @param a PRECISION vector
+ *  @param b PRECISION vector
+ *  @param c PRECISION a <cross> b
+ *  @return Void
+ */
+void cross3(const float *a, const float *b, float *n)
+{
+    n[0] = a[1]*b[2] - a[2]*b[1];
+    n[1] = a[2]*b[0] - a[0]*b[2];
+    n[2] = a[0]*b[1] - a[1]*b[0];
 }
 
 
@@ -483,11 +496,11 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
  */
 void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
 {
-    PRECISION a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
-    PRECISION theta, phi, ctheta, cphi, stheta, sphi;
-    PRECISION ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd;
-    PRECISION sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
-    a = A[0]; b = A[1]; c = A[2]; d = A[3];
+    double a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
+    double theta, phi, ctheta, cphi, stheta, sphi;
+    double ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd;
+    double sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
+    a = (double)A[0]; b = (double)A[1]; c = (double)A[2]; d = (double)A[3];
 
     a2 = a*a; b2 = b*b; c2 = c*c; d2 = d*d;
     
@@ -512,17 +525,17 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     
     sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
     
-    thresh = EPSILON*0.5*sqrt(5.0)*sig0;
-    
-    siginv0 = (sig0 > thresh) ? (1.0/sig0) : 0.0;
-    siginv1 = (sig1 > thresh) ? (1.0/sig1) : 0.0;
+    thresh = (1e-8)*0.5*sqrt(5.0)*sig0;
+
+    siginv0 = (sig0 < thresh) ? 0.0 : (1.0/sig0);
+    siginv1 = (sig1 < thresh) ? 0.0 : (1.0/sig1);
     
     s0s0 = sign0*siginv0; s1s1 = sign1*siginv1;
     
-    Ainv[0] = ctcp*s0s0+stsp*s1s1;
-    Ainv[1] = ctsp*s0s0-stcp*s1s1;
-    Ainv[2] = stcp*s0s0-ctsp*s1s1;
-    Ainv[3] = stsp*s0s0+ctcp*s1s1;
+    Ainv[0] = (PRECISION)(ctcp*s0s0+stsp*s1s1);
+    Ainv[1] = (PRECISION)(ctsp*s0s0-stcp*s1s1);
+    Ainv[2] = (PRECISION)(stcp*s0s0-ctsp*s1s1);
+    Ainv[3] = (PRECISION)(stsp*s0s0+ctcp*s1s1);
     
 }
 
@@ -569,20 +582,20 @@ static void c_curvature_grad(void *vertices_,
 {
     int i, j, jj, neighbor, n_neighbors;
     PRECISION l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    PRECISION kj, kj_1, k, Aj, areas, w, k_1, k_2;
+    PRECISION kj, kj_1, k, Aj, areas, dareas, w, k_1, k_2;
     PRECISION dEdN_H, dEdN_K, dEdN_sum, dEdNs;
     PRECISION Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     PRECISION v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
     PRECISION Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
     PRECISION m[VECTORSIZE*VECTORSIZE];
-    PRECISION p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], ndv[VECTORSIZE];
+    PRECISION p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], dvn[VECTORSIZE], dv_1dvn[VECTORSIZE], ndv[VECTORSIZE];
     PRECISION dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
-    PRECISION NvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
+    PRECISION NvidN[VECTORSIZE], viNvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
     PRECISION A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
     PRECISION b[NEIGHBORSIZE], k_p[2];
-    PRECISION *vi, *vj, *Nvi, *Nvj;
-    vertex_t *curr_vertex, *neighbor_vertex;
-    halfedge_t *curr_neighbor;
+    PRECISION *vi, *vj, *vn, *Nvi, *Nvj;
+    vertex_t *curr_vertex, *neighbor_vertex, *next_neighbor_vertex;
+    halfedge_t *curr_neighbor, *next_neighbor;
     vertex_t *vertices = (vertex_t*) vertices_;
     face_t *faces = (face_t*) faces_;
 
@@ -609,6 +622,7 @@ static void c_curvature_grad(void *vertices_,
 
         // projection matrix
         scalar_mult(Nvi, dN, NvidN, VECTORSIZE);  // unitless
+        subtract3(vi,NvidN,viNvidN);
         orthogonal_projection_matrix3(Nvi, p);  // unitless
 
         // Need a three-pass over the neighbors
@@ -638,6 +652,7 @@ static void c_curvature_grad(void *vertices_,
             Mvi[j] = 0.0;
 
         // 2. Compute Mvi
+        dareas = 0.0; // nm^2
         areas = 0.0;  // nm^2
         dE_neighbors[i] = 0.0;  // eV/nm
         for(j=0;j<n_neighbors;++j)
@@ -694,6 +709,15 @@ static void c_curvature_grad(void *vertices_,
             w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
             k = safe_divide(2.0*SIGN(dot3(Nvi,dv))*Ni_diff,dv_norm);  // unitless
             Aj = faces[curr_neighbor->face].area;  // nm^2
+
+            // calculate the area curr_neighbor->face after shifting vi by dN
+            next_neighbor = &(halfedges[curr_neighbor->next]);
+            next_neighbor_vertex = &(vertices[next_neighbor->vertex]);
+            vn = next_neighbor_vertex->position;  // nm
+            subtract3(vn,viNvidN,dvn);
+            cross3(dv_1,dvn,dv_1dvn);
+            dareas += 0.5*norm3(dv_1dvn);
+        
             areas += Aj;  // nm^2
             dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
 
@@ -703,6 +727,7 @@ static void c_curvature_grad(void *vertices_,
             for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
                 Mvi[jj] += Mvi_temp2[jj];
         }
+        dareas = dareas - areas;  // calculate local difference in area after shifting dN
 
         // Interlude: calculate curvature tensor
         compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
@@ -758,8 +783,8 @@ static void c_curvature_grad(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm
-        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm^2
+        dH[i] = -1.0*(0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm
+        dK[i] = -1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm^2
 
         E[i] = areas*(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i]);
 
@@ -767,10 +792,12 @@ static void c_curvature_grad(void *vertices_,
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
-        dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm^2
-        dEdN_K = areas*kg*dK[i];  // eV/nm^2
-        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
-        dEdNs = -1.0*dEdN_sum;  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
+        dEdN_H = dareas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm^2
+        dEdN_K = dareas*kg*dK[i];  // eV/nm^2
+        dEdN_sum = (dEdN_H + dEdN_K); // + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdNs = -1.0*dEdN_sum;  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+
+        // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
 
         for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
