@@ -227,7 +227,7 @@ PRECISION dot3(const PRECISION *a, const PRECISION *b)
  *  @param c PRECISION a <cross> b
  *  @return Void
  */
-void cross3(const float *a, const float *b, float *n)
+void cross3(const PRECISION *a, const PRECISION *b, PRECISION *n)
 {
     n[0] = a[1]*b[2] - a[2]*b[1];
     n[1] = a[2]*b[0] - a[0]*b[2];
@@ -498,7 +498,7 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
 {
     double a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
     double theta, phi, ctheta, cphi, stheta, sphi;
-    double ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd;
+    double ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd, sssd;
     double sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
     a = (double)A[0]; b = (double)A[1]; c = (double)A[2]; d = (double)A[3];
 
@@ -523,7 +523,13 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     ss = a2b2+c2d2;
     sd = sqrt(SQUARE(a2b2nc2nd2)+SQUARE(tacbd));
     
-    sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
+    sig0 = sqrt((ss+sd)/2.0); 
+    sssd = ss-sd;
+
+    if (sssd > 0)
+        sig1 = sqrt(sssd/2.0);
+    else
+        sig1 = 0.0;
     
     thresh = (1e-8)*0.5*sqrt(5.0)*sig0;
 
