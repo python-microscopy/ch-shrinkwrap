@@ -56,7 +56,7 @@ POINTS_DTYPE2 = np.dtype([('position0', 'f4'),
                           ('position2', 'f4')])
 
 cdef extern from "membrane_mesh_utils.c":
-    void compute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
+    void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
     void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
     void c_curvature_grad(void *vertices_, 
                             void *faces_,
@@ -445,7 +445,7 @@ cdef class MembraneMesh(TriangleMesh):
             Mvi[:] = ((w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)).astype(np.float32)  # nm
 
             # l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
-            compute_curvature_tensor_eig(&Mvi_view[0,0], &l1, &l2, &v1_view[0], &v2_view[0])
+            fcompute_curvature_tensor_eig(&Mvi_view[0,0], &l1, &l2, &v1_view[0], &v2_view[0])
 
             # Eigenvectors
             m = np.vstack([v1, v2, Nvi]).T  # nm, nm, unitless
