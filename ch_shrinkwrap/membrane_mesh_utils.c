@@ -789,8 +789,8 @@ static void c_curvature_grad(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = -1.0*(0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm
-        dK[i] = -1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm^2
+        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm
+        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm^2
 
         E[i] = areas*(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i]);
 
