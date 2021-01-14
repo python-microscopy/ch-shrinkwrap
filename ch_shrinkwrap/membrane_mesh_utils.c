@@ -949,8 +949,8 @@ static void c_curvature_grad(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = (PRECISION)((0.5*(k_p[0] + k_p[1]) - (double)H[i])/((double)dN));  // 1/nm
-        dK[i] = (PRECISION)(((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/((double)dN));  // 1/nm^2
+        dH[i] = (PRECISION)(-1.0*(0.5*(k_p[0] + k_p[1]) - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(-1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/((double)dN));  // 1/nm^2
 
         E[i] = (PRECISION)(areas*((double)(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i])));
 
@@ -958,10 +958,10 @@ static void c_curvature_grad(void *vertices_,
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
-        dEdN_H = areas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
-        dEdN_K = areas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
         dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
-        dEdNs = (PRECISION)(-1.0*dEdN_sum);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+        dEdNs = (PRECISION)(-1.0*dEdN_sum)*(1.0-pE[i]);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
 
         // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
 
