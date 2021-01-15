@@ -1043,7 +1043,7 @@ static void c_curvature_grad_centroid(void *vertices_,
 {
     int i, j, jj, neighbor, n_neighbors;
     double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_1, k_2;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_0, k_1;
     double dEdN_H, dEdN_K, dEdN_sum;
     double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
@@ -1199,7 +1199,9 @@ static void c_curvature_grad_centroid(void *vertices_,
             dareas += dAj;
         
             areas += Aj;  // nm^2
-            dE_neighbors[i] += dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+            // printf("kj: %e kj_1: %e\n", kj, kj_1);
+            // dE_neighbors[i] += -1.0*dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+            dE_neighbors[i] += (dAj*w*kc*SQUARE(2.0*kj_1-c0) - Aj*w*kc*SQUARE(2.0*kj-c0))/dN;  // eV, note this only on mean curvature
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
@@ -1207,26 +1209,26 @@ static void c_curvature_grad_centroid(void *vertices_,
             for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
                 Mvi[jj] += Mvi_temp2[jj];
         }
-        dareas = dareas - areas;  // calculate local difference in area after shifting dN
+        // dareas = dareas - areas;  // calculate local difference in area after shifting dN
 
         // Interlude: calculate curvature tensor
         compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
 
         if isnan(l1) {
             // weird tensor
-            k_1 = 0.0; k_2 = 0.0;
+            k_0 = 0.0; k_1 = 0.0;
             v1[0] = v1[1] = v1[2] = 0.0;
             v2[0] = v2[1] = v2[2] = 0.0;
         } else {
 
             // principal curvatures (1/nm)
-            k_1 = 3.0*l1 - l2;
-            k_2 = 3.0*l2 - l1;
+            k_0 = 3.0*l1 - l2;
+            k_1 = 3.0*l2 - l1;
         }
 
         // mean and gaussian curvatures
-        H[i] = (PRECISION)(0.5*(k_1+k_2));  // 1/nm
-        K[i] = (PRECISION)(k_1*k_2); // 1/nm^2
+        H[i] = (PRECISION)(0.5*(k_0+k_1));  // 1/nm
+        K[i] = (PRECISION)(k_0*k_1); // 1/nm^2
 
         // create little m (eigenvector matrix)
         m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
@@ -1253,7 +1255,7 @@ static void c_curvature_grad_centroid(void *vertices_,
             A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
             // Update the equation y-intercept to displace the curve along the normal direction
-            b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - (double)dN;
+            b[j] = A[2*j]*k_0+A[2*j+1]*k_1 - (double)dN;
         }
 
         // solve 
@@ -1263,8 +1265,11 @@ static void c_curvature_grad_centroid(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = (PRECISION)(-1.0*(0.5*(k_p[0] + k_p[1]) - (double)H[i])/((double)dN));  // 1/nm
-        dK[i] = (PRECISION)(-1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/((double)dN));  // 1/nm^2
+        // printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+
+        dH[i] = (PRECISION)(0.5*(k_p[0] + k_p[1])); // - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(k_p[0]*k_p[1]);
+        // dK[i] = (PRECISION)(((k_p[0]-k_0)*k_1 + k_0*(k_p[1]-k_1))/((double)dN));  // 1/nm^2
 
         E[i] = (PRECISION)(areas*((double)(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i])));
 
@@ -1272,10 +1277,13 @@ static void c_curvature_grad_centroid(void *vertices_,
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
-        dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
-        dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
-        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        // dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        // dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        // dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdN_sum = ((PRECISION)(dareas*((double)(0.5*kc*SQUARE(2.0*dH[i] - c0) + kg*dK[i]))) - E[i])/dN + dE_neighbors[i];
         dEdNs = (PRECISION)(-1.0*dEdN_sum)*(1.0-pE[i]);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+
+        // printf("dEdN_H: %e dEdN_K: %e dE_neighbors[i]: %e ratio: %e\n",dEdN_H, dEdN_K, dE_neighbors[i], dE_neighbors[i]/dEdN_H);
 
         // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
 
