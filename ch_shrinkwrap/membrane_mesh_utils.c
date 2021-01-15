@@ -887,7 +887,7 @@ static void c_curvature_grad(void *vertices_,
 
             // weights/areas
             w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
-            k = safe_divide(2.0*SIGN(fddot3d(Nvi,dv))*Ni_diff,dv_norm);  // unitless
+            k = safe_divide(2.0*SIGN(fddot3d(Nvi,ndv))*Ni_diff,dv_norm);  // unitless
             Aj = faces[curr_neighbor->face].area;  // nm^2
 
             // calculate the area curr_neighbor->face after shifting vi by dN

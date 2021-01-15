@@ -337,7 +337,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
         dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
         cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
-        c_curvature_grad_centroid(&(self._cvertices[0]), 
+        c_curvature_grad(&(self._cvertices[0]), 
                         &(self._cfaces[0]),
                         &(self._chalfedges[0]),
                         dN,
@@ -450,7 +450,7 @@ cdef class MembraneMesh(TriangleMesh):
             kjs = 2.*Nj_diffs/dvs_norm  # 1/nm
             kjs_1 = 2.*Nj_1_diffs/dvs_1_norm  # 1/nm
 
-            k = 2.*np.sign((Nvi[None,:]*dvs).sum(1))*Ni_diffs/dvs_norm  # 1/nm
+            k = 2.*np.sign((Nvi[None,:]*(-dvs)).sum(1))*Ni_diffs/dvs_norm  # 1/nm
             w = (1./dvs_norm)/r_sum  # unitless
 
             # Calculate areas
