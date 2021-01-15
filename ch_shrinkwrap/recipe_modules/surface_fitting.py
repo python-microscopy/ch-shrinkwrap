@@ -59,18 +59,18 @@ class ShrinkwrapMembrane(ModuleBase):
                                           a=self.attraction_weight,
                                           c=self.curvature_weight)
 
+        namespace[self.output] = mesh
+
         pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
                                               namespace[self.points]['y'],
                                               namespace[self.points]['z']]).T)
         try:
             sigma = namespace[self.points]['sigma']
         except(KeyError):
-            sigma = np.ones_like(namespace[self.points]['x'])
+            sigma = 10*np.ones_like(namespace[self.points]['x'])
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
         mesh.shrink_wrap(pts, sigma, method=self.method)
         # mProfile.profileOff()
         # mProfile.report()
-
-        namespace[self.output] = mesh
