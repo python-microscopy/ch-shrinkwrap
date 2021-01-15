@@ -2,7 +2,7 @@ import os
 import numpy as np
 from PIL import Image
 
-def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir):
+def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvature_mean_hists=False):
     """Create an animation of a shrinkwrapping event
 
     Parameters
@@ -19,6 +19,8 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir):
         The PYMEVisualise frame containing the layer
     save_dir : str
         Folder where we want to save the animation
+    return_curvature_mean_hists : bool
+        Boolean to store curvature histogram means
     """
 
     # Steal parameters
@@ -38,6 +40,11 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir):
     # Make a save directory, if needed
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+
+    if return_curvature_mean_hists:
+        edges = np.linspace(-0.2,0.2,100)
+        hists = np.zeros((max_iters,len(edges)-1))
+        hists[0,:], _ = np.histogram(mesh.curvature_mean,bins=edges,density=True)
 
     # Grab the original
     #Force a layer update for visualisation 
@@ -64,6 +71,9 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir):
         # Delaunay remesh
         if (_i != 0) and dr and ((_i % delaunay_remesh_frequency) == 0):
             mesh.delaunay_remesh(pts, sigma)
+
+        if return_curvature_mean_hists:
+            hists[_i,:], _ = np.histogram(mesh.curvature_mean,bins=edges,density=True)
         
         # Force a layer update for visualisation 
         layer.update()
@@ -78,3 +88,7 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir):
     mesh.max_iter = max_iters
     mesh.remesh_frequency = remesh_frequency
     mesh.delaunay_remesh_frequency = delaunay_remesh_frequency
+
+    if return_curvature_mean_hists:
+        return hists, edges
+    return 0, 0

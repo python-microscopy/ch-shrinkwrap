@@ -761,7 +761,7 @@ static void c_curvature_grad(void *vertices_,
 {
     int i, j, jj, neighbor, n_neighbors;
     double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    double kj, kj_1, k, Aj, areas, dareas, w, k_1, k_2;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_1, k_2;
     double dEdN_H, dEdN_K, dEdN_sum;
     double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
@@ -896,10 +896,11 @@ static void c_curvature_grad(void *vertices_,
             vn = next_neighbor_vertex->position;  // nm
             fdsubtract3d(vn,viNvidN,dvn);
             cross3(dv_1,dvn,dv_1dvn);
-            dareas += 0.5*norm3(dv_1dvn);
-        
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
+
             areas += Aj;  // nm^2
-            dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+            dE_neighbors[i] += dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
@@ -1042,7 +1043,7 @@ static void c_curvature_grad_centroid(void *vertices_,
 {
     int i, j, jj, neighbor, n_neighbors;
     double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    double kj, kj_1, k, Aj, areas, dareas, w, k_1, k_2;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_1, k_2;
     double dEdN_H, dEdN_K, dEdN_sum;
     double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
@@ -1194,10 +1195,11 @@ static void c_curvature_grad_centroid(void *vertices_,
             vn = next_neighbor_vertex->position;  // nm
             fdsubtract3d(vn,viNvidN,dvn);
             cross3(dv_1,dvn,dv_1dvn);
-            dareas += 0.5*norm3(dv_1dvn);
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
         
             areas += Aj;  // nm^2
-            dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+            dE_neighbors[i] += dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
@@ -1272,7 +1274,7 @@ static void c_curvature_grad_centroid(void *vertices_,
         // Compute dEdN by component
         dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
         dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
-        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
         dEdNs = (PRECISION)(-1.0*dEdN_sum)*(1.0-pE[i]);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
 
         // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
