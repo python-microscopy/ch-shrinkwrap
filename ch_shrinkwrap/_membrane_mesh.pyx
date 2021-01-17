@@ -337,7 +337,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
         dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
         cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
-        c_curvature_grad(&(self._cvertices[0]), 
+        c_curvature_grad_centroid(&(self._cvertices[0]), 
                         &(self._cfaces[0]),
                         &(self._chalfedges[0]),
                         dN,
@@ -736,6 +736,8 @@ cdef class MembraneMesh(TriangleMesh):
         # if len(a_inf) > 0:
         #     print('Attraction infinity!!!')
         #     print(self._vertices[a_inf_mask])
+
+        print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
 
         g = self.a*attraction + self.c*curvature
         return g
