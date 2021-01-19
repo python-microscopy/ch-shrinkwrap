@@ -610,7 +610,6 @@ cdef class MembraneMesh(TriangleMesh):
 
         for i in np.arange(n_verts):
             if self._cvertices[i].halfedge == -1:
-                attraction[:] = 0
                 continue
                 
             dists, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
@@ -620,8 +619,8 @@ cdef class MembraneMesh(TriangleMesh):
                 d = self._vertices['position'][i,:] - points[neighbors]  # nm
             except(IndexError):
                 raise IndexError('Could not access neighbors for position {}.'.format(self._vertices['position'][i,:]))
-            # dd = (d*d).sum(1)  # nm^2
-            dd = dists*dists
+            dd = (d*d).sum(1)  # nm^2
+            # dd = dists*dists
 
             # if self._puncture_test:
             #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
@@ -629,19 +628,18 @@ cdef class MembraneMesh(TriangleMesh):
             #         self._puncture_candidates.append(i)
             pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
             pt_weights = np.prod(pt_weight_matrix)  # unitless
-            # r = np.sqrt(dd)/sigma[neighbors]  # unitless
-            r = dists/sigma[neighbors]
+            r = np.sqrt(dd)/sigma[neighbors]  # unitless
+            # r = dists/sigma[neighbors]
             
             rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
-
             # Points at the vertex we're interested in are not de-weighted by the
             # pt_weight_matrix
             rf = rf*(pt_weights/pt_weight_matrix) # unitless
             
-            # attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
-            attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
-            # attraction_norm = np.linalg.norm(attraction)
-            attraction_norm = math.sqrt(attraction[0]*attraction[0]+attraction[1]*attraction[1]+attraction[2]*attraction[2])
+            attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
+            # attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
+            attraction_norm = np.linalg.norm(attraction)
+            # attraction_norm = math.sqrt(attraction[0]*attraction[0]+attraction[1]*attraction[1]+attraction[2]*attraction[2])
             attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
             attraction[attraction_norm == 0] = 0  # div by zero
             dirs[i,:] = attraction
@@ -737,9 +735,12 @@ cdef class MembraneMesh(TriangleMesh):
         #     print('Attraction infinity!!!')
         #     print(self._vertices[a_inf_mask])
 
+        print("Curvature: {}".format(np.mean(curvature,axis=0)))
+        print("Attraction: {}".format(np.mean(attraction,axis=0)))
         print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
 
         g = self.a*attraction + self.c*curvature
+        print("Gradient: {}".format(np.mean(g,axis=0)))
         return g
 
     def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):

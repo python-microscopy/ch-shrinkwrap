@@ -1117,8 +1117,13 @@ static void c_curvature_grad_centroid(void *vertices_,
         // calculate the normal vector pointing from vi to vj_centroid
         ffsubtract3f(vj_centroid,vi,vivj);
         vivj_norm = fnorm3f(vivj);
-        for (jj=0;jj<3;++jj)
-            vivj[jj] /= vivj_norm;
+        if (vivj_norm > 0.0) {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] /= vivj_norm;
+        } else {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] = 0.0;
+        }
 
         // projection matrix
         ffscalar_multd(vivj, dN, NvidN, VECTORSIZE);  // unitless
@@ -1274,6 +1279,8 @@ static void c_curvature_grad_centroid(void *vertices_,
         E[i] = (PRECISION)(areas*((0.5*((double)kc)*SQUARE(2.0*H[i] - ((double)c0)) + ((double)kg)*((double)(K[i])))));
 
         pE[i] = (PRECISION)(exp(-(1.0/KBT)*((double)(E[i]))));
+        if (E[i] < 0.0)
+            printf("E[i]: %e pE[i]: %e\n", E[i], pE[i]);
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
