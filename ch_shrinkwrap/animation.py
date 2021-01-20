@@ -34,7 +34,7 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
     r = (remesh_frequency != 0)
     if r:
         initial_length = mesh._mean_edge_length
-        final_length = 3*np.max(sigma)
+        final_length = 4.5 # 3*np.max(sigma)
         m = (final_length - initial_length)/max_iters
 
     # Make a save directory, if needed
@@ -42,9 +42,10 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
         os.makedirs(save_dir)
 
     if return_curvature_mean_hists:
-        edges = np.linspace(-0.2,0.2,100)
+        edges = np.linspace(-0.02,0.02,100)
         hists = np.zeros((max_iters,len(edges)-1))
-        hists[0,:], _ = np.histogram(mesh.curvature_mean,bins=edges,density=True)
+        hists[0,:], _ = np.histogram(mesh.curvature_mean[mesh._vertices['halfedge']!=-1],bins=edges,density=True)
+        means = np.zeros(max_iters)
 
     # Grab the original
     #Force a layer update for visualisation 
@@ -73,8 +74,8 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
             mesh.delaunay_remesh(pts, sigma)
 
         if return_curvature_mean_hists:
-            hists[_i,:], _ = np.histogram(mesh.curvature_mean,bins=edges,density=True)
-        
+            hists[_i,:], _ = np.histogram(mesh.curvature_mean[mesh._vertices['halfedge']!=-1],bins=edges,density=True)
+            means[_i] = np.mean(mesh.curvature_mean[mesh._vertices['halfedge']!=-1])
         # Force a layer update for visualisation 
         layer.update()
         
@@ -90,5 +91,5 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
     mesh.delaunay_remesh_frequency = delaunay_remesh_frequency
 
     if return_curvature_mean_hists:
-        return hists, edges
-    return 0, 0
+        return hists, edges, means
+    return 0, 0, 0
