@@ -34,7 +34,7 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
     r = (remesh_frequency != 0)
     if r:
         initial_length = mesh._mean_edge_length
-        final_length = 4.5 # 3*np.max(sigma)
+        final_length = 3*np.max(sigma)
         m = (final_length - initial_length)/max_iters
 
     # Make a save directory, if needed
@@ -63,11 +63,13 @@ def animate_shrinkwrap(mesh, pts, sigma, layer, pymevis, save_dir, return_curvat
         mesh.shrink_wrap(pts, sigma)
 
         # Remesh
-        if (_i != 0) and r and ((_i % remesh_frequency) == 0):
-            target_length = initial_length + m*_i
+        # if (_i != 0) and r and ((_i % remesh_frequency) == 0):
+        if (_i == 400):
+            # target_length = initial_length + m*_i
+            target_length = 3*np.max(sigma)
             mesh.remesh(5, target_length, 0.5, 10)
-            print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
-                                                                            str(mesh._mean_edge_length)))
+            # print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+                                                                            # str(mesh._mean_edge_length)))
 
         # Delaunay remesh
         if (_i != 0) and dr and ((_i % delaunay_remesh_frequency) == 0):
