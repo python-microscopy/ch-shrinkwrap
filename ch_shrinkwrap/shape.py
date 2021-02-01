@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from ch_shrinkwrap import sdf, sdf_octree
 from ch_shrinkwrap import util
@@ -12,6 +13,7 @@ class Shape:
         self._density = None  # Shape density
         self._points = None  # Point queue representing Shape
         self._radius = None  # maximum diameter of the shape/2
+        self.centroid = np.array([0,0,0],dtype=float)  # where is the shape centered?
         
         for k, v in kwargs.items():
             self.__setattr__(k, v)
@@ -78,7 +80,10 @@ class Shape:
             self._density = density
             # rp = 2*self._radius*(np.random.rand(int(np.round((self._radius*density)**3)), 3) - 0.5)
             r = 2.0*self._radius
-            ot = sdf_octree.cSDFOctree([-1.0*r, r, -1.0*r, r, -1.0*r, r], self.sdf, self._density, eps)
+            ot = sdf_octree.cSDFOctree([-1.0*r+self.centroid[0], r+self.centroid[0], 
+                                        -1.0*r+self.centroid[1], r+self.centroid[1], 
+                                        -1.0*r+self.centroid[2], r+self.centroid[2]], 
+                                        self.sdf, self._density, eps)
             points_raw = ot.points()
             # points_raw = rp[np.abs(self.sdf(rp)) < eps]
             if (noise > 0):
@@ -98,7 +103,7 @@ class Sphere(Shape):
             radius : float
                 Radius of the sphere
         """
-        super(Sphere, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         self._radius = radius
         
     @property
@@ -110,11 +115,11 @@ class Sphere(Shape):
         return (4.0/3.0)*np.pi*self._radius**3
     
     def sdf(self, p):
-        return sdf.sphere(p, self._radius)
+        return sdf.sphere(p-self.centroid, self._radius)
 
 class Ellipsoid(Shape):
     def __init__(self, a=1, b=1, c=2, **kwargs):
-        super(Ellipsoid, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         self._a = a
         self._b = b
         self._c = c
@@ -132,11 +137,11 @@ class Ellipsoid(Shape):
         return (4.0/3.0)*np.pi*self._radius**3*self._a*self._b*self._c
         
     def sdf(self, p):
-        return sdf.ellipsoid(p, self._a, self._b, self._c)
+        return sdf.ellipsoid(p-self.centroid, self._a, self._b, self._c)
 
 class Torus(Shape):
     def __init__(self, radius=2, r=0.05, **kwargs):
-        super(Torus, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         self._radius = radius  # major radius
         self._r = r  # minor radius
 
@@ -149,11 +154,11 @@ class Torus(Shape):
         return 2*np.pi*np.pi*self._radius*self._r*self._r
 
     def sdf(self, p):
-        return sdf.torus(p, self._radius, self._r)
+        return sdf.torus(p-self.centroid, self._radius, self._r)
 
 class Tetrahedron(Shape):
     def __init__(self, v0, v1, v2, v3, **kwargs):
-        super(Tetrahedron, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         d01 = util.dot2(v0-v1)
         d02 = util.dot2(v0-v2)
         d03 = util.dot2(v0-v3)
@@ -193,7 +198,7 @@ class Tetrahedron(Shape):
 
 class Box(Shape):
     def __init__(self, lx=10, ly=None, lz=None, **kwargs):
-        super(Box, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         self._lx = lx
         self._ly = ly
         self._lz = lz
@@ -212,73 +217,103 @@ class Box(Shape):
         return 2.0*(self._lx*self._ly + self._lx*self._lz + self._ly*self._lz)
 
     def sdf(self, p):
-        return sdf.box(p, self._lx, self._ly, self._lz)
+        return sdf.box(p-self.centroid, self._lx, self._ly, self._lz)
 
-class MeshShape(Shape):
-    def __init__(self, mesh, **kwargs):
-        super(MeshShape, self).__init__(**kwargs)
-        self._surface_area = None
-        self.__tree = None
-        self._mesh = mesh
-        self._set_radius()
-        
+class Capsule(Shape):
+    def __init__(self, start, end, radius=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._start = np.array(start,dtype=float)
+        self._end = np.array(end,dtype=float)
+        self._r = radius
+        self._length = math.sqrt(util.dot2(self._end-self._start))
+        self._radius = self._length/2.0 + radius
+        self.centroid += 0.5*(self._start+self._end)
+    
+    @property
+    def volume(self):
+        return np.pi*self._r*self._r*((4.0/3.0)*self._r + self._length)
+    
     @property
     def surface_area(self):
-        if self._surface_area is None:
-            self._surface_area = np.sum(self._mesh._faces['area'][self._mesh._faces['halfedge']!=-1])
-        return self._surface_area
-    
-    def _set_radius(self):
-        diameter = 0
-        for vi in self._mesh._vertices:
-            if vi['halfedge'] == -1:
-                continue
-            for vj in self._mesh._vertices:
-                if vj['halfedge'] == -1:
-                    continue
-                d = vi['position'] - vj['position']
-                d2 = np.sum(d*d)
-                if d2 > diameter:
-                    diameter = d2
-        self._radius = diameter/2.0
-    
-    @property
-    def _tree(self):
-        if self.__tree is None:
-            import scipy.spatial
-            vertices = self._mesh._vertices['position'][self._mesh._vertices['halfedge']!=-1]
-            self.__tree = scipy.spatial.cKDTree(vertices)
-        return self.__tree
-    
-    def sdf_triangle(self, p, face):
-        
-        # Grab the triangle info from the mesh
-        h0 = face['halfedge']
-        # a = face['area']
-        h1 = self._mesh._halfedges[h0]['next']
-        h2 = self._mesh._halfedges[h1]['next']
-        v0 = self._mesh._halfedges[h0]['vertex']
-        v1 = self._mesh._halfedges[h1]['vertex']
-        v2 = self._mesh._halfedges[h2]['vertex']
-        p0 = self._mesh._vertices[v0]['position']
-        p1 = self._mesh._vertices[v1]['position']
-        p2 = self._mesh._vertices[v2]['position']
-        
-        return sdf.triangle(p, p0, p1, p2)
-    
+        return 2.0*np.pi*self._r*(2.0*self._r+self._length)
+
     def sdf(self, p):
-        # Find the closest triangles in the mesh
-        _, vertices = self._tree.query(p, 5)
-        faces = self._mesh._faces[self._mesh._halfedges['face'][self._mesh._vertices['halfedge'][vertices]]]
+        return sdf.capsule(p, self._start, self._end, self._r)
 
-        # Evaluate sdf_triangles for each triangle
-        d = 2*self._radius
-        for face in faces:
-            dt = self.sdf_triangle(p, face)
-            if np.abs(dt) < np.abs(d):
-                d = dt
+ThreeWayJunction = lambda h, R, centroid=[0,0,0]: UnionShape(
+                                    Capsule(centroid,[centroid[0],centroid[1],centroid[2]-h],R),
+                                    UnionShape(
+                                        Capsule(centroid,[centroid[0],centroid[1]-h/np.sqrt(2),centroid[2]+h/np.sqrt(2)],R),
+                                        Capsule(centroid,[centroid[0],centroid[1]+h/np.sqrt(2),centroid[2]+h/np.sqrt(2)],R)
+                                    ),
+                                    centroid=centroid
+                                )
 
-        return d
+# class MeshShape(Shape):
+#     def __init__(self, mesh, **kwargs):
+#         Shape.__init__(self, **kwargs)
+#         self._surface_area = None
+#         self.__tree = None
+#         self._mesh = mesh
+#         self._set_radius()
+        
+#     @property
+#     def surface_area(self):
+#         if self._surface_area is None:
+#             self._surface_area = np.sum(self._mesh._faces['area'][self._mesh._faces['halfedge']!=-1])
+#         return self._surface_area
+    
+#     def _set_radius(self):
+#         diameter = 0
+#         for vi in self._mesh._vertices:
+#             if vi['halfedge'] == -1:
+#                 continue
+#             for vj in self._mesh._vertices:
+#                 if vj['halfedge'] == -1:
+#                     continue
+#                 d = vi['position'] - vj['position']
+#                 d2 = np.sum(d*d)
+#                 if d2 > diameter:
+#                     diameter = d2
+#         self._radius = diameter/2.0
+    
+#     @property
+#     def _tree(self):
+#         if self.__tree is None:
+#             import scipy.spatial
+#             vertices = self._mesh._vertices['position'][self._mesh._vertices['halfedge']!=-1]
+#             self.__tree = scipy.spatial.cKDTree(vertices)
+#         return self.__tree
+    
+#     def sdf_triangle(self, p, face):
+        
+#         # Grab the triangle info from the mesh
+#         h0 = face['halfedge']
+#         # a = face['area']
+#         h1 = self._mesh._halfedges[h0]['next']
+#         h2 = self._mesh._halfedges[h1]['next']
+#         v0 = self._mesh._halfedges[h0]['vertex']
+#         v1 = self._mesh._halfedges[h1]['vertex']
+#         v2 = self._mesh._halfedges[h2]['vertex']
+#         p0 = self._mesh._vertices[v0]['position']
+#         p1 = self._mesh._vertices[v1]['position']
+#         p2 = self._mesh._vertices[v2]['position']
+        
+#         return sdf.triangle(p, p0, p1, p2)
+    
+#     def sdf(self, p):
+#         # Find the closest triangles in the mesh
+#         _, vertices = self._tree.query(p, 5)
+#         faces = self._mesh._faces[self._mesh._halfedges['face'][self._mesh._vertices['halfedge'][vertices]]]
+
+#         # Evaluate sdf_triangles for each triangle
+#         d = 2*self._radius
+#         for face in faces:
+#             dt = self.sdf_triangle(p, face)
+#             if np.abs(dt) < np.abs(d):
+#                 d = dt
+
+#         return d
 
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
@@ -292,11 +327,12 @@ class UnionShape(Shape):
             k : float
                 Smoothing parameter
         """
-        super(UnionShape, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         
         self._s0 = s0
         self._s1 = s1
         self._k = k
+        self._radius = max(self._s0._radius, self._s1._radius)
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -319,7 +355,7 @@ class DifferenceShape(Shape):
             k : float
                 Smoothing parameter
         """
-        super(DifferenceShape, self).__init__(**kwargs)
+        Shape.__init__(self, **kwargs)
         
         self._s0 = s0
         self._s1 = s1
