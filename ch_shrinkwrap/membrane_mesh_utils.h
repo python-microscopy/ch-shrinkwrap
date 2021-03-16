@@ -13,12 +13,12 @@
 extern "C" {
 #endif
 
-#define PRECISION float  // all functions currently return floating point precision, 
-                         // but this can change. this will need to be separately
-                         // updated in the structs, both in c and python
-
 #define KBT 0.0257
 #define KBTINV 38.911
+
+typedef float PRECISION; // all functions currently return floating point precision, 
+                         // but this can change. this will need to be separately
+                         // updated in the structs, both in c and python
 
 /* triangle_mesh_utils.h may already make these functions available globally */
 #ifndef _triangle_mesh_utils_h_

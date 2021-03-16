@@ -17,88 +17,139 @@
 
 #include "membrane_mesh_utils.h"
 
+#define ABS(x) (((x) < 0) ? -x : x)
+#define SQUARE(a) ((a)*(a))
+#define SIGN(x) (((x) < 0) ? -1 : 1)
+#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
+
 #define EPSILON 1e-15
 
 /** @brief Calculates the Euclidean norm of a vector.
  *
- *  Vector length is set by VECTORSIZE define.
- *
- *  @param pos A length VECTORSIZE vector (conventionally a position vector).
- *  @return PRECISION norm of the vector
+ *  @param pos A length 3 double vector (conventionally a position vector).
+ *  @return double norm of the vector
  */
-PRECISION norm(const PRECISION *pos)
+double norm3(const double *pos)
 {
     int i;
-    PRECISION n = 0.0;
+    double n = 0.0;
 
-    for (i = 0; i < VECTORSIZE; ++i)
+    for (i = 0; i<3; ++i)
+        n += (pos[i]) * (pos[i]);
+    return sqrt(n);
+}
+
+/** @brief Calculates the Euclidean norm of a vector.
+ *
+ *  @param pos A length 3 float vector (conventionally a position vector).
+ *  @return double norm of the vector
+ */
+float fnorm3f(const float *pos)
+{
+    int i;
+    float n = 0.0;
+
+    for (i = 0; i<3; ++i)
         n += (pos[i]) * (pos[i]);
     return sqrt(n);
 }
 
 /** @brief Scalar division that returns 0 on div by 0
  *
- *  @param x PRECISION scalar
- *  @param y PRECISION scalar
- *  @return PRECISION division of x and y
+ *  @param x double scalar
+ *  @param y double scalar
+ *  @return double division of x and y
  */
-PRECISION safe_divide(PRECISION x, PRECISION y)
+double safe_divide(double x, double y)
 {
-    if (abs(y)<EPSILON)
+    if (ABS(y)<EPSILON)
         return 0.0;
     return (x)/(y);
 }
 
-/** @brief Sign of a scalar
+/** @brief Scalar division that returns 0 on div by 0
  *
- *  @param x PRECISION scalar
- *  @return PRECISION sign of x
+ *  @param x float scalar
+ *  @param y float scalar
+ *  @return float division of x and y
  */
-PRECISION sign(PRECISION x)
+float ffsafe_dividef(float x, float y)
 {
-    return (PRECISION)((0<(x))-((x)<0));
+    if (ABS(y)<EPSILON)
+        return 0.0;
+    return (x)/(y);
 }
 
 /** @brief Elementwise division of a vector by a scalar
  *
  *
- *  @param a PRECISION vector
- *  @param b PRECISION scalar
- *  @param c PRECISION vector b/a
- *  @param length int length of vector a
+ *  @param a double vector
+ *  @param b double scalar
+ *  @param c double vector b/a
  *  @return Void
  */
-void scalar_divide(const PRECISION *a, const PRECISION b, PRECISION *c, const int length)
+void scalar_divide3(const double *a, const double b, double *c)
 {
     int k = 0;
-    for (k=0; k < length; ++k)
+    for (k=0; k<3; ++k)
+        c[k] = (a[k])/(b);
+}
+
+/** @brief Elementwise division of a vector by a scalar
+ *
+ *
+ *  @param a float vector
+ *  @param b float scalar
+ *  @param c float vector b/a
+ *  @return Void
+ */
+void ffscalar_divide3f(const float *a, const float b, float *c)
+{
+    int k = 0;
+    for (k=0; k<3; ++k)
         c[k] = (a[k])/(b);
 }
 
 /** @brief Elementwise multiplication of a scalar times a vector
  *
  *
- *  @param a PRECISION vector
- *  @param b PRECISION scalar
- *  @param c PRECISION vector b*a
+ *  @param a double vector
+ *  @param b double scalar
+ *  @param c double vector b*a
  *  @param length int length of vector a
  *  @return Void
  */
-void scalar_mult(const PRECISION *a, const PRECISION b, PRECISION *c, const int length)
+void scalar_mult(const double *a, const double b, double *c, const int length)
 {
     int k = 0;
     for (k=0; k < length; ++k)
         c[k] = (a[k])*(b);
 }
 
-/** @brief Construct outer product of vectors
- * 
- *  @param a PRECISION vector
- *  @param b PRECISION vector
- *  @param m PRECISION outer product
+/** @brief Elementwise multiplication of a scalar times a vector
+ *
+ *
+ *  @param a float vector
+ *  @param b float scalar
+ *  @param c double vector b*a
+ *  @param length int length of vector a
  *  @return Void
  */
-void outer3(const PRECISION *a, const PRECISION *b, PRECISION *m)
+void ffscalar_multd(const float *a, const float b, double *c, const int length)
+{
+    int k = 0;
+    for (k=0; k < length; ++k)
+        c[k] = ((double)(a[k]))*((double)(b));
+}
+
+/** @brief Construct outer product of vectors
+ * 
+ *  @param a double vector
+ *  @param b double vector
+ *  @param m double outer product
+ *  @return Void
+ */
+void outer3(const double *a, const double *b, double *m)
 {
     int i, j;
     for (i=0;i<3;++i)
@@ -112,15 +163,15 @@ void outer3(const PRECISION *a, const PRECISION *b, PRECISION *m)
 
 /** @brief Multiply two matrices
  * 
- *  @param a PRECISION vector (m x n)
- *  @param b PRECISION vector (n x p)
- *  @param c PRECISION outer product
+ *  @param a double vector (m x n)
+ *  @param b double vector (n x p)
+ *  @param c double outer product
  *  @param m int first dimension of a
  *  @param n int second dimension of a/first of b
  *  @param p int second dimension of b
  *  @return Void
  */
-void matmul(const PRECISION *a, const PRECISION *b, PRECISION *c, int m, int n, int p)
+void matmul(const double *a, const double *b, double *c, int m, int n, int p)
 {
     int i, j, k;
 
@@ -137,13 +188,13 @@ void matmul(const PRECISION *a, const PRECISION *b, PRECISION *c, int m, int n, 
 
 /** @brief Transpose a matrix
  * 
- *  @param a PRECISION matrix (m x n)
- *  @param at PRECISION matrix (n x m)
+ *  @param a double matrix (m x n)
+ *  @param at double matrix (n x m)
  *  @param m int first dimension of a
  *  @param n int second dimension of a
  *  @return Void
  */
-void transpose(const PRECISION *a, PRECISION *at, int m, int n)
+void transpose(const double *a, double *at, int m, int n)
 {
     int i, j;
     for (i=0;i<m;++i) {
@@ -158,37 +209,42 @@ void transpose(const PRECISION *a, PRECISION *at, int m, int n)
  *  matrix for the plane orthogonal to v
  * 
  *  @param v PRECISION unit-normalized vector
- *  @param m PRECISION orthogonal projection matrix
+ *  @param m double orthogonal projection matrix
  *  @return Void
  */
-void orthogonal_projection_matrix3(const PRECISION *v, PRECISION *m)
+void orthogonal_projection_matrix3(const PRECISION *v, double *m)
 {
     PRECISION xy, xz, yz;
+    double v0, v1, v2;
 
-    xy = -1.0*v[0]*v[1];
-    xz = -1.0*v[0]*v[2];
-    yz = -1.0*v[1]*v[2];
+    v0 = (double)(v[0]);
+    v1 = (double)(v[1]);
+    v2 = (double)(v[2]);
 
-    m[0] = 1.0-v[0]*v[0];
+    xy = -1.0*v0*v1;
+    xz = -1.0*v0*v2;
+    yz = -1.0*v1*v2;
+
+    m[0] = 1.0-v0*v0;
     m[1] = xy;
     m[2] = xz;
     m[3] = xy;
-    m[4] = 1.0-v[1]*v[1];
+    m[4] = 1.0-v1*v1;
     m[5] = yz;
     m[6] = xz;
     m[7] = yz;
-    m[8] = 1.0-v[2]*v[2];
+    m[8] = 1.0-v2*v2;
 }
 
 /** @brief Apply a 3x3 projection matrix to a 3-vector
  *
  * 
- *  @param p PRECISION orthogonal projection matrix
- *  @param v PRECISION vector
- *  @param r PRECISION projection of vector on plane defined by p
+ *  @param p double orthogonal projection matrix
+ *  @param v double vector
+ *  @param r double projection of vector on plane defined by p
  *  @return Void
  */
-void project3(const PRECISION *p, const PRECISION *v, PRECISION *r)
+void project3(const double *p, const double *v, double *r)
 {
     r[0] = p[0]*v[0]+p[1]*v[1]+p[2]*v[2];
     r[1] = p[3]*v[0]+p[4]*v[1]+p[5]*v[2];
@@ -199,34 +255,118 @@ void project3(const PRECISION *p, const PRECISION *v, PRECISION *r)
  *
  *  Subtracts vector b from vector a. Lengths of a and b must be equivalent.
  * 
- *  @param a PRECISION vector
- *  @param b PRECISION vector
- *  @param c PRECISION a-b
- *  @param length int length of vectors a and b
+ *  @param a double vector
+ *  @param b double vector
+ *  @param c double a-b
  *  @return Void
  */
-void subtract(const PRECISION *a, const PRECISION *b, PRECISION *c, const int length)
+void subtract3(const double *a, const double *b, double *c)
 {
     int i;
-    for (i=0;i<length;++i)
+    for (i=0;i<3;++i)
         c[i] = a[i]-b[i];
+}
+
+/** @brief Elementwise subtraction of two vectors
+ * 
+ *  @param a float vector
+ *  @param b double vector
+ *  @param c double a-b
+ *  @return Void
+ */
+void fdsubtract3d(const float *a, const double *b, double *c)
+{
+    int i;
+    for (i=0;i<3;++i)
+        c[i] = ((double)(a[i]))-b[i];
+}
+
+/** @brief Elementwise subtraction of two vectors
+ * 
+ *  @param a float vector
+ *  @param b float vector
+ *  @param c double a-b
+ *  @return Void
+ */
+void ffsubtract3d(const float *a, const float *b, double *c)
+{
+    int i;
+    for (i=0;i<3;++i)
+        c[i] = ((double)(a[i]))-((double)(b[i]));
+}
+
+/** @brief Elementwise subtraction of two vectors
+ * 
+ *  @param a float vector
+ *  @param b float vector
+ *  @param c double a-b
+ *  @return Void
+ */
+void ffsubtract3f(const float *a, const float *b, float *c)
+{
+    int i;
+    for (i=0;i<3;++i)
+        c[i] = (a[i])-(b[i]);
 }
 
 /** @brief dot product of two vectors of equivalent length
  * 
- *  @param a PRECISION vector
- *  @param b PRECISION vector
- *  @param c PRECISION a <dot> b
- *  @param length int length of vectors a and b
- *  @return Void
+ *  @param a double vector
+ *  @param b double vector
+ *  @return double a <dot> b
  */
-PRECISION dot(const PRECISION *a, const PRECISION *b, const int length)
+double dot3(const double *a, const double *b)
 {
     int i;
-    PRECISION c = 0.0;
-    for (i=0;i<length;++i)
+    double c = 0.0;
+    for (i=0;i<3;++i)
         c += a[i]*b[i];
     return c;
+}
+
+/** @brief dot product of two vectors of equivalent length
+ * 
+ *  @param a float vector
+ *  @param b double vector
+ *  @return double a <dot> b
+ */
+double fddot3d(const float *a, const double *b)
+{
+    int i;
+    double c = 0.0;
+    for (i=0;i<3;++i)
+        c += ((double)(a[i]))*b[i];
+    return c;
+}
+
+/** @brief dot product of two vectors of equivalent length
+ * 
+ *  @param a float vector
+ *  @param b float vector
+ *  @return float a <dot> b
+ */
+float ffdot3f(const float *a, const float *b)
+{
+    int i;
+    float c = 0.0;
+    for (i=0;i<3;++i)
+        c += a[i]*b[i];
+    return c;
+}
+
+
+/** @brief cross product of two vectors of equivalent length
+ * 
+ *  @param a double vector
+ *  @param b double vector
+ *  @param c double a <cross> b
+ *  @return Void
+ */
+void cross3(const double *a, const double *b, double *n)
+{
+    n[0] = a[1]*b[2] - a[2]*b[1];
+    n[1] = a[2]*b[0] - a[0]*b[2];
+    n[2] = a[0]*b[1] - a[1]*b[0];
 }
 
 
@@ -241,309 +381,10 @@ PRECISION r2()
     return (PRECISION)rand() / (PRECISION)((unsigned)RAND_MAX + 1);
 }
 
-/* begin SVD functions from numerical recipes */
-
-// exception handling
-
-#ifndef _USENRERRORCLASS_
-#define throw(message) \
-{printf("ERROR: %s\n     in file %s at line %d\n", message,__FILE__,__LINE__); return;}
-#else
-struct NRerror {
-	char *message;
-	char *file;
-	int line;
-	NRerror(char *m, char *f, int l) : message(m), file(f), line(l) {}
-};
-#define throw(message) throw(NRerror(message,__FILE__,__LINE__));
-void NRcatch(NRerror err) {
-	printf("ERROR: %s\n     in file %s at line %d\n",
-		err.message, err.file, err.line);
-	exit(1);
-}
-#endif
-
-PRECISION SIGN(PRECISION a, PRECISION b)
+double dr2()
 {
-    return b >= 0 ? (a >= 0 ? a : -a) : (a >= 0 ? -a : a);
+    return (double)rand() / (double)((unsigned)RAND_MAX + 1);
 }
-
-PRECISION MAX(PRECISION a, PRECISION b)
-{
-    return b > a ? (b) : (a);
-}
-
-PRECISION MIN(PRECISION a, PRECISION b)
-{
-    return b < a ? (b) : (a);
-}
-
-PRECISION SQR(const PRECISION a) {return (a)*(a);}
-
-eps = 1e-12;  // precision
-
-PRECISION pythag(const PRECISION a, const PRECISION b) {
-    PRECISION absa, absb;
-    absa = abs(a);
-    absb = abs(b);
-    return (absa > absb ? absa*sqrt(1.0+SQR(absb/absa)) : (absb == 0.0 ? 0.0 : absb*sqrt(1.0+SQR(absa/absb))));
-}
-
-/** @brief Decompose an (m x n) matrix A
- * 
- *  This is part of the SVD implementation in numerical recipes webnote 2,
- *  http://numerical.recipes/webnotes/nr3web2.pdf. There is a slight
- *  modification (row_length) to allow for SVD on matrices of varying size
- *  that are all stored within matrices of fixed size NEIGHBORSIZExNEIGHBORSIZE.
- *  also to move away from 2D indexing.
- * 
- *  NOTE: untested
- *  
- *  @param u PRECISION (m x m) matrix (matrix A is initially stored in here as an m x n)
- *  @param v PRECISION (n x n) matrix
- *  @param w PRECISION vector representing (m x n) diagonal
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in u
- *  @param row_length int actual number of columns in u
- *  @return Void
- */
-void decompose(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
-{
-    bool flag;
-    int i, its, j, jj, k, l, nm;
-    PRECISION anorm, c, f, g, h, s, scale, x, y, z;
-    PRECISION *rv1;
-    rv1 = (PRECISION *)malloc(sizeof(PRECISION)*n);
-    g = scale = anorm = 0.0;
-    for(i=0;i<n;i++) {
-        l = i+2;
-        rv1[i]=scale*g;
-        g=s=scale=0.0;
-        if (i<m) {
-            for (k=i;k<m;k++) scale += abs(u[k*row_length+i]);
-            if (scale != 0.0) {
-                for (k=i;k<m;k++) {
-                    u[k*row_length+i] /= scale;
-                    s += u[k*row_length+i]*u[k*row_length+i];
-                }
-                f = u[i*row_length+i];
-                g = -SIGN(sqrt(s),f);
-                h = f*g-s;
-                u[i*row_length+i] = f-g;
-                for (j=l-1;j<n;j++) {
-                    for (s=0.0,k=i;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
-                    f = s/h;
-                    for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
-                }
-                for (k=i;k<m;k++) u[k*row_length+i] *= scale;
-            }
-        }
-        w[i] = scale*g;
-        g=s=scale=0.0;
-        if (i+1 <= m && i+1 != n) {
-            for (k=l-1;k<n;k++) scale += abs(u[i*row_length+k]);
-            if (scale != 0.0) {
-                for (k=l-1;k<n;k++) {
-                    u[i*row_length+k] /= scale;
-                    s+= u[i*row_length+k]*u[i*row_length+k];
-                }
-                f = u[i*row_length+(l-1)];
-                g = -SIGN(sqrt(s),f);
-                h = f*g-s;
-                u[i*row_length+(l-1)] = f-g;
-                for (k=l-1;k<n;k++) rv1[k] = u[i*row_length+k]/h;
-                for (j=l-1;j<m;j++) {
-                    for (s=0.0,k=l-1;k<n;k++) s += u[j*row_length+k]*u[i*row_length+k];
-                    for (k=l-1;k<n;k++) u[j*row_length+k] += s*rv1[k];
-                }
-                for (k=l-1; k<n;k++) u[i*row_length+k] *= scale;
-            }
-        }
-        anorm = MAX(anorm,(abs(w[i])+abs(rv1[i])));
-    }
-    for (i=n-1;i>=0;i--) {
-        if (i < n-1) {
-            if (g != 0.0) {
-                for (j=l;j<n;j++)
-                    v[j*row_length+i] = (u[i*row_length+j]/u[i*row_length+l])/g;
-                for (j=l;j<n;j++) {
-                    for (s=0.0,k=l;k<n;k++) s += u[i*row_length+k]*v[k*row_length+j];
-                    for (k=l;k<n;k++) v[k*row_length+j] += s*v[k*row_length+i];
-                }
-            }
-            for (j=l;j<n;j++) v[i*row_length+j]=v[j*row_length+i]=0.0;
-        }
-        v[i*row_length+i] = 1.0;
-        g = rv1[i];
-        l = i;
-    }
-    for (i=MIN(m,n)-1;i>=0;i--) {
-        l = i + 1;
-        g = w[i];
-        for (j=l;j<n;j++) u[i*row_length+j] = 0.0;
-        if (g != 0.0) {
-            g = 1.0/g;
-            for (j=1;j<n;j++) {
-                for (s=0.0,k=l;k<m;k++) s += u[k*row_length+i]*u[k*row_length+j];
-                f = (s/u[i*row_length+i])*g;
-                for (k=i;k<m;k++) u[k*row_length+j] += f*u[k*row_length+i];
-            }
-            for (j=i;j<m;j++) u[j*row_length+i] *= g;
-        } else for (j=i;j<m;j++) u[j*row_length+i] = 0.0;
-        ++u[i*row_length+i];
-    }
-    for (k=n-1;k>=0;k--) {
-        for (its=0;its<30;its++) {
-            flag = true;
-            for (l=k;l>=0;l--) {
-                nm = l-1;
-                if (l==0 || abs(rv1[1]) <= eps*anorm) {
-                    flag = false;
-                    break;
-                }
-                if (abs(w[nm]) <= eps*anorm) break;
-            }
-            if (flag) {
-                c = 0.0;
-                s = 1.0;
-                for (i=l; i<k+1; i++) {
-                    f = s*rv1[i];
-                    rv1[i] = c*rv1[i];
-                    if (abs(f) <= eps*anorm) break;
-                    g = w[i];
-                    h = pythag(f,g);
-                    w[i] = h;
-                    h = 1.0/h;
-                    c = g*h;
-                    s = -f*h;
-                    for (j=0;j<m;j++) {
-                        y = u[j*row_length+nm];
-                        z = u[j*row_length+i];
-                        u[j*row_length+nm] = y*c+z*s;
-                        u[j*row_length+i] = z*c-y*s;
-                    }
-                }
-            }
-            z = w[k];
-            if (l == k) {
-                if (z < 0.0) {
-                    w[k] = -z;
-                    for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
-                    break;
-                }
-            }
-            if (its == 29) throw("no convergence in 30 svdcomp iterations.");
-            x = w[l];
-            nm = k-1;
-            y = w[nm];
-            g = rv1[nm];
-            h = rv1[k];
-            f=((y-z)*(y+z)+(g-h)*(g+h))/(2.0*h*y);
-            g=pythag(f,1.0);
-            f=((x-z)*(x+z)+h*((y/(f+SIGN(g,f)))-h))/x;
-            c=s=1.0;
-            for (j=l;j<=nm;j++) {
-                i = j+1;
-                g = rv1[i];
-                y = w[i];
-                h = s*g;
-                g = c*g;
-                z = pythag(f,h);
-                rv1[j] = z;
-                c = f/z;
-                s = h/z;
-                f = x*c+g*s;
-                g = g*c-x*s;
-                h = y*s;
-                y *= c;
-                for (jj=0;jj<n;jj++) {
-                    x = v[jj*row_length+j];
-                    z = v[jj*row_length+i];
-                    v[jj*row_length+j] = x*c+z*s;
-                    v[jj*row_length+i] = z*c-x*s;
-                }
-                z = pythag(f,h);
-                w[j] = z;
-                if (z) {
-                    z = 1.0/z;
-                    c = f*z;
-                    s = h*z;
-                }
-                f = c*g+s*y;
-                x = c*y-s*g;
-                for (jj=0;jj<m;jj++) {
-                    y = u[jj*row_length+j];
-                    z = u[jj*row_length+i];
-                    u[jj*row_length+j] = y*c+z*s;
-                    u[jj*row_length+i] = z*c-y*s;
-                }
-            }
-            rv1[l] = 0.0;
-            rv1[k] = f;
-            w[k] = x;
-        }
-    }
-    free(rv1);
-}
-
-/** @brief Sort decomposition of matrix A
- * 
- *  Given the output of decompose, this routine sorts the singular values, and corresponding columns
- *  of u and v, by decreasing magnitude. Also, signs of corresponding columns are flipped so as to
- *  maximize the number of positive elements.
- * 
- *  NOTE: untested
- *  
- *  @param u PRECISION (m x m) matrix 
- *  @param v PRECISION (n x n) matrix
- *  @param w PRECISION vector representing (m x n) diagonal
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in v
- *  @param row_length int actual number of columns in u, v
- *  @return Void
- */
-void reorder(PRECISION *u, PRECISION *v, PRECISION *w, int m, int n, int row_length)
-{
-    int i, j, k, s, inc=1;
-    PRECISION sw, *su, *sv;
-
-    su = (PRECISION *)malloc(sizeof(PRECISION)*m);
-    sv = (PRECISION *)malloc(sizeof(PRECISION)*n);
-    
-    do { inc *= 3; inc++; } while (inc <= n);
-    do {
-        inc /= 3;
-        for (i = inc; i < n; i++) {
-            sw = w[i];
-            for (k=0;k<m;k++) su[k] = u[k*row_length+i];
-            for (k=0;k<n;k++) sv[k] = v[k*row_length+i];
-            j = i;
-            while (w[j-inc] < sw) {
-                w[j] = w[j-inc];
-                for (k=0;k<m;k++) u[k*row_length+j] = u[k*row_length+(j-inc)];
-                for (k=0;k<n;k++) v[k*row_length+j] = v[k*row_length+(j-inc)];
-                j -= inc;
-                if (j < inc) break;
-            }
-            w[j] = sw;
-            for (k=0;k<m;k++) u[k*row_length+j] = su[k];
-            for (k=0;k<n;k++) v[k*row_length+j] = sv[k];
-        }
-    } while (inc > 1);
-    for (k=0;k<n;k++) {
-        s = 0;
-        for (i=0;i<m;i++) if (u[i*row_length+k] < 0.0) s++;
-        for (j=0;j<m;i++) if (v[j*row_length+k] < 0.0) s++;
-        if (s > (m+n)/2) {
-            for (i=0;i<m;i++) u[i*row_length+k] = -u[i*row_length+k];
-            for (j=0;j<n;j++) v[j*row_length+k] = -v[j*row_length+k];
-        }
-    }
-    free(su);
-    free(sv);
-}
-
-/* end SVD functions                         */
 
 static PyObject *calculate_pt_cnt_dist_2(PyObject *self, PyObject *args)
 {
@@ -716,7 +557,7 @@ static void c_point_attraction_grad(points_t *attraction,
             curr_point = &(points[j]);
             for (k=0;k<VECTORSIZE;++k)
                 d[k] = curr_vertex->position[k] - curr_point->position[k];
-            dd = norm(d);
+            dd = fnorm3f(d);
 
             r = dd/sigma[j];
             r2 = r*r; r12 = (r-1)*(r-1);
@@ -732,18 +573,18 @@ static void c_point_attraction_grad(points_t *attraction,
 
 /** @brief find eigenvalues/vectors of 3x3 curvature tensor using closed-form solution
  *
- *  @param Mvi PRECISION (3x3) matrix describing local curvature
- *  @param l1 PRECISION first non-zero eigenvalue of Mvi
- *  @param l2 PRECISION second non-zero eigenvalue of Mvi
- *  @param v1 PRECISION eigenvector of Mvi associated with l1
- *  @param v2 PRECISION eigenvector of Mvi associated with l2
+ *  @param Mvi double (3x3) matrix describing local curvature
+ *  @param l1 double first non-zero eigenvalue of Mvi
+ *  @param l2 double second non-zero eigenvalue of Mvi
+ *  @param v1 double eigenvector of Mvi associated with l1
+ *  @param v2 double eigenvector of Mvi associated with l2
  *  @return Void
  */
-static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISION *l2, PRECISION *v1, PRECISION *v2) 
+static void compute_curvature_tensor_eig(double *Mvi, double *l1, double *l2, double *v1, double *v2) 
 {
-    PRECISION m00, m01, m02, m11, m12, m22, p, q, r, z1n, z1d, z1, y1n, y1d, y1, z2n, z2d, z2, y2n, y2d, y2;
-    PRECISION v2t[3];
-    PRECISION v1t[3];
+    double m00, m01, m02, m11, m12, m22, p, q, r, z1n, z1d, z1, y1n, y1d, y1, z2n, z2d, z2, y2n, y2d, y2;
+    double v2t[3];
+    double v1t[3];
 
     m00 = Mvi[0];
     m01 = Mvi[1];
@@ -771,7 +612,7 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     y1 = safe_divide(y1n, y1d);
     
     v1t[0] = 1; v1t[1] = y1; v1t[2] = z1;
-    scalar_divide(v1t,norm(v1t),v1,VECTORSIZE);
+    scalar_divide3(v1t,norm3(v1t),v1);
     
     z2n = ((m00 - (*l2))*(m11 - (*l2)) - (m01*m01));
     z2d = (m01*m12 - m02*(m11 - (*l2)));
@@ -781,103 +622,79 @@ static void compute_curvature_tensor_eig(PRECISION *Mvi, PRECISION *l1, PRECISIO
     y2 = safe_divide(y2n, y2d);
     
     v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
-    scalar_divide(v2t,norm(v2t),v2,VECTORSIZE);
+    scalar_divide3(v2t,norm3(v2t),v2);
     
 }
 
-/** @brief Compute Moore-Penrose inverse of square matrix
- * 
- *  NOTE: untested
+/** @brief find eigenvalues/vectors of 3x3 curvature tensor using closed-form solution
  *
- *  @param A PRECISION m x m matrix
- *  @param At PREICISON m x m matrix
- *  @param m int number of rows to access in u
- *  @param n int number of columns to access in v
- *  @param row_length int actual number of columns in u, v
+ *  @param Mvi float (3x3) matrix describing local curvature
+ *  @param l1 float first non-zero eigenvalue of Mvi
+ *  @param l2 float second non-zero eigenvalue of Mvi
+ *  @param v1 float eigenvector of Mvi associated with l1
+ *  @param v2 float eigenvector of Mvi associated with l2
  *  @return Void
  */
-void moore_penrose_square(const PRECISION *A, PRECISION *At, int m, int row_length)
+static void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
 {
-    PRECISION *u;
-    PRECISION *v;
-    PRECISION *w;
-    int i, j;
-    PRECISION thresh;
+    float m00, m01, m02, m11, m12, m22, p, q, r, z1n, z1d, z1, y1n, y1d, y1, z2n, z2d, z2, y2n, y2d, y2;
+    float v2t[3];
+    float v1t[3];
+
+    m00 = Mvi[0];
+    m01 = Mvi[1];
+    m02 = Mvi[2];
+    m11 = Mvi[4];
+    m12 = Mvi[5];
+    m22 = Mvi[8];
+
+    // Here we use the fact that Mvi is symnmetric and we know
+    // one of the eigenvalues must be 0
+    p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12;
+    q = m00 + m11 + m22;
+    r = sqrt(4*p + q*q);
+
+    // Eigenvalues
+    *l1 = 0.5*(q-r);
+    *l2 = 0.5*(q+r);
+
+    // Now calculate the eigenvectors, assuming x = 1
+    z1n = ((m00 - (*l1))*(m11 - (*l1)) - (m01*m01));
+    z1d = (m01*m12 - m02*(m11 - (*l1)));
+    z1 = ffsafe_dividef(z1n, z1d);
+    y1n = (m12*z1 + m01);
+    y1d = (m11 - (*l1));
+    y1 = ffsafe_dividef(y1n, y1d);
     
-    u = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
-    v = (PRECISION *)malloc(sizeof(PRECISION)*m*m);
-    w = (PRECISION *)malloc(sizeof(PRECISION)*m);
-
-    // copy A into u so we can modify it without compromising A
-    for (i=0;i<m*m;++i)
-        u[i] = A[i];
-
-    // svd
-    decompose(u, v, w, m, m, row_length);
-    reorder(u, v, w, m, m, row_length);
-
-    thresh = 0.5*sqrt(2.0*m+1.0)*w[0]*eps;
-
-    // Now compute inverse
-    for (i=0;i<m;++i) {
-        if (w[i] > thresh) {
-            for (j=0;j<m;++j)
-                At[i*m+j] = v[i*m+j]*u[j*m+i]/w[i];  // V diag(1/w) U^T
-        } else {
-            for (j=0;j<m;++j)
-                At[i*m+j] = 0.0;
-        }
-    }
-
-    free(u);
-    free(v);
-    free(w);
+    v1t[0] = 1; v1t[1] = y1; v1t[2] = z1;
+    ffscalar_divide3f(v1t,fnorm3f(v1t),v1);
     
-}
-
-/** @brief Compute inverse of 2 x 2 matrix
- * 
- *  We can use this if we have a well-behaved 2x2.
- *
- *  @param A PRECISION matrix
- *  @param Ainv PREICISON inverted matrix
- *  @return Void
- */
-void invert_2x2(const PRECISION *A, PRECISION *Ainv)
-{
-    PRECISION a, b, c, d, det;
-    a = A[0]; b = A[1]; c = A[2]; d = A[3];
-    det = (a*d-b*c);
-    if (det > eps)
-    {
-        det = 1.0/det;
-
-        Ainv[0] = det*d;
-        Ainv[1] = -1.0*det*b;
-        Ainv[2] = -1.0*det*c;
-        Ainv[3] = det*a;
-    }
-    else
-    {
-        Ainv[0] = Ainv[1] = Ainv[2] = Ainv[3] = 0.0;  // pseudoinverse
-    }
+    z2n = ((m00 - (*l2))*(m11 - (*l2)) - (m01*m01));
+    z2d = (m01*m12 - m02*(m11 - (*l2)));
+    z2 = ffsafe_dividef(z2n, z2d);
+    y2n = (m12*z2 + m01);
+    y2d = (m11 - (*l2));
+    y2 = ffsafe_dividef(y2n, y2d);
+    
+    v2t[0] = 1; v2t[1] = y2; v2t[2] = z2;
+    ffscalar_divide3f(v2t,fnorm3f(v2t),v2);
     
 }
 
 /** @brief Compute pseudoinverse of 2 x 2 matrix
  * 
- *  We can use this instead of moore_penrose_square() if we have a 2x2.
+ *  Closed form of Moore-Penrose pseudoinverse for a 2x2 matrix.
  *
- *  @param A PRECISION matrix
- *  @param Ainv PREICISON inverted matrix
+ *  @param A double matrix
+ *  @param Ainv double inverted matrix
  *  @return Void
  */
-void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
+void moore_penrose_2x2(const double *A, double *Ainv)
 {
-    PRECISION a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
-    PRECISION theta, phi, ctheta, cphi, stheta, sphi;
-    PRECISION ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd;
-    PRECISION sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
+    double a,b,c,d,a2,b2,c2,d2,a2b2,c2d2,a2b2nc2nd2,tacbd;
+    double theta, phi, ctheta, cphi, stheta, sphi;
+    double ctcp, ctsp, stcp, stsp, sign0, sign1, ss, sd, sssd;
+    double sig0, sig1, thresh, siginv0, siginv1, s0s0, s1s1;
     a = A[0]; b = A[1]; c = A[2]; d = A[3];
 
     a2 = a*a; b2 = b*b; c2 = c*c; d2 = d*d;
@@ -895,25 +712,31 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
     ctcp = ctheta*cphi; ctsp = ctheta*sphi;
     stcp = stheta*cphi; stsp = stheta*sphi;
     
-    sign0 = sign(ctcp*a+ctsp*c+stcp*b+stsp*d);
-    sign1 = sign(stsp*a-stcp*c-ctsp*b+ctcp*d);
+    sign0 = SIGN(ctcp*a+ctsp*c+stcp*b+stsp*d);
+    sign1 = SIGN(stsp*a-stcp*c-ctsp*b+ctcp*d);
     
     ss = a2b2+c2d2;
-    sd = sqrt(SQR(a2b2nc2nd2)+SQR(tacbd));
+    sd = sqrt(SQUARE(a2b2nc2nd2)+SQUARE(tacbd));
     
-    sig0 = sqrt((ss+sd)/2.0); sig1 = sqrt((ss-sd)/2.0);
+    sig0 = sqrt((ss+sd)/2.0); 
+    sssd = ss-sd;
+
+    if (sssd > 0)
+        sig1 = sqrt(sssd/2.0);
+    else
+        sig1 = 0.0;
     
-    thresh = EPSILON*0.5*sqrt(5.0)*sig0;
-    
-    siginv0 = (sig0 > thresh) ? (1.0/sig0) : 0.0;
-    siginv1 = (sig1 > thresh) ? (1.0/sig1) : 0.0;
+    thresh = (1e-8)*0.5*sqrt(5.0)*sig0;
+
+    siginv0 = (sig0 < thresh) ? 0.0 : (1.0/sig0);
+    siginv1 = (sig1 < thresh) ? 0.0 : (1.0/sig1);
     
     s0s0 = sign0*siginv0; s1s1 = sign1*siginv1;
     
-    Ainv[0] = ctcp*s0s0+stsp*s1s1;
-    Ainv[1] = ctsp*s0s0-stcp*s1s1;
-    Ainv[2] = stcp*s0s0-ctsp*s1s1;
-    Ainv[3] = stsp*s0s0+ctcp*s1s1;
+    Ainv[0] = (ctcp*s0s0+stsp*s1s1);
+    Ainv[1] = (ctsp*s0s0-stcp*s1s1);
+    Ainv[2] = (stcp*s0s0-ctsp*s1s1);
+    Ainv[3] = (stsp*s0s0+ctcp*s1s1);
     
 }
 
@@ -933,11 +756,11 @@ void moore_penrose_2x2(const PRECISION *A, PRECISION *Ainv)
  *  @param dK PRECISION n_vertices vector of Gaussian curvature gradient
  *  @param E PRECISION n_vertices vector of bending energy, as defined by Canham-Helfrich functional, stored in each vertex
  *  @param pE PRECISION n_vertices vector of energy likelihood, defined by a Boltzmann distribution on the Canham-Helfrich
- *  @param dE_neighbors n_vertices vector of how a shift at this vertex changes the bending energy in 1-ring neighbor vertices
+ *  @param dE_neighbors PRECISION n_vertices vector of how a shift at this vertex changes the bending energy in 1-ring neighbor vertices
  *  @param kc PRECISION bending stiffness coefficient (eV)
  *  @param kg PRECISION bending stiffness coefficient (eV)
  *  @param c0 PRECISION spontaneous curvature (1/nm)
- *  @param dEdN n_vertices vector of energy gradient
+ *  @param dEdN PRECISION n_vertices vector of energy gradient
  *  @return Void
  */
 static void c_curvature_grad(void *vertices_, 
@@ -959,21 +782,22 @@ static void c_curvature_grad(void *vertices_,
                              points_t *dEdN)
 {
     int i, j, jj, neighbor, n_neighbors;
-    PRECISION l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    PRECISION kj, kj_1, k, Aj, areas, w, k_1, k_2;
-    PRECISION dEdN_H, dEdN_K, dEdN_sum, dEdNs;
-    PRECISION Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
-    PRECISION v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
-    PRECISION Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
-    PRECISION m[VECTORSIZE*VECTORSIZE];
-    PRECISION p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], ndv[VECTORSIZE];
-    PRECISION dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
-    PRECISION NvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
-    PRECISION A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
-    PRECISION b[NEIGHBORSIZE], k_p[2];
-    PRECISION *vi, *vj, *Nvi, *Nvj;
-    vertex_t *curr_vertex, *neighbor_vertex;
-    halfedge_t *curr_neighbor;
+    double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_1, k_2;
+    double dEdN_H, dEdN_K, dEdN_sum;
+    double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
+    double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
+    double Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
+    double m[VECTORSIZE*VECTORSIZE];
+    double p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], dvn[VECTORSIZE], dv_1dvn[VECTORSIZE], ndv[VECTORSIZE];
+    double dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
+    double NvidN[VECTORSIZE], viNvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
+    double A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
+    double b[NEIGHBORSIZE], k_p[2];
+    PRECISION dEdNs;
+    PRECISION *vi, *vj, *vn, *Nvi, *Nvj;
+    vertex_t *curr_vertex, *neighbor_vertex, *next_neighbor_vertex;
+    halfedge_t *curr_neighbor, *next_neighbor;
     vertex_t *vertices = (vertex_t*) vertices_;
     face_t *faces = (face_t*) faces_;
 
@@ -999,7 +823,8 @@ static void c_curvature_grad(void *vertices_,
         Nvi = curr_vertex->normal;  // unitless
 
         // projection matrix
-        scalar_mult(Nvi, dN, NvidN, VECTORSIZE);  // unitless
+        ffscalar_multd(Nvi, dN, NvidN, VECTORSIZE);  // unitless
+        fdsubtract3d(vi,NvidN,viNvidN);
         orthogonal_projection_matrix3(Nvi, p);  // unitless
 
         // Need a three-pass over the neighbors
@@ -1013,8 +838,8 @@ static void c_curvature_grad(void *vertices_,
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
 
             vj = neighbor_vertex->position;  // nm
-            subtract(vj,vi,dv,VECTORSIZE); // nm
-            dv_norm = norm(dv);  // nm
+            ffsubtract3d(vj,vi,dv); // nm
+            dv_norm = norm3(dv);  // nm
             // radial weighting
             if (dv_norm > EPSILON)
                 r_sum += 1.0/dv_norm;  // 1/nm
@@ -1029,6 +854,7 @@ static void c_curvature_grad(void *vertices_,
             Mvi[j] = 0.0;
 
         // 2. Compute Mvi
+        dareas = 0.0; // nm^2
         areas = 0.0;  // nm^2
         dE_neighbors[i] = 0.0;  // eV/nm
         for(j=0;j<n_neighbors;++j)
@@ -1037,63 +863,74 @@ static void c_curvature_grad(void *vertices_,
             curr_neighbor = &(halfedges[neighbor]);
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
             vj = neighbor_vertex->position;  // nm
-            subtract(vj,vi,dv,VECTORSIZE); // nm
-            subtract(dv,NvidN,dv_1,VECTORSIZE);  // nm
+            ffsubtract3d(vj,vi,dv); // nm
+            subtract3(dv,NvidN,dv_1);  // nm
 
-            dv_norm = norm(dv);  // nm
-            dv_1_norm = norm(dv_1);  // nm
+            dv_norm = norm3(dv);  // nm
+            dv_1_norm = norm3(dv_1);  // nm
 
             // normalized vectors
             if (dv_norm > EPSILON)
-                scalar_divide(dv,dv_norm,dv_hat,VECTORSIZE);  // unitless
+                scalar_divide3(dv,dv_norm,dv_hat);  // unitless
             if (dv_1_norm > EPSILON)
-                scalar_divide(dv_1,dv_1_norm,dv_1_hat,VECTORSIZE);  // unitless
+                scalar_divide3(dv_1,dv_1_norm,dv_1_hat);  // unitless
 
             // tangents
             scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
             project3(p, ndv, T_theta); // nm^2
-            T_theta_norm = norm(T_theta); // nm^2
+            T_theta_norm = norm3(T_theta); // nm^2
             if (T_theta_norm > EPSILON)
-                scalar_divide(T_theta,T_theta_norm,Tij,VECTORSIZE); // unitless
+                scalar_divide3(T_theta,T_theta_norm,Tij); // unitless
             else
                 for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
 
             // edge normals subtracted from vertex normals
             // the square root checks are only needed for non-manifold meshes
-            Nvidv_hat = SQR(dot(Nvi,dv_hat,VECTORSIZE));
+            Nvidv_hat = SQUARE(fddot3d(Nvi,dv_hat));
             if (Nvidv_hat > 1.0)
-                Ni_diff = 0.0;
+                Ni_diff = sqrt(2.0);
             else
-                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // 1/nm
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // unitless
             Nvj = neighbor_vertex->normal;  // unitless
-            Nvjdv_hat = SQR(dot(Nvj,dv_hat,VECTORSIZE));
+            Nvjdv_hat = SQUARE(fddot3d(Nvj,dv_hat));
             if (Nvjdv_hat > 1.0)
-                Nj_diff = 0.0;
+                Nj_diff = sqrt(2.0);
             else
-                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // 1/nm
-            Nvjdv_1_hat = SQR(dot(Nvj,dv_1_hat,VECTORSIZE));
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // unitless
+            Nvjdv_1_hat = SQUARE(fddot3d(Nvj,dv_1_hat));
             if (Nvjdv_1_hat > 1.0)
-                Nj_1_diff = 0.0;
+                Nj_1_diff = sqrt(2.0);
             else
-                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // 1/nm
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // unitless
 
             // Compute the principal curvatures from the difference in normals (same as difference in tangents)
             kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
             kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
 
             // weights/areas
-            w = safe_divide(safe_divide(1.0,dv_norm),r_sum);
-            k = safe_divide(2.0*sign(dot(Nvi,dv,VECTORSIZE))*Ni_diff,dv_norm);  // 1/nm
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
+            k = safe_divide(2.0*SIGN(fddot3d(Nvi,ndv))*Ni_diff,dv_norm);  // unitless
             Aj = faces[curr_neighbor->face].area;  // nm^2
+
+            // calculate the area curr_neighbor->face after shifting vi by dN
+            next_neighbor = &(halfedges[curr_neighbor->next]);
+            next_neighbor_vertex = &(vertices[next_neighbor->vertex]);
+            vn = next_neighbor_vertex->position;  // nm
+            fdsubtract3d(vn,viNvidN,dvn);
+            cross3(dv_1,dvn,dv_1dvn);
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
+
             areas += Aj;  // nm^2
-            dE_neighbors[i] += Aj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV/nm
+            dE_neighbors[i] += dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
 
             // Construct Mvi
             outer3(Tij,Tij,Mvi_temp);
-            scalar_mult(Mvi_temp,w*k,Mvi_temp2,VECTORSIZE*VECTORSIZE);
-            for (jj=0;jj<VECTORSIZE*VECTORSIZE;++jj)
+            scalar_mult(Mvi_temp,w*k,Mvi_temp2,(VECTORSIZE*VECTORSIZE));
+            for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
                 Mvi[jj] += Mvi_temp2[jj];
         }
+        dareas = dareas - areas;  // calculate local difference in area after shifting dN
 
         // Interlude: calculate curvature tensor
         compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
@@ -1111,18 +948,18 @@ static void c_curvature_grad(void *vertices_,
         }
 
         // mean and gaussian curvatures
-        H[i] = 0.5*(k_1+k_2);
-        K[i] = k_1*k_2;
+        H[i] = (PRECISION)(0.5*(k_1+k_2));  // 1/nm
+        K[i] = (PRECISION)(k_1*k_2); // 1/nm^2
 
         // create little m (eigenvector matrix)
         m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
         m[1] = v2[0]; m[4] = v2[1]; m[7] = v2[2];
-        m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
+        // m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
 
         // since we're operating at a fixed size, zero out A and At so we don't add
         // extra values to our matrix
-        for (j=0;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
-        for (j=0;j<NEIGHBORSIZE;++j) b[j] = 0.0;
+        for (j=0;j<NEIGHBORSIZE;++j) A[j] = At[j] = AtAinvAt[j] = b[j] = 0.0;
+        for (j=NEIGHBORSIZE;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
 
         // 3. Compute shift
         for (j=0;j<n_neighbors;++j)
@@ -1132,14 +969,14 @@ static void c_curvature_grad(void *vertices_,
             neighbor_vertex = &(vertices[curr_neighbor->vertex]);
             vj = neighbor_vertex->position;  // nm
 
-            subtract(vj,vi,dv,VECTORSIZE); // nm
+            ffsubtract3d(vj,vi,dv); // nm
 
             // construct a quadratic in the space of T_1 vs. T_2
-            A[2*j] = SQR(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
-            A[2*j+1] = SQR(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
+            A[2*j] = SQUARE(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
             // Update the equation y-intercept to displace the curve along the normal direction
-            b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - dN;
+            b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - (double)dN;
         }
 
         // solve 
@@ -1149,22 +986,1003 @@ static void c_curvature_grad(void *vertices_,
         matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
         matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
 
-        dH[i] = (0.5*(k_p[0] + k_p[1]) - H[i])/dN;  // 1/nm^2
-        dK[i] = ((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/dN;  // 1/nm
+        dH[i] = (PRECISION)(-1.0*(0.5*(k_p[0] + k_p[1]) - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(-1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/((double)dN));  // 1/nm^2
 
-        E[i] = areas*(0.5*kc*SQR(2.0*H[i] - c0) + kg*K[i]);
+        E[i] = (PRECISION)(areas*((double)(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i])));
 
-        pE[i] = exp(-(1.0/KBT)*E[i]);
+        pE[i] = (PRECISION)(exp(-(1.0/KBT)*((double)(E[i]))));
 
         // Take into account the change in neighboring energies for each vertex shift
         // Compute dEdN by component
-        dEdN_H = areas*kc*(2.0*H[i]-c0)*dH[i];  // eV/nm
-        dEdN_K = areas*kg*dK[i];  // eV/nm
-        dEdN_sum = (dEdN_H + dEdN_K); // + dE_neighbors[i]); // eV/nm # + dE_neighbors[i])
-        dEdNs = -1.0*dEdN_sum; //*(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);
+        dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        dEdN_sum = (dEdN_H + dEdN_K+ dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdNs = (PRECISION)(-1.0*dEdN_sum)*(1.0-pE[i]);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+
+        // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
 
         for (jj=0;jj<VECTORSIZE;++jj) {
             (dEdN[i]).position[jj] = dEdNs*Nvi[jj];
+            // if isnan((dEdN[i]).position[jj]) {
+            //     printf("%e %e\n", l1, l2);
+            //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);
+            //     printf("%e %e\n", AtA[0], AtA[1]);
+            //     printf("%e %e\n", AtA[2], AtA[3]);
+            //     printf("%e %e\n", AtAinv[0], AtAinv[1]);
+            //     printf("%e %e\n", AtAinv[2], AtAinv[3]);
+            //     for (j=0;j<2*NEIGHBORSIZE;++j)
+            //         printf("%e ", A[j]);
+            //     printf("\n");
+            //     for (j=0;j<NEIGHBORSIZE;++j)
+            //         printf("%e ", b[j]);
+            //     printf("\n");
+            // }
+        }
+    }
+}
+
+/** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
+ * 
+ *  Where possible, I have tried to match the code (order, variable names) to the original python code.
+ *
+ *  @param vertices_ void vertex_d/vertex_t set of mesh vertices
+ *  @param faces_ void face_d/face_t set of mesh faces
+ *  @param halfedges halfedges_t set of mesh halfedges
+ *  @param dN PRECISION displacment of the normal vector for finite difference estimation of curvature
+ *  @param skip_prob PRECISION optional probability in [0,1] for Monte-Carlo subsampling of vertices during update step
+ *  @param n_vertices int number of vertices in the mesh
+ *  @param H PRECISION n_vertices vector of mean curvatures 
+ *  @param K PRECISION n_vertices vector of Gaussian curvatures 
+ *  @param dH PRECISION n_vertices vector of mean curvature gradient
+ *  @param dK PRECISION n_vertices vector of Gaussian curvature gradient
+ *  @param E PRECISION n_vertices vector of bending energy, as defined by Canham-Helfrich functional, stored in each vertex
+ *  @param pE PRECISION n_vertices vector of energy likelihood, defined by a Boltzmann distribution on the Canham-Helfrich
+ *  @param dE_neighbors PRECISION n_vertices vector of how a shift at this vertex changes the bending energy in 1-ring neighbor vertices
+ *  @param kc PRECISION bending stiffness coefficient (eV)
+ *  @param kg PRECISION bending stiffness coefficient (eV)
+ *  @param c0 PRECISION spontaneous curvature (1/nm)
+ *  @param dEdN PRECISION n_vertices vector of energy gradient
+ *  @return Void
+ */
+static void c_curvature_grad_centroid(void *vertices_, 
+                             void *faces_,
+                             halfedge_t *halfedges,
+                             PRECISION dN,
+                             PRECISION skip_prob,
+                             int n_vertices,
+                             PRECISION *H,
+                             PRECISION *K,
+                             PRECISION *dH,
+                             PRECISION *dK,
+                             PRECISION *E,
+                             PRECISION *pE,
+                             PRECISION *dE_neighbors,
+                             PRECISION kc,
+                             PRECISION kg,
+                             PRECISION c0,
+                             points_t *dEdN)
+{
+    int i, j, jj, neighbor, n_neighbors;
+    double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_0, k_1;
+    double dEdN_H, dEdN_K, dEdN_sum;
+    double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
+    double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
+    double Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
+    double m[VECTORSIZE*VECTORSIZE];
+    double p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], dvn[VECTORSIZE], dv_1dvn[VECTORSIZE], ndv[VECTORSIZE];
+    double dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
+    double NvidN[VECTORSIZE], viNvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
+    double A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
+    double b[NEIGHBORSIZE], k_p[2];
+    PRECISION dEdNs, vj_centroid[3], vivj[3], vivj_norm;
+    PRECISION *vi, *vj, *vn, *Nvi, *Nvj;
+    vertex_t *curr_vertex, *neighbor_vertex, *next_neighbor_vertex;
+    halfedge_t *curr_neighbor, *next_neighbor;
+    vertex_t *vertices = (vertex_t*) vertices_;
+    face_t *faces = (face_t*) faces_;
+
+    for (i=0;i<n_vertices;++i)
+    {
+        curr_vertex = &(vertices[i]);
+        // Skip unused vertices || stochastically choose which vertices to adjust
+        if ( ((curr_vertex->halfedge) == -1) || ((skip_prob>0)&&(r2()<skip_prob)) ) {
+            H[i] = 0.0;
+            K[i] = 0.0;
+            dH[i] = 0.0;
+            dK[i] = 0.0;
+            dE_neighbors[i] = 0.0;
+            E[i] = 0.0;
+            pE[i] = 0.0;
+            for (jj=0;jj<VECTORSIZE;++jj)
+                (dEdN[i]).position[jj] = 0.0;
+            continue;
+        }
+
+        // Vertex and its normal
+        vi = curr_vertex->position; // nm
+        Nvi = curr_vertex->normal;  // unitless
+
+        // zero out neighbor centroid
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] = 0.0;
+
+        // Need a three-pass over the neighbors
+        // 1. get the radial weights
+        r_sum = 0.0; // 1/nm
+        j = 0;
+        neighbor = (curr_vertex->neighbors)[j];
+        while((neighbor!=-1) && (j<NEIGHBORSIZE))
+        {
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+
+            vj = neighbor_vertex->position;  // nm
+            // update centroid position
+            for (jj=0;jj<3;++jj)
+                vj_centroid[jj] += vj[jj];
+            ffsubtract3d(vj,vi,dv); // nm
+            dv_norm = norm3(dv);  // nm
+            // radial weighting
+            if (dv_norm > EPSILON)
+                r_sum += 1.0/dv_norm;  // 1/nm
+
+            ++j;
+            neighbor = (curr_vertex->neighbors)[j];
+        }
+        n_neighbors = j;  // record the number of neighbors for later passes
+
+        // average the position
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] /= n_neighbors;
+        // calculate the normal vector pointing from vi to vj_centroid
+        ffsubtract3f(vj_centroid,vi,vivj);
+        vivj_norm = fnorm3f(vivj);
+        if (vivj_norm > 0.0) {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] /= vivj_norm;
+        } else {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] = 0.0;
+        }
+
+        // projection matrix
+        ffscalar_multd(vivj, dN, NvidN, VECTORSIZE);  // unitless
+
+        fdsubtract3d(vi,NvidN,viNvidN);
+        orthogonal_projection_matrix3(Nvi, p);  // unitless
+
+        // zero out Mvi
+        for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
+            Mvi[j] = 0.0;
+
+        // 2. Compute Mvi
+        dareas = 0.0; // nm^2
+        areas = 0.0;  // nm^2
+        dE_neighbors[i] = 0.0;  // eV/nm
+        for(j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+            ffsubtract3d(vj,vi,dv); // nm
+            subtract3(dv,NvidN,dv_1);  // nm
+
+            dv_norm = norm3(dv);  // nm
+            dv_1_norm = norm3(dv_1);  // nm
+
+            // normalized vectors
+            if (dv_norm > EPSILON)
+                scalar_divide3(dv,dv_norm,dv_hat);  // unitless
+            if (dv_1_norm > EPSILON)
+                scalar_divide3(dv_1,dv_1_norm,dv_1_hat);  // unitless
+
+            // tangents
+            scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
+            project3(p, ndv, T_theta); // nm^2
+            T_theta_norm = norm3(T_theta); // nm^2
+            if (T_theta_norm > EPSILON)
+                scalar_divide3(T_theta,T_theta_norm,Tij); // unitless
+            else
+                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
+
+            // edge normals subtracted from vertex normals
+            // the square root checks are only needed for non-manifold meshes
+            Nvidv_hat = SQUARE(fddot3d(Nvi,dv_hat));
+            if (Nvidv_hat > 1.0)
+                Ni_diff = sqrt(2.0);
+            else
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // unitless
+            Nvj = neighbor_vertex->normal;  // unitless
+            Nvjdv_hat = SQUARE(fddot3d(Nvj,dv_hat));
+            if (Nvjdv_hat > 1.0)
+                Nj_diff = sqrt(2.0);
+            else
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // unitless
+            Nvjdv_1_hat = SQUARE(fddot3d(Nvj,dv_1_hat));
+            if (Nvjdv_1_hat > 1.0)
+                Nj_1_diff = sqrt(2.0);
+            else
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // unitless
+
+            // Compute the principal curvatures from the difference in normals (same as difference in tangents)
+            kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
+            kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
+
+            // weights/areas
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
+            k = safe_divide(2.0*SIGN(fddot3d(Nvi,ndv))*Ni_diff,dv_norm);  // unitless
+            Aj = faces[curr_neighbor->face].area;  // nm^2
+
+            // calculate the area curr_neighbor->face after shifting vi by dN
+            next_neighbor = &(halfedges[curr_neighbor->next]);
+            next_neighbor_vertex = &(vertices[next_neighbor->vertex]);
+            vn = next_neighbor_vertex->position;  // nm
+            fdsubtract3d(vn,viNvidN,dvn);
+            cross3(dv_1,dvn,dv_1dvn);
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
+        
+            areas += Aj;  // nm^2
+            // printf("kj: %e kj_1: %e\n", kj, kj_1);
+            // dE_neighbors[i] += -1.0*dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+            dE_neighbors[i] += ((PRECISION)((dAj*w*0.5*((double)kc)*SQUARE(2.0*kj_1-((double)c0)) - Aj*w*0.5*((double)kc)*SQUARE(2.0*kj-((double)c0)))))/dN;  // eV, note this only on mean curvature
+
+            // Construct Mvi
+            outer3(Tij,Tij,Mvi_temp);
+            scalar_mult(Mvi_temp,w*k,Mvi_temp2,(VECTORSIZE*VECTORSIZE));
+            for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
+                Mvi[jj] += Mvi_temp2[jj];
+        }
+        // dareas = dareas - areas;  // calculate local difference in area after shifting dN
+
+        // Interlude: calculate curvature tensor
+        compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
+
+        if isnan(l1) {
+            // weird tensor
+            k_0 = 0.0; k_1 = 0.0;
+            v1[0] = v1[1] = v1[2] = 0.0;
+            v2[0] = v2[1] = v2[2] = 0.0;
+        } else {
+
+            // principal curvatures (1/nm)
+            k_0 = 3.0*l1 - l2;
+            k_1 = 3.0*l2 - l1;
+        }
+
+        // mean and gaussian curvatures
+        H[i] = (PRECISION)(0.5*(k_0+k_1));  // 1/nm
+        K[i] = (PRECISION)(k_0*k_1); // 1/nm^2
+
+        // create little m (eigenvector matrix)
+        m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
+        m[1] = v2[0]; m[4] = v2[1]; m[7] = v2[2];
+        // m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
+
+        // since we're operating at a fixed size, zero out A and At so we don't add
+        // extra values to our matrix
+        for (j=0;j<NEIGHBORSIZE;++j) A[j] = At[j] = AtAinvAt[j] = b[j] = 0.0;
+        for (j=NEIGHBORSIZE;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
+
+        // 3. Compute shift
+        for (j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+
+            ffsubtract3d(vj,vi,dv); // nm
+
+            // construct a quadratic in the space of T_1 vs. T_2
+            A[2*j] = SQUARE(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
+
+            // Update the equation y-intercept to displace the curve along the normal direction
+            b[j] = A[2*j]*k_0+A[2*j+1]*k_1 - (double)dN;
+        }
+
+        // solve 
+        transpose(A, At, NEIGHBORSIZE, 2);  // construct A transpose
+        matmul(At, A, AtA, 2, NEIGHBORSIZE, 2);  // construct AtA
+        moore_penrose_2x2(AtA, AtAinv);  // construct inverted matrix
+        matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
+        matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
+
+        // printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+
+        dH[i] = (PRECISION)(0.5*(k_p[0] + k_p[1])); // - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(k_p[0]*k_p[1]);
+        // dK[i] = (PRECISION)(((k_p[0]-k_0)*k_1 + k_0*(k_p[1]-k_1))/((double)dN));  // 1/nm^2
+
+        E[i] = (PRECISION)(areas*((0.5*((double)kc)*SQUARE(2.0*H[i] - ((double)c0)) + ((double)kg)*((double)(K[i])))));
+
+        pE[i] = (PRECISION)(exp(-(1.0/KBT)*((double)(E[i]))));
+        if (E[i] < 0.0)
+            printf("E[i]: %e pE[i]: %e\n", E[i], pE[i]);
+
+        // Take into account the change in neighboring energies for each vertex shift
+        // Compute dEdN by component
+        // dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        // dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        // dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdN_sum = ((PRECISION)((dareas*((0.5*((double)kc)*SQUARE(2.0*((double)(dH[i])) - ((double)c0)) + ((double)kg)*((double)(dK[i]))))) - ((double)(E[i]))))/dN + dE_neighbors[i];
+        dEdNs = -1.0*dEdN_sum*(1.0-pE[i]);  // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+
+        if ((dEdN_sum < -0.1) || (dEdN_sum > 0.1))
+        {
+            printf("Exceeded at vertex %d with sum %e\n", i, dEdN_sum);
+            printf("radius: %e radius_diff: %e\n", fnorm3f(vi), norm3(viNvidN));
+            printf("vivj_norm: %e\n", vivj_norm);
+            printf("areas: %e\n", areas);
+            printf("dareas: %e\n", dareas);
+            printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+            printf("H[i]: %e dH[i]: %e\n", H[i], dH[i]);
+            printf("K[i]: %e dK[i]: %e\n", K[i], dK[i]);
+            printf("E[i]: %e\n", E[i]);
+            printf("dE_neighbors[i]: %e\n", dE_neighbors[i]);
+        }
+
+        // printf("dEdN_H: %e dEdN_K: %e dE_neighbors[i]: %e ratio: %e\n",dEdN_H, dEdN_K, dE_neighbors[i], dE_neighbors[i]/dEdN_H);
+
+        // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
+
+        for (jj=0;jj<VECTORSIZE;++jj) {
+            (dEdN[i]).position[jj] = dEdNs*vivj[jj];
+            // if isnan((dEdN[i]).position[jj]) {
+            //     printf("%e %e\n", l1, l2);
+            //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);
+            //     printf("%e %e\n", AtA[0], AtA[1]);
+            //     printf("%e %e\n", AtA[2], AtA[3]);
+            //     printf("%e %e\n", AtAinv[0], AtAinv[1]);
+            //     printf("%e %e\n", AtAinv[2], AtAinv[3]);
+            //     for (j=0;j<2*NEIGHBORSIZE;++j)
+            //         printf("%e ", A[j]);
+            //     printf("\n");
+            //     for (j=0;j<NEIGHBORSIZE;++j)
+            //         printf("%e ", b[j]);
+            //     printf("\n");
+            // }
+        }
+    }
+}
+
+/** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
+ * 
+ *  Where possible, I have tried to match the code (order, variable names) to the original python code.
+ *
+ *  @param vertices_ void vertex_d/vertex_t set of mesh vertices
+ *  @param faces_ void face_d/face_t set of mesh faces
+ *  @param halfedges halfedges_t set of mesh halfedges
+ *  @param dN PRECISION displacment of the normal vector for finite difference estimation of curvature
+ *  @param skip_prob PRECISION optional probability in [0,1] for Monte-Carlo subsampling of vertices during update step
+ *  @param n_vertices int number of vertices in the mesh
+ *  @param H PRECISION n_vertices vector of mean curvatures 
+ *  @param K PRECISION n_vertices vector of Gaussian curvatures 
+ *  @param dH PRECISION n_vertices vector of mean curvature gradient
+ *  @param dK PRECISION n_vertices vector of Gaussian curvature gradient
+ *  @param E PRECISION n_vertices vector of bending energy, as defined by Canham-Helfrich functional, stored in each vertex
+ *  @param pE PRECISION n_vertices vector of energy likelihood, defined by a Boltzmann distribution on the Canham-Helfrich
+ *  @param dE_neighbors PRECISION n_vertices vector of how a shift at this vertex changes the bending energy in 1-ring neighbor vertices
+ *  @param kc PRECISION bending stiffness coefficient (eV)
+ *  @param kg PRECISION bending stiffness coefficient (eV)
+ *  @param c0 PRECISION spontaneous curvature (1/nm)
+ *  @param dEdN PRECISION n_vertices vector of energy gradient
+ *  @return Void
+ */
+static void c_curvature_grad2(void *vertices_, 
+                             void *faces_,
+                             halfedge_t *halfedges,
+                             PRECISION dN,
+                             PRECISION skip_prob,
+                             int n_vertices,
+                             PRECISION *H,
+                             PRECISION *K,
+                             PRECISION *dH,
+                             PRECISION *dK,
+                             PRECISION *E,
+                             PRECISION *pE,
+                             PRECISION *dE_neighbors,
+                             PRECISION kc,
+                             PRECISION kg,
+                             PRECISION c0,
+                             points_t *dEdN)
+{
+    int i, j, jj, neighbor, n_neighbors;
+    double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_1, k_2;
+    double dEdN_H, dEdN_K, dEdN_sum;
+    double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
+    double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
+    double Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
+    double m[VECTORSIZE*VECTORSIZE];
+    double p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], dvn[VECTORSIZE], dv_1dvn[VECTORSIZE], ndv[VECTORSIZE];
+    double dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
+    double NvidN[VECTORSIZE], viNvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
+    double A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
+    double b[NEIGHBORSIZE], k_p[2];
+    PRECISION dEdNs, vj_centroid[3], vivj[3], vivj_norm;
+    PRECISION *vi, *vj, *vn, *Nvi, *Nvj;
+    vertex_t *curr_vertex, *neighbor_vertex, *next_neighbor_vertex;
+    halfedge_t *curr_neighbor, *next_neighbor;
+    vertex_t *vertices = (vertex_t*) vertices_;
+    face_t *faces = (face_t*) faces_;
+
+    for (i=0;i<n_vertices;++i)
+    {
+        curr_vertex = &(vertices[i]);
+        // Skip unused vertices || stochastically choose which vertices to adjust
+        if ( ((curr_vertex->halfedge) == -1) || ((skip_prob>0)&&(r2()<skip_prob)) ) {
+            H[i] = 0.0;
+            K[i] = 0.0;
+            dH[i] = 0.0;
+            dK[i] = 0.0;
+            dE_neighbors[i] = 0.0;
+            E[i] = 0.0;
+            pE[i] = 0.0;
+            for (jj=0;jj<VECTORSIZE;++jj)
+                (dEdN[i]).position[jj] = 0.0;
+            continue;
+        }
+
+        // Vertex and its normal
+        vi = curr_vertex->position; // nm
+        Nvi = curr_vertex->normal;  // unitless
+
+        // projection matrix
+        // ffscalar_multd(Nvi, dN, NvidN, VECTORSIZE);  // unitless
+        // fdsubtract3d(vi,NvidN,viNvidN);
+        // orthogonal_projection_matrix3(Nvi, p);  // unitless
+
+        // zero out neighbor centroid
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] = 0.0;
+
+        // Need a three-pass over the neighbors
+        // 1. get the radial weights
+        r_sum = 0.0; // 1/nm
+        j = 0;
+        neighbor = (curr_vertex->neighbors)[j];
+        while((neighbor!=-1) && (j<NEIGHBORSIZE))
+        {
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+
+            vj = neighbor_vertex->position;  // nm
+
+            // update centroid position
+            for (jj=0;jj<3;++jj)
+                vj_centroid[jj] += vj[jj];
+            ffsubtract3d(vj,vi,dv); // nm
+            dv_norm = norm3(dv);  // nm
+            // radial weighting
+            if (dv_norm > EPSILON)
+                r_sum += 1.0/dv_norm;  // 1/nm
+
+            ++j;
+            neighbor = (curr_vertex->neighbors)[j];
+        }
+        n_neighbors = j;  // record the number of neighbors for later passes
+
+        // average the position
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] /= n_neighbors;
+        // calculate the normal vector pointing from vi to vj_centroid
+        ffsubtract3f(vj_centroid,vi,vivj);
+        vivj_norm = fnorm3f(vivj);
+        for (jj=0;jj<3;++jj)
+            vivj[jj] /= vivj_norm;
+
+        // projection matrix
+        ffscalar_multd(vivj, dN, NvidN, VECTORSIZE);  // unitless
+
+        fdsubtract3d(vi,NvidN,viNvidN);
+        orthogonal_projection_matrix3(Nvi, p);  // unitless
+
+        // zero out Mvi
+        for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
+            Mvi[j] = 0.0;
+
+        // 2. Compute Mvi
+        dareas = 0.0; // nm^2
+        areas = 0.0;  // nm^2
+        dE_neighbors[i] = 0.0;  // eV/nm
+        for(j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+            ffsubtract3d(vj,vi,dv); // nm
+            subtract3(dv,NvidN,dv_1);  // nm
+
+            dv_norm = norm3(dv);  // nm
+            dv_1_norm = norm3(dv_1);  // nm
+
+            // normalized vectors
+            if (dv_norm > EPSILON)
+                scalar_divide3(dv,dv_norm,dv_hat);  // unitless
+            if (dv_1_norm > EPSILON)
+                scalar_divide3(dv_1,dv_1_norm,dv_1_hat);  // unitless
+
+            // tangents
+            scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
+            project3(p, ndv, T_theta); // nm^2
+            T_theta_norm = norm3(T_theta); // nm^2
+            if (T_theta_norm > EPSILON)
+                scalar_divide3(T_theta,T_theta_norm,Tij); // unitless
+            else
+                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
+
+            // edge normals subtracted from vertex normals
+            // the square root checks are only needed for non-manifold meshes
+            Nvidv_hat = SQUARE(fddot3d(Nvi,dv_hat));
+            if (Nvidv_hat > 1.0)
+                Ni_diff = sqrt(2.0);
+            else
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // unitless
+            Nvj = neighbor_vertex->normal;  // unitless
+            Nvjdv_hat = SQUARE(fddot3d(Nvj,dv_hat));
+            if (Nvjdv_hat > 1.0)
+                Nj_diff = sqrt(2.0);
+            else
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // unitless
+            Nvjdv_1_hat = SQUARE(fddot3d(Nvj,dv_1_hat));
+            if (Nvjdv_1_hat > 1.0)
+                Nj_1_diff = sqrt(2.0);
+            else
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // unitless
+
+            // Compute the principal curvatures from the difference in normals (same as difference in tangents)
+            kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
+            kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
+
+            // weights/areas
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
+            k = safe_divide(2.0*SIGN(fddot3d(Nvi,ndv))*Ni_diff,dv_norm);  // unitless
+            Aj = faces[curr_neighbor->face].area;  // nm^2
+
+            // calculate the area curr_neighbor->face after shifting vi by dN
+            next_neighbor = &(halfedges[curr_neighbor->next]);
+            next_neighbor_vertex = &(vertices[next_neighbor->vertex]);
+            vn = next_neighbor_vertex->position;  // nm
+            fdsubtract3d(vn,viNvidN,dvn);
+            cross3(dv_1,dvn,dv_1dvn);
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
+
+            areas += Aj;  // nm^2
+            dE_neighbors[i] += dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+
+            // Construct Mvi
+            outer3(Tij,Tij,Mvi_temp);
+            scalar_mult(Mvi_temp,w*k,Mvi_temp2,(VECTORSIZE*VECTORSIZE));
+            for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
+                Mvi[jj] += Mvi_temp2[jj];
+        }
+        dareas = dareas - areas;  // calculate local difference in area after shifting dN
+
+        // Interlude: calculate curvature tensor
+        compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
+
+        if isnan(l1) {
+            // weird tensor
+            k_1 = 0.0; k_2 = 0.0;
+            v1[0] = v1[1] = v1[2] = 0.0;
+            v2[0] = v2[1] = v2[2] = 0.0;
+        } else {
+
+            // principal curvatures (1/nm)
+            k_1 = 3.0*l1 - l2;
+            k_2 = 3.0*l2 - l1;
+        }
+
+        // mean and gaussian curvatures
+        H[i] = (PRECISION)(0.5*(k_1+k_2));  // 1/nm
+        K[i] = (PRECISION)(k_1*k_2); // 1/nm^2
+
+        // create little m (eigenvector matrix)
+        m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
+        m[1] = v2[0]; m[4] = v2[1]; m[7] = v2[2];
+        // m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
+
+        // since we're operating at a fixed size, zero out A and At so we don't add
+        // extra values to our matrix
+        for (j=0;j<NEIGHBORSIZE;++j) A[j] = At[j] = AtAinvAt[j] = b[j] = 0.0;
+        for (j=NEIGHBORSIZE;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
+
+        // 3. Compute shift
+        for (j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+
+            ffsubtract3d(vj,vi,dv); // nm
+
+            // construct a quadratic in the space of T_1 vs. T_2
+            A[2*j] = SQUARE(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
+
+            // Update the equation y-intercept to displace the curve along the normal direction
+            b[j] = A[2*j]*k_1+A[2*j+1]*k_2 - (double)dN;
+        }
+
+        // solve 
+        transpose(A, At, NEIGHBORSIZE, 2);  // construct A transpose
+        matmul(At, A, AtA, 2, NEIGHBORSIZE, 2);  // construct AtA
+        moore_penrose_2x2(AtA, AtAinv);  // construct inverted matrix
+        matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
+        matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
+
+        dH[i] = (PRECISION)(-1.0*(0.5*(k_p[0] + k_p[1]) - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(-1.0*((k_p[0]-k_1)*k_2 + k_1*(k_p[1]-k_2))/((double)dN));  // 1/nm^2
+
+        E[i] = (PRECISION)(areas*((double)(0.5*kc*SQUARE(2.0*H[i] - c0) + kg*K[i])));
+
+        pE[i] = (PRECISION)(exp(-(1.0/KBT)*((double)(E[i]))));
+
+        // Take into account the change in neighboring energies for each vertex shift
+        // Compute dEdN by component
+        dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+        dEdNs = (PRECISION)(-1.0*dEdN_sum)*(1.0-pE[i]);  // *(1.0-pE[i]); // eV/nm # *(1.0-pE[i]);  // drive dEdNs toward 0
+
+        // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
+
+        for (jj=0;jj<VECTORSIZE;++jj) {
+            (dEdN[i]).position[jj] = dEdNs*vivj[jj];
+            // if isnan((dEdN[i]).position[jj]) {
+            //     printf("%e %e\n", l1, l2);
+            //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);
+            //     printf("%e %e\n", AtA[0], AtA[1]);
+            //     printf("%e %e\n", AtA[2], AtA[3]);
+            //     printf("%e %e\n", AtAinv[0], AtAinv[1]);
+            //     printf("%e %e\n", AtAinv[2], AtAinv[3]);
+            //     for (j=0;j<2*NEIGHBORSIZE;++j)
+            //         printf("%e ", A[j]);
+            //     printf("\n");
+            //     for (j=0;j<NEIGHBORSIZE;++j)
+            //         printf("%e ", b[j]);
+            //     printf("\n");
+            // }
+        }
+    }
+}
+
+
+/** @brief c implementation to calculate gradient of canham-helfrich energy function at mesh vertices
+ * 
+ *  Where possible, I have tried to match the code (order, variable names) to the original python code.
+ *
+ *  @param vertices_ void vertex_d/vertex_t set of mesh vertices
+ *  @param faces_ void face_d/face_t set of mesh faces
+ *  @param halfedges halfedges_t set of mesh halfedges
+ *  @param dN PRECISION displacment of the normal vector for finite difference estimation of curvature
+ *  @param skip_prob PRECISION optional probability in [0,1] for Monte-Carlo subsampling of vertices during update step
+ *  @param n_vertices int number of vertices in the mesh
+ *  @param H PRECISION n_vertices vector of mean curvatures 
+ *  @param K PRECISION n_vertices vector of Gaussian curvatures 
+ *  @param dH PRECISION n_vertices vector of mean curvature gradient
+ *  @param dK PRECISION n_vertices vector of Gaussian curvature gradient
+ *  @param E PRECISION n_vertices vector of bending energy, as defined by Canham-Helfrich functional, stored in each vertex
+ *  @param pE PRECISION n_vertices vector of energy likelihood, defined by a Boltzmann distribution on the Canham-Helfrich
+ *  @param dE_neighbors PRECISION n_vertices vector of how a shift at this vertex changes the bending energy in 1-ring neighbor vertices
+ *  @param kc PRECISION bending stiffness coefficient (eV)
+ *  @param kg PRECISION bending stiffness coefficient (eV)
+ *  @param c0 PRECISION spontaneous curvature (1/nm)
+ *  @param dEdN PRECISION n_vertices vector of energy gradient
+ *  @return Void
+ */
+static void c_curvature_grad_centroid2(void *vertices_, 
+                             void *faces_,
+                             halfedge_t *halfedges,
+                             PRECISION dN,
+                             PRECISION skip_prob,
+                             int n_vertices,
+                             PRECISION *H,
+                             PRECISION *K,
+                             PRECISION *dH,
+                             PRECISION *dK,
+                             PRECISION *E,
+                             PRECISION *pE,
+                             PRECISION *dE_neighbors,
+                             PRECISION kc,
+                             PRECISION kg,
+                             PRECISION c0,
+                             points_t *dEdN)
+{
+    int i, j, jj, neighbor, n_neighbors;
+    double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_0, k_1;
+    double dEdN_H, dEdN_K, dEdN_sum;
+    double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
+    double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
+    double Mvi_temp[VECTORSIZE*VECTORSIZE], Mvi_temp2[VECTORSIZE*VECTORSIZE];
+    double m[VECTORSIZE*VECTORSIZE];
+    double p[VECTORSIZE*VECTORSIZE], dv[VECTORSIZE], dvn[VECTORSIZE], dv_1dvn[VECTORSIZE], ndv[VECTORSIZE];
+    double dv_hat[VECTORSIZE], dv_1[VECTORSIZE], dv_1_hat[VECTORSIZE];
+    double NvidN[VECTORSIZE], viNvidN[VECTORSIZE], T_theta[VECTORSIZE], Tij[VECTORSIZE];
+    double A[2*NEIGHBORSIZE], At[2*NEIGHBORSIZE], AtA[4], AtAinv[4], AtAinvAt[2*NEIGHBORSIZE];
+    double b[NEIGHBORSIZE], k_p[2];
+    double jitter_width;
+    PRECISION dEdNs, vj_centroid[3], vivj[3], vivj_norm;
+    PRECISION *vi, *vj, *vn, *Nvi, *Nvj;
+    vertex_t *curr_vertex, *neighbor_vertex, *next_neighbor_vertex;
+    halfedge_t *curr_neighbor, *next_neighbor;
+    vertex_t *vertices = (vertex_t*) vertices_;
+    face_t *faces = (face_t*) faces_;
+
+    for (i=0;i<n_vertices;++i)
+    {
+        curr_vertex = &(vertices[i]);
+        // Skip unused vertices || stochastically choose which vertices to adjust
+        if ( ((curr_vertex->halfedge) == -1) || ((skip_prob>0)&&(r2()<skip_prob)) ) {
+            H[i] = 0.0;
+            K[i] = 0.0;
+            dH[i] = 0.0;
+            dK[i] = 0.0;
+            dE_neighbors[i] = 0.0;
+            E[i] = 0.0;
+            pE[i] = 0.0;
+            for (jj=0;jj<VECTORSIZE;++jj)
+                (dEdN[i]).position[jj] = 0.0;
+            continue;
+        }
+
+        // Vertex and its normal
+        vi = curr_vertex->position; // nm
+        Nvi = curr_vertex->normal;  // unitless
+
+        // zero out neighbor centroid
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] = 0.0;
+
+        // Need a three-pass over the neighbors
+        // 1. get the radial weights
+        r_sum = 0.0; // 1/nm
+        j = 0;
+        neighbor = (curr_vertex->neighbors)[j];
+        jitter_width = 10000000000000000.0;
+        while((neighbor!=-1) && (j<NEIGHBORSIZE))
+        {
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+
+            vj = neighbor_vertex->position;  // nm
+            // update centroid position
+            for (jj=0;jj<3;++jj)
+                vj_centroid[jj] += vj[jj];
+            ffsubtract3d(vj,vi,dv); // nm
+            dv_norm = norm3(dv);  // nm
+            if (dv_norm < jitter_width)
+                jitter_width = dv_norm;
+            // radial weighting
+            if (dv_norm > EPSILON)
+                r_sum += 1.0/dv_norm;  // 1/nm
+
+            ++j;
+            neighbor = (curr_vertex->neighbors)[j];
+        }
+        n_neighbors = j;  // record the number of neighbors for later passes
+
+        // average the position
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] /= n_neighbors;
+        // jitter the position
+        for (jj=0;jj<3;++jj)
+            vj_centroid[jj] += jitter_width*(dr2()-0.5);
+        // calculate the normal vector pointing from vi to vj_centroid
+        ffsubtract3f(vj_centroid,vi,vivj);
+        vivj_norm = fnorm3f(vivj);
+        if (vivj_norm > 0.0) {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] /= vivj_norm;
+        } else {
+            for (jj=0;jj<3;++jj)
+                vivj[jj] = 0.0;
+        }
+
+        // calculate infintensimal shift in vivj direction
+        ffscalar_multd(vivj, dN, NvidN, VECTORSIZE);  // unitless
+
+        // subtract from vi for later
+        fdsubtract3d(vi,NvidN,viNvidN);
+
+        // projection matrix
+        orthogonal_projection_matrix3(Nvi, p);  // unitless
+
+        // zero out Mvi
+        for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
+            Mvi[j] = 0.0;
+
+        // 2. Compute Mvi
+        dareas = 0.0; // nm^2
+        areas = 0.0;  // nm^2
+        dE_neighbors[i] = 0.0;  // eV/nm
+        for(j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+            ffsubtract3d(vj,vi,dv); // nm
+            subtract3(dv,NvidN,dv_1);  // nm  shift in -vivj direction
+
+            dv_norm = norm3(dv);  // nm
+            dv_1_norm = norm3(dv_1);  // nm
+
+            // normalized vectors
+            if (dv_norm > EPSILON)
+                scalar_divide3(dv,dv_norm,dv_hat);  // unitless
+            if (dv_1_norm > EPSILON)
+                scalar_divide3(dv_1,dv_1_norm,dv_1_hat);  // unitless
+
+            // tangents
+            scalar_mult(dv,-1.0,ndv,VECTORSIZE); // nm
+            project3(p, ndv, T_theta); // nm^2
+            T_theta_norm = norm3(T_theta); // nm^2
+            if (T_theta_norm > EPSILON)
+                scalar_divide3(T_theta,T_theta_norm,Tij); // unitless
+            else
+                for (jj=0;jj<VECTORSIZE;++jj) Tij[jj] = 0.0;
+
+            // edge normals subtracted from vertex normals
+            // the square root checks are only needed for non-manifold meshes
+            Nvidv_hat = SQUARE(fddot3d(Nvi,dv_hat));
+            if (Nvidv_hat > 1.0)
+                Ni_diff = sqrt(2.0);
+            else
+                Ni_diff = sqrt(2.0-2.0*sqrt(1.0-Nvidv_hat));  // unitless
+            Nvj = neighbor_vertex->normal;  // unitless
+            Nvjdv_hat = SQUARE(fddot3d(Nvj,dv_hat));
+            if (Nvjdv_hat > 1.0)
+                Nj_diff = sqrt(2.0);
+            else
+                Nj_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_hat));  // unitless
+            Nvjdv_1_hat = SQUARE(fddot3d(Nvj,dv_1_hat));
+            if (Nvjdv_1_hat > 1.0)
+                Nj_1_diff = sqrt(2.0);
+            else
+                Nj_1_diff = sqrt(2.0-2.0*sqrt(1.0-Nvjdv_1_hat));  // unitless
+
+            // Compute the principal curvatures from the difference in normals (same as difference in tangents)
+            kj = safe_divide(2.0*Nj_diff, dv_norm);  // 1/nm
+            kj_1 = safe_divide(2.0*Nj_1_diff, dv_1_norm); // 1/nm
+
+            // weights/areas
+            w = safe_divide(safe_divide(1.0,dv_norm),r_sum); // unitless
+            k = safe_divide(2.0*SIGN(fddot3d(Nvi,ndv))*Ni_diff,dv_norm);  // unitless
+            Aj = faces[curr_neighbor->face].area;  // nm^2
+
+            // calculate the area curr_neighbor->face after shifting vi by dN
+            next_neighbor = &(halfedges[curr_neighbor->next]);
+            next_neighbor_vertex = &(vertices[next_neighbor->vertex]);
+            vn = next_neighbor_vertex->position;  // nm
+            fdsubtract3d(vn,viNvidN,dvn);
+            cross3(dv_1,dvn,dv_1dvn);
+            dAj = 0.5*norm3(dv_1dvn);
+            dareas += dAj;
+        
+            areas += Aj;  // nm^2
+            // printf("kj: %e kj_1: %e\n", kj, kj_1);
+            // dE_neighbors[i] += -1.0*dAj*w*kc*(2.0*kj-c0)*(kj_1-kj)/dN;  // eV
+
+            // calculate finite difference of original and shifted -dN*vivj (backwards)
+            dE_neighbors[i] += ((PRECISION)((Aj*w*0.5*((double)kc)*SQUARE(2.0*kj-((double)c0)) - dAj*w*0.5*((double)kc)*SQUARE(2.0*kj_1-((double)c0)))))/dN;  // eV, note this only on mean curvature
+
+            // Construct Mvi
+            outer3(Tij,Tij,Mvi_temp);
+            scalar_mult(Mvi_temp,w*k,Mvi_temp2,(VECTORSIZE*VECTORSIZE));
+            for (jj=0;jj<(VECTORSIZE*VECTORSIZE);++jj)
+                Mvi[jj] += Mvi_temp2[jj];
+        }
+        // dareas = dareas - areas;  // calculate local difference in area after shifting dN
+
+        // Interlude: calculate curvature tensor
+        compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
+
+        if isnan(l1) {
+            // weird tensor
+            k_0 = 0.0; k_1 = 0.0;
+            v1[0] = v1[1] = v1[2] = 0.0;
+            v2[0] = v2[1] = v2[2] = 0.0;
+        } else {
+
+            // principal curvatures (1/nm)
+            k_0 = 3.0*l1 - l2;
+            k_1 = 3.0*l2 - l1;
+        }
+
+        // mean and gaussian curvatures
+        H[i] = (PRECISION)(0.5*(k_0+k_1));  // 1/nm
+        K[i] = (PRECISION)(k_0*k_1); // 1/nm^2
+
+        // create little m (eigenvector matrix)
+        m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
+        m[1] = v2[0]; m[4] = v2[1]; m[7] = v2[2];
+        // m[2] = Nvi[0]; m[5] = Nvi[1]; m[8] = Nvi[2];  // TODO: we don't need these assignments, skip?
+
+        // since we're operating at a fixed size, zero out A and At so we don't add
+        // extra values to our matrix
+        for (j=0;j<NEIGHBORSIZE;++j) A[j] = At[j] = AtAinvAt[j] = b[j] = 0.0;
+        for (j=NEIGHBORSIZE;j<(2*NEIGHBORSIZE);++j) A[j] = At[j] = AtAinvAt[j] = 0.0;
+
+        // 3. Compute shift
+        for (j=0;j<n_neighbors;++j)
+        {
+            neighbor = (curr_vertex->neighbors)[j];
+            curr_neighbor = &(halfedges[neighbor]);
+            neighbor_vertex = &(vertices[curr_neighbor->vertex]);
+            vj = neighbor_vertex->position;  // nm
+
+            ffsubtract3d(vj,vi,dv); // nm
+
+            // construct a quadratic in the space of T_1 vs. T_2
+            A[2*j] = SQUARE(dv[0]*m[0]+dv[1]*m[3]+dv[2]*m[6]);
+            A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
+
+            // Update the equation y-intercept to displace the curve along the normal direction
+            b[j] = A[2*j]*k_0+A[2*j+1]*k_1 - (double)dN;
+        }
+
+        // solve 
+        transpose(A, At, NEIGHBORSIZE, 2);  // construct A transpose
+        matmul(At, A, AtA, 2, NEIGHBORSIZE, 2);  // construct AtA
+        moore_penrose_2x2(AtA, AtAinv);  // construct inverted matrix
+        matmul(AtAinv, At, AtAinvAt, 2, 2, NEIGHBORSIZE);
+        matmul(AtAinvAt, b, k_p, 2, NEIGHBORSIZE, 1);  // k_p are principal curvatures after displacement
+
+        // printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+
+        dH[i] = (PRECISION)(0.5*(k_p[0] + k_p[1])); // - (double)H[i])/((double)dN));  // 1/nm
+        dK[i] = (PRECISION)(k_p[0]*k_p[1]);
+        // dK[i] = (PRECISION)(((k_p[0]-k_0)*k_1 + k_0*(k_p[1]-k_1))/((double)dN));  // 1/nm^2
+
+        E[i] = (PRECISION)(areas*((0.5*((double)kc)*SQUARE(2.0*((double)(H[i])) - ((double)c0)) + ((double)kg)*((double)(K[i])))));
+
+        pE[i] = (PRECISION)(exp(-(1.0/KBT)*((double)(E[i]))));
+
+        // Take into account the change in neighboring energies for each vertex shift
+        // Compute dEdN by component
+        // dEdN_H = dareas*((double)kc)*(2.0*((double)(H[i]))-((double)c0))*((double)(dH[i]));  // eV/nm^2
+        // dEdN_K = dareas*((double)kg)*((double)(dK[i]));  // eV/nm^2
+        // dEdN_sum = (dEdN_H + dEdN_K + dE_neighbors[i]); // eV/nm^2 # + dE_neighbors[i])
+
+        // calculate finite difference of original and shifted -dN*vivj (backwards)
+        dEdN_H = (dareas*((0.5*((double)kc)*SQUARE(2.0*((double)(dH[i])) - ((double)c0)) + ((double)kg)*((double)(dK[i])))));
+        dEdN_sum = ((double)(E[i]) - dEdN_H)/((double)dN) + ((double)(dE_neighbors[i]));
+        
+        // drive dEdNs toward 0
+        dEdNs = -1.0*((PRECISION)(CLAMP(dEdN_sum,-0.5*((double)vivj_norm),0.5*((double)vivj_norm))))*(1.0-pE[i]);  // eV/nm 
+
+        if ((dEdN_sum < (-10*((double)vivj_norm))) || (dEdN_sum > (10*((double)vivj_norm))))
+        {
+            printf("Exceeded at vertex %d with sum %e\n", i, dEdN_sum);
+            printf("radius: %e radius_diff: %e\n", fnorm3f(vi), norm3(viNvidN));
+            printf("vivj_norm: %e\n", vivj_norm);
+            printf("areas: %e\n", areas);
+            printf("dareas: %e\n", dareas);
+            printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+            printf("H[i]: %e dH[i]: %e\n", H[i], dH[i]);
+            printf("K[i]: %e dK[i]: %e\n", K[i], dK[i]);
+            printf("E[i]: %e\n", E[i]);
+            printf("dE[i]: %e\n", dEdN_H);
+            printf("pE[i]: %e\n", pE[i]);
+            printf("dE_neighbors[i]: %e\n", dE_neighbors[i]);
+        }
+
+        // printf("dEdN_H: %e dEdN_K: %e dE_neighbors[i]: %e ratio: %e\n",dEdN_H, dEdN_K, dE_neighbors[i], dE_neighbors[i]/dEdN_H);
+
+        // printf("%e %e %e %e %e %e\n", dareas, dH[i], dK[i], dEdN_H, dEdN_K, dEdNs);
+
+        for (jj=0;jj<VECTORSIZE;++jj) {
+            (dEdN[i]).position[jj] = dEdNs*vivj[jj];  // move along vivj
             // if isnan((dEdN[i]).position[jj]) {
             //     printf("%e %e\n", l1, l2);
             //     printf("%e %e %d %e %e \n", (dEdN[i]).position[jj], areas, n_neighbors, k_p[0], k_p[1]);

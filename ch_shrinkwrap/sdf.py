@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from ch_shrinkwrap import util
 
@@ -36,6 +37,24 @@ def torus(p, r, R):
     else:
         q = np.array([np.sqrt(p[0]**2 + p[2]**2)-r,p[1]])
     return np.linalg.norm(q)-R
+
+def capsule(p, a, b, r):
+    """Draw a capsule.
+
+    Parameters
+    ----------
+    p : np.array
+        (3,) point to calculate
+    a : np.array
+        (3,) start of capsule
+    b : np.array
+        (3,) end of capsule
+    r : float
+        Capsule thickness
+    """
+    pa, ba = p - a, b - a
+    h = util.clamp( util.dot(pa,ba)/util.dot2(ba), 0.0, 1.0 )
+    return math.sqrt(util.dot2( pa - ba*h )) - r
 
 def tetrahedron(p, v0, v1, v2, v3):
     """
