@@ -613,6 +613,12 @@ cdef class MembraneMesh(TriangleMesh):
                 continue
                 
             dists, neighbors = self._tree.query(self._vertices['position'][i,:], search_k)
+            
+            #the query might run out of points to query, throw out invalid ones.
+            # TODO - restrict search_k to max number of points instead?
+            valid = neighbors < self._tree.n
+            dists = dists[valid]
+            neighbours = neighbors[valid]
             # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
             
             try:
@@ -867,15 +873,18 @@ cdef class MembraneMesh(TriangleMesh):
             if np.all(shift < eps):
                 return
 
-    def shrink_wrap(self, points, sigma, method='euler'):
+    def shrink_wrap(self, points, sigma, method='euler', max_iter=None):
 
         if method not in DESCENT_METHODS:
             print('Unknown gradient descent method. Using {}.'.format(DEFAULT_DESCENT_METHOD))
             method = DEFAULT_DESCENT_METHOD
 
-        opts = dict(points=points, 
+        if max_iter is None:
+            max_iter = self.max_iter
+        
+        opts = dict(points=points,
                     sigma=sigma, 
-                    max_iter=self.max_iter, 
+                    max_iter=max_iter,
                     step_size=self.step_size, 
                     beta_1=self.beta_1, 
                     beta_2=self.beta_2,
