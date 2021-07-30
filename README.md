@@ -17,6 +17,4 @@ Once PYME is installed, open a command line and execute the following.
 
 1. `python setup.py install`
 
-2. `python install_plugin.py`
-
 The plugin will appear in PYMEVisualize (`pymevis`) under *Mesh-->Shrinkwrap membrane surface*.
