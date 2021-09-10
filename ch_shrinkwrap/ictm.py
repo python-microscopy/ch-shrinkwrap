@@ -1,6 +1,7 @@
 from PYME.Deconv.dec import DeconvMappingBase, ICTMDeconvolution
 
 import numpy as np
+import scipy.spatial
 
 class MappingCurvature(DeconvMappingBase):
     def prep(self):
@@ -19,15 +20,18 @@ class MappingCurvature(DeconvMappingBase):
         
     def set_points(self, pts):
         self.points = pts
+        # Compute a KDTree on points
+        self._tree = scipy.spatial.cKDTree(pts)
         
-    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
+    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20, search_k=200):
         """
         Construct an n_vertices x n_points matrix.
         """
         dd = np.zeros((self.M,self.points.shape[0]))
         
         for i in np.arange(self.M):
-            for k in np.arange(self.points.shape[0]):
+            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     dik = (f[i*self.dims+j] - self.points[k,j])
                     dd[i,k] += dik*dik
@@ -51,7 +55,7 @@ class MappingCurvature(DeconvMappingBase):
         return dd
     
     
-    def Afunc(self, f):
+    def Afunc(self, f, search_k=200):
         """
         Map each vertex to a weighted distance between it and all of the points.
         
@@ -64,13 +68,14 @@ class MappingCurvature(DeconvMappingBase):
         # by distance to the vertex, sigma, etc.
         d = np.zeros_like(self.points.ravel())
         for i in np.arange(self.M):
-            for k in np.arange(self.points.shape[0]):
+            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
 
         return d
     
-    def Ahfunc(self, f):
+    def Ahfunc(self, f, search_k=200):
         """
         Map each point to a weighted distance between it and all of the vertices
         
@@ -81,7 +86,8 @@ class MappingCurvature(DeconvMappingBase):
         d = np.zeros(self.M*self.dims)
         
         for i in np.arange(self.M):
-            for k in np.arange(self.points.shape[0]):
+            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[i*self.dims+j] += - f[k*self.dims+j]*self.w[i,k]
 
