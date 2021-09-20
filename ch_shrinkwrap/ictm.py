@@ -4,6 +4,8 @@ import numpy as np
 import scipy.spatial
 
 class MappingCurvature(DeconvMappingBase):
+    _search_k = 200
+    
     def prep(self):
         pass
     
@@ -23,14 +25,17 @@ class MappingCurvature(DeconvMappingBase):
         # Compute a KDTree on points
         self._tree = scipy.spatial.cKDTree(pts)
         
-    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20, search_k=200):
+    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
         """
         Construct an n_vertices x n_points matrix.
         """
         dd = np.zeros((self.M,self.points.shape[0]))
         
         for i in np.arange(self.M):
-            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            _, neighbors = self._tree.query(self.vertices[i,:], min(self._search_k, self.points.shape[0]))
             for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     dik = (f[i*self.dims+j] - self.points[k,j])
@@ -55,7 +60,7 @@ class MappingCurvature(DeconvMappingBase):
         return dd
     
     
-    def Afunc(self, f, search_k=200):
+    def Afunc(self, f):
         """
         Map each vertex to a weighted distance between it and all of the points.
         
@@ -68,14 +73,17 @@ class MappingCurvature(DeconvMappingBase):
         # by distance to the vertex, sigma, etc.
         d = np.zeros_like(self.points.ravel())
         for i in np.arange(self.M):
-            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            _, neighbors = self._tree.query(self.vertices[i,:], min(self._search_k, self.points.shape[0]))
             for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
 
         return d
     
-    def Ahfunc(self, f, search_k=200):
+    def Ahfunc(self, f):
         """
         Map each point to a weighted distance between it and all of the vertices
         
@@ -86,7 +94,10 @@ class MappingCurvature(DeconvMappingBase):
         d = np.zeros(self.M*self.dims)
         
         for i in np.arange(self.M):
-            _, neighbors = self._tree.query(self.vertices[i,:], min(search_k, self.points.shape[0]))
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            _, neighbors = self._tree.query(self.vertices[i,:], min(self._search_k, self.points.shape[0]))
             for k in neighbors: # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[i*self.dims+j] += - f[k*self.dims+j]*self.w[i,k]
@@ -101,6 +112,9 @@ class MappingCurvature(DeconvMappingBase):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         for i in np.arange(self.M):
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
             for j in np.arange(self.dims):
                 for n in self.n[i,:]:
                     if n == -1:
@@ -113,6 +127,9 @@ class MappingCurvature(DeconvMappingBase):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         for i in np.arange(self.M):
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
             for j in np.arange(self.dims):
                 for n in self.n[i,:]:
                     if n == -1:
@@ -132,17 +149,14 @@ class dec_curv(ICTMDeconvolution, MappingCurvature):
     neighbors : np.array
         N x # neighbors set of vertex neighbors, assumed to be connected by an edge
     sigma : np.array
-        Size N a rray of uncertainties in vertex position, optional
-    gamma : float
-        Target mean edge length (distance between neighboring vertices). If None,
-        defaults to average of current edge lengths, optional
+        Size N array of uncertainties in vertex position, optional
     points: np.array
     """
-    def __init__(self, vertices, neighbors, sigma=None, gamma=None, points=None, *args, **kwargs):
+    def __init__(self, vertices, neighbors, points, sigma=None, search_k=200, *args, **kwargs):
         ICTMDeconvolution.__init__(self, *args, **kwargs)
         self.set_vertices_neighbors(vertices,neighbors,sigma)
         self.set_points(points)
-        self.gamma = gamma
+        self._search_k = search_k
         
     def startGuess(self, data):
         # since we want to solve ||Af-0|| as part of the

@@ -654,6 +654,7 @@ cdef class MembraneMesh(TriangleMesh):
             
             # dirs.append(attraction)
 
+
         # dirs = np.vstack(dirs)
         # dirs[self._vertices['halfedge'] == -1] = 0
 
@@ -878,13 +879,13 @@ cdef class MembraneMesh(TriangleMesh):
 
         n = self._halfedges['vertex'][self._vertices['neighbors']]
         n[self._vertices['neighbors'] == -1] = -1
-        dc = dec_curv(self._vertices['position'], n, 
-                    sigma=None, points=points)
+        dc = dec_curv(self._vertices['position'], n, points=points, search_k=self.search_k)
 
         vp = dc.deconv(points,lamb=step_size,num_iters=max_iter,
                        weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
 
-        self._vertices['position'] = vp
+        k = (self._vertices['halfedge'] != -1)
+        self._vertices['position'][k] = vp[k]
 
         self._faces['normal'][:] = -1
         self._vertices['neighbors'][:] = -1
