@@ -164,3 +164,12 @@ class dec_curv(ICTMDeconvolution, MappingCurvature):
         # data, but guess the verticies for the starting
         # f value
         return self.vertices
+
+    def deconv_stop_cond(self):
+        # Stop if last three test statistcs are within eps of one another
+        # (and monotonically decreasing)
+        if len(self.tests) < 3:
+            return False
+        eps = 1e-6
+        a, b, c = self.tests[-3:]
+        return ((c < b) and (b < a) and (a < eps))
