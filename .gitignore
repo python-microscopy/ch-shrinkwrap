@@ -13,3 +13,5 @@ build
 .DS_Store
 notebooks/.ipynb_checkpoints
 ch_shrinkwrap/_membrane_mesh.c
+*.stl
+*.txt
