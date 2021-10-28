@@ -2,7 +2,7 @@ from PYME.IO import tabular, image, MetaDataHandler
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
-from ch_shrinkwrap.membrane_mesh import DESCENT_METHODS
+from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
 
