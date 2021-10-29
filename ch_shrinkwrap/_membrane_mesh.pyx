@@ -877,15 +877,32 @@ cdef class MembraneMesh(TriangleMesh):
     def opt_ictm(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
         from ch_shrinkwrap.ictm import dec_curv
 
-        n = self._halfedges['vertex'][self._vertices['neighbors']]
-        n[self._vertices['neighbors'] == -1] = -1
-        dc = dec_curv(self._vertices['position'], n, points=points, search_k=self.search_k)
+        r = (self.remesh_frequency != 0)
+        if r:
+            initial_length = self._mean_edge_length
+            final_length = 3*np.max(sigma)
+            m = (final_length - initial_length)/max_iter
+            rf=max_iter
+        else:
+            rf = self.remesh_frequency
 
-        vp = dc.deconv(points,lamb=step_size,num_iters=max_iter,
-                       weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
+        for j in range(max_iter//rf):
+            n = self._halfedges['vertex'][self._vertices['neighbors']]
+            n[self._vertices['neighbors'] == -1] = -1
+            dc = dec_curv(self._vertices['position'], n, points=points, search_k=self.search_k)
 
-        k = (self._vertices['halfedge'] != -1)
-        self._vertices['position'][k] = vp[k]
+            vp = dc.deconv(points,lamb=step_size,num_iters=max_iter,
+                        weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
+
+            k = (self._vertices['halfedge'] != -1)
+            self._vertices['position'][k] = vp[k]
+
+            # Remesh
+            if r and ((j % self.remesh_frequency) == 0):
+                target_length = initial_length + m*j
+                self.remesh(5, target_length, 0.5, 10)
+                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+                                                                                str(self._mean_edge_length)))
 
         self._faces['normal'][:] = -1
         self._vertices['neighbors'][:] = -1

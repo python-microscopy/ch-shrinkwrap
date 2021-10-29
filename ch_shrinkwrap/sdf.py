@@ -4,39 +4,9 @@ from ch_shrinkwrap import util
 
 # Most SDFs from http://iquilezles.org/www/articles/distfunctions/distfunctions.htm.
 
-def sphere(p, r):
-    if len(p.shape) > 1:
-        return np.sqrt(np.sum(p*p, axis=1)) - r
-    return np.sqrt(np.sum(p*p)) - r
-
-def box(p, lx, ly, lz):
-    b = np.array([lx,ly,lz])
-    if len(p.shape) > 1:
-        q = np.abs(p) - b[None,:]
-        r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[:,0],np.maximum(q[:,1],q[:,2])),0.0)
-    else:
-        q = np.abs(p) - b
-        r = np.linalg.norm(np.maximum(q,0.0)) + np.minimum(np.maximum(q[0],np.maximum(q[1],q[2])),0.0)
-    return r
-
-def ellipsoid(p, a, b, c):
-    r = np.array([a,b,c])
-    pr = p/r
-    prr = pr/r
-    if len(p.shape) > 1:
-        k0 = np.sqrt(np.sum(pr*pr,axis=1))
-        k1 = np.sqrt(np.sum(prr*prr,axis=1))
-        return k0*(k0-1.0)/k1
-    k0 = np.sqrt(np.sum(pr*pr))
-    k1 = np.sqrt(np.sum(prr*prr))
-    return k0*(k0-1.0)/k1
-
 def torus(p, r, R):
-    if len(p.shape) > 1:
-        q = np.array([np.sqrt(p[:,0]**2 + p[:,2]**2)-r,p[:,1]])
-    else:
-        q = np.array([np.sqrt(p[0]**2 + p[2]**2)-r,p[1]])
-    return np.linalg.norm(q)-R
+    q = np.array([np.sqrt(p[0,:]**2 + p[2,:]**2)-r,p[1,:]])
+    return np.linalg.norm(q,axis=0)-R
 
 def capsule(p, a, b, r):
     """Draw a capsule.
@@ -44,7 +14,7 @@ def capsule(p, a, b, r):
     Parameters
     ----------
     p : np.array
-        (3,) point to calculate
+        (3,N) point to calculate
     a : np.array
         (3,) start of capsule
     b : np.array
@@ -52,9 +22,10 @@ def capsule(p, a, b, r):
     r : float
         Capsule thickness
     """
-    pa, ba = p - a, b - a
-    h = util.clamp( util.dot(pa,ba)/util.dot2(ba), 0.0, 1.0 )
-    return math.sqrt(util.dot2( pa - ba*h )) - r
+    pa, ba = p - a[:,None], b - a
+    h = np.clip( (pa*ba[:,None]).sum(0)/(ba*ba).sum(), 0.0, 1.0 )
+    d = pa - ba[:,None]*h
+    return np.sqrt((d*d).sum(0)) - r
 
 def tetrahedron(p, v0, v1, v2, v3):
     """
@@ -101,49 +72,3 @@ def tetrahedron(p, v0, v1, v2, v3):
 
     # Intersect the planes
     return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)
-
-def triangle(p, p0, p1, p2):
-    # Calculate vector distances
-    p1p0 = p1 - p0
-    p2p1 = p2 - p1
-    p0p2 = p0 - p2
-    pp0 = p - p0
-    pp1 = p - p1
-    pp2 = p - p2
-    n = util.fast_3x3_cross(p1p0, p0p2)
-    
-    s1 = np.sign(util.dot(util.fast_3x3_cross(p1p0,n),pp0))
-    s2 = np.sign(util.dot(util.fast_3x3_cross(p2p1,n),pp1))
-    s3 = np.sign(util.dot(util.fast_3x3_cross(p0p2,n),pp2))
-    if (s1+s2+s3) < 2:
-        f = np.minimum(np.minimum(
-                    util.dot2(p1p0*util.clamp(util.dot(p2p1,pp0)/util.dot2(p1p0),0.0,1.0)-pp0),
-                    util.dot2(p2p1*util.clamp(util.dot(p2p1,pp1)/util.dot2(p2p1),0.0,1.0)-pp1)),
-                    util.dot2(p0p2*util.clamp(util.dot(p0p2,pp2)/util.dot2(p0p2),0.0,1.0)-pp2))
-    else:
-        f = util.dot(n,pp0)*util.dot(n,pp0)/util.dot2(n)
-    
-    return util.sign(util.dot(p,n))*np.sqrt(f)
-
-def triangle_sdf2(p, pv):
-    # Distances to multiple triangles
-    p1p0 = pv[:,1] - pv[:,0]
-    p2p1 = pv[:,2] - pv[:,1]
-    p0p2 = pv[:,0] - pv[:,2]
-    pp0 = p - pv[:,0]
-    pp1 = p - pv[:,1]
-    pp2 = p - pv[:,2]
-    n = np.cross(p1p0, p0p2, axis=1)
-
-    s1 = np.sign((np.cross(p1p0,n,axis=1)*pp0).sum(1))
-    s2 = np.sign((np.cross(p2p1,n,axis=1)*pp1).sum(1))
-    s3 = np.sign((np.cross(p0p2,n,axis=1)*pp2).sum(1))
-
-    f = (n*pp0).sum(1)*(n*pp0).sum(1)/(n*n).sum(1)
-    sign_mask = (s1+s2+s3) < 2
-    f[sign_mask] = np.minimum(np.minimum(
-                    ((p1p0*np.clip((p2p1*pp0).sum(1)/(p1p0*p1p0).sum(1),0.0,1.0)[:,None]-pp0)**2).sum(1),
-                    ((p2p1*np.clip((p2p1*pp1).sum(1)/(p2p1*p2p1).sum(1),0.0,1.0)[:,None]-pp1)**2).sum(1)),
-                    ((p0p2*np.clip((p0p2*pp2).sum(1)/(p0p2*p0p2).sum(1),0.0,1.0)[:,None]-pp2)**2).sum(1))[sign_mask]
-
-    return np.sign((pp0*n).sum(1))*np.sqrt(f)
