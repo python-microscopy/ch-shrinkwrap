@@ -880,26 +880,26 @@ cdef class MembraneMesh(TriangleMesh):
         r = (self.remesh_frequency != 0)
         if r:
             initial_length = self._mean_edge_length
-            final_length = 3*np.max(sigma)
+            final_length = np.clip(np.min(sigma)/2.5, 0.0, 5.0)
             m = (final_length - initial_length)/max_iter
-            rf=max_iter
-        else:
             rf = self.remesh_frequency
+        else:
+            rf = max_iter
 
         for j in range(max_iter//rf):
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n[self._vertices['neighbors'] == -1] = -1
             dc = dec_curv(self._vertices['position'], n, points=points, search_k=self.search_k)
 
-            vp = dc.deconv(points,lamb=step_size,num_iters=max_iter,
+            vp = dc.deconv(points,lamb=step_size,num_iters=rf,
                         weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
 
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
 
             # Remesh
-            if r and ((j % self.remesh_frequency) == 0):
-                target_length = initial_length + m*j
+            if r:
+                target_length = initial_length + m*j*rf
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
