@@ -242,3 +242,58 @@ def empty_simps(d, v, pts, eps=0.0):
             d_mask[_i] = True
             
     return np.where(d_mask)[0]
+
+def voronoi_poles(vor, point_normals):
+    """
+    Compute the positive and negative Voronoi poles in vor. The poles are the
+    furthest points (on either side of ) on the Voronoi diagram from each of the original points.
+    
+    -1 index indicates a point at infinity.
+    
+    Amenta, N, and M Bern. "Surface Reconstruction by Voronoi Filtering." 
+    Discrete & Computational Geometry 22 (1999): 481–504.
+    
+    Parameters
+    ----------
+    vor : scipy.spatial.Voronoi
+        Voronoi diagram 
+    point_normals: np.array
+        Normals for vor.points, used for Voronoi poles on the convex hull.
+        NOTE: this is a bit of a shortcut, and should be the average normal
+        of the convex hull faces. Can lead to wonkiness.
+        
+    Returns
+    -------
+    p_pos : np.array
+        Index of positive Vonoroni pole for corresponding point in vor.points
+    p_neg : np.array
+        Index of negative Voronoi pole for corresponding point in vor.points
+    """
+    # pregame
+    sz = len(vor.point_region)
+    p_pos, p_neg = np.zeros(sz,dtype=int), np.zeros(sz,dtype=int)
+    
+    # loop over the points we constructed a Voronoi diagram of
+    for i, reg in enumerate(vor.point_region):
+        cell_points = vor.regions[reg]
+        dn = vor.vertices[cell_points] - vor.points[i][None,:]
+        d = np.linalg.norm(dn,axis=1)
+        
+        if cell_points[0] == -1:
+            # we are on the convex hull
+            cell_points, dn, d = cell_points[1:], dn[1:,:], d[1:]
+            p_pos[i] = -1
+            pn = point_normals[i]
+        else:
+            # pick the Voronoi vertex furthest from this point
+            di = np.argmax(d)
+            p_pos[i] = cell_points[di]
+            pn = dn[di,:]
+
+        # negative pole is furthest vertex with negative dot product
+        # between vector to vertex and vector to positive pole
+        s = ((pn*dn).sum(1) < 1)
+        p_neg[i] = cell_points[np.argmax(s*d)]
+    
+    return p_pos, p_neg
+    
