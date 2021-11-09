@@ -58,23 +58,6 @@ POINTS_DTYPE2 = np.dtype([('position0', 'f4'),
 cdef extern from "membrane_mesh_utils.c":
     void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
     void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
-    void c_curvature_grad(void *vertices_, 
-                            void *faces_,
-                            halfedge_t *halfedges,
-                            float dN,
-                            float skip_prob,
-                            int n_vertices,
-                            float *H,
-                            float *K,
-                            float *dH,
-                            float *dK,
-                            float *E,
-                            float *pE,
-                            float *dE_neighbors,
-                            float kc,
-                            float kg,
-                            float c0,
-                            points_t *dEdN)
     void c_curvature_grad_centroid2(void *vertices_, 
                             void *faces_,
                             halfedge_t *halfedges,
@@ -877,7 +860,8 @@ cdef class MembraneMesh(TriangleMesh):
     def opt_ictm(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
         from ch_shrinkwrap.ictm import dec_curv
 
-        r = (self.remesh_frequency != 0)
+        r = (self.remesh_frequency != 0) and (self.remesh_frequency > max_iter)
+        print(self.remesh_frequency, max_iter, r)
         if r:
             initial_length = self._mean_edge_length
             final_length = np.clip(np.min(sigma)/2.5, 0.0, 5.0)

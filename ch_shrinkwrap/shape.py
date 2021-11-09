@@ -1,5 +1,4 @@
-from ch_shrinkwrap import sdf #, sdf_octree
-from ch_shrinkwrap import util
+from ch_shrinkwrap import sdf, util
 
 from PYME.simulation.locify import points_from_sdf
 

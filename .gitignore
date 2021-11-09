@@ -8,7 +8,6 @@
 *.vscode*
 *.cpython*
 *.log*
-ch_shrinkwrap/sdf_octree/csdf_octree.c
 build
 .DS_Store
 notebooks/.ipynb_checkpoints
