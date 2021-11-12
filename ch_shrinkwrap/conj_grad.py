@@ -98,6 +98,7 @@ class TikhonovConjugateGradient(object):
                 if i == j:
                     continue
                 search_pairs.append((i,j))
+        n_pairs = len(search_pairs)
 
         # listify lams if only looking along 2 directions
         if type(lams) is float:
@@ -131,9 +132,9 @@ class TikhonovConjugateGradient(object):
             
             # check to see if the search directions are orthogonal
             # this can be used as a measure of convergence and a stopping criteria
-            test, S_norm = 1.0, (np.linalg.norm(S,axis=0)[:(s_size-1)]).prod()
+            test = 1.0
             for pair in search_pairs:
-                test -= abs((S[:,pair[0]]*S[:,pair[1]]).sum()/S_norm)
+                test -= (1.0/n_pairs)*abs((S[:,pair[0]]*S[:,pair[1]]).sum()/(np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]])))
 
             #print & log some statistics
             print(('Test Statistic %f' % (test,)))
