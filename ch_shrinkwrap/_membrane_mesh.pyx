@@ -13,7 +13,7 @@ from ch_shrinkwrap import delaunay_utils
 
 # Gradient descent methods
 DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam', 'ictm']
-DEFAULT_DESCENT_METHOD = 'euler'
+DEFAULT_DESCENT_METHOD = 'ictm'
 
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
@@ -860,8 +860,8 @@ cdef class MembraneMesh(TriangleMesh):
     def opt_ictm(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
         from ch_shrinkwrap.ictm import dec_curv
 
-        r = (self.remesh_frequency != 0) and (self.remesh_frequency > max_iter)
-        print(self.remesh_frequency, max_iter, r)
+        r = (self.remesh_frequency != 0) and (self.remesh_frequency < max_iter)
+        # print(self.remesh_frequency, max_iter, r)
         if r:
             initial_length = self._mean_edge_length
             final_length = np.clip(np.min(sigma)/2.5, 0.0, 5.0)
@@ -892,7 +892,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._vertices['neighbors'][:] = -1
         self.face_normals
         self.vertex_neighbors
-
+        
     def shrink_wrap(self, points, sigma, method='euler', max_iter=None):
 
         if method not in DESCENT_METHODS:
