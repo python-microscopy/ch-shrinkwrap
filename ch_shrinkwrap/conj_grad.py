@@ -87,8 +87,8 @@ class TikhonovConjugateGradient(object):
 
         #number of search directions
         n_smooth = len(self.Lfuncs)
-        n_search = n_smooth+1
-        s_size = n_search+1
+        n_search = n_smooth+1  # inital number of search directions is search along Afunc + Lfuncs
+        s_size = n_search+1    # eventually we'll search along fnew - self.f
 
         # construct pairs to compare for search metric
         a = np.arange(n_search)
@@ -101,9 +101,11 @@ class TikhonovConjugateGradient(object):
         n_pairs = len(search_pairs)
 
         # listify lams if only looking along 2 directions
+        # (one regularization term)
         if type(lams) is float:
             lams = [lams]
 
+        # directions for regularized parameters
         prefs = np.zeros((np.size(self.f), n_smooth), 'f')
 
         #initial search directions
@@ -128,13 +130,14 @@ class TikhonovConjugateGradient(object):
             S[:,0] = self.Ahfunc(self.res)
             for i in np.arange(n_smooth):
                 prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[:,i]) # residuals
-                S[:,i+1] = -getattr(self, self.Lhfuncs[i])(prefs[:,i])
+                S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
             
             # check to see if the search directions are orthogonal
             # this can be used as a measure of convergence and a stopping criteria
             test = 1.0
             for pair in search_pairs:
-                test -= (1.0/n_pairs)*abs((S[:,pair[0]]*S[:,pair[1]]).sum()/(np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]])))
+                test -= ((1.0/n_pairs) * abs((S[:,pair[0]]*S[:,pair[1]]).sum()
+                        / (np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]]))))
 
             #print & log some statistics
             print(('Test Statistic %f' % (test,)))
