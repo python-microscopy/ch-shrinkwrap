@@ -76,10 +76,15 @@ class TikhonovConjugateGradient(object):
             self.mask = np.isfinite(data.ravel())
 
         #guess a starting estimate for the object
-        self.fs = self.start_guess(data)
+        start_guess = self.start_guess(data)
+        self.f = start_guess.ravel()
 
         # create a view of the correct shape for our result 
-        self.f = self.fs.ravel()
+        self.fs = self.f.reshape(start_guess.shape)
+
+        # Assume defaults are 0 for each regularization term if we don't pass any explicitly
+        if defaults is None:
+            defaults = np.vstack([self.default_guess(0) for x in self.Lfuncs]).T
 
         #make things 1 dimensional
         data = data.ravel()
