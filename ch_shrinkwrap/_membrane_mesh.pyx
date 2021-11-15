@@ -12,8 +12,8 @@ from ch_shrinkwrap import membrane_mesh_utils
 from ch_shrinkwrap import delaunay_utils
 
 # Gradient descent methods
-DESCENT_METHODS = ['euler', 'expectation_maximization', 'adam', 'ictm']
-DEFAULT_DESCENT_METHOD = 'ictm'
+DESCENT_METHODS = ['conjugate_gradient', 'euler', 'expectation_maximization', 'adam']
+DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
@@ -857,32 +857,45 @@ cdef class MembraneMesh(TriangleMesh):
             if np.all(shift < eps):
                 return
 
-    def opt_ictm(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
-        from ch_shrinkwrap.ictm import dec_curv
+    def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
+        from ch_shrinkwrap.conj_grad import ShrinkwrapConjGrad
 
         r = (self.remesh_frequency != 0) and (self.remesh_frequency < max_iter)
-        # print(self.remesh_frequency, max_iter, r)
+        dr = (self.delaunay_remesh_frequency != 0) and (self.delaunay_remesh_frequency < max_iter)
+
+        if r and dr:
+            # Make sure we stop for both
+            from math import gcd
+            rf = gcd(self.remesh_frequency, self.delaunay_remesh_frequency)
+        elif r:
+            rf = self.remesh_frequency
+        elif dr:
+            rf = self.delaunay_remesh_frequency
+        else:
+            rf = max_iter
+
         if r:
             initial_length = self._mean_edge_length
             final_length = np.clip(np.min(sigma)/2.5, 0.0, 5.0)
             m = (final_length - initial_length)/max_iter
-            rf = self.remesh_frequency
-        else:
-            rf = max_iter
 
         for j in range(max_iter//rf):
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n[self._vertices['neighbors'] == -1] = -1
-            dc = dec_curv(self._vertices['position'], n, points=points, search_k=self.search_k)
+            cg = ShrinkwrapConjGrad(self._vertices['position'], n, points=points, search_k=self.search_k)
 
-            vp = dc.deconv(points,lamb=step_size,num_iters=rf,
-                        weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
+            vp = cg.search(points,lams=step_size,num_iters=rf,
+                           weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
 
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
 
+            # Delaunay remesh (hole punch)
+            if dr and (((j*rf) % self.delaunay_remesh_frequency) == 0):
+                self.delaunay_remesh(points, sigma)
+
             # Remesh
-            if r:
+            if r and (((j*rf) % self.remesh_frequency) == 0):
                 target_length = initial_length + m*j*rf
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
@@ -893,7 +906,7 @@ cdef class MembraneMesh(TriangleMesh):
         self.face_normals
         self.vertex_neighbors
         
-    def shrink_wrap(self, points, sigma, method='euler', max_iter=None):
+    def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None):
 
         if method not in DESCENT_METHODS:
             print('Unknown gradient descent method. Using {}.'.format(DEFAULT_DESCENT_METHOD))
