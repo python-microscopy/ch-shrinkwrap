@@ -890,21 +890,21 @@ cdef class MembraneMesh(TriangleMesh):
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
 
+            self._faces['normal'][:] = -1
+            self._vertices['neighbors'][:] = -1
+            self.face_normals
+            self.vertex_neighbors
+
             # Delaunay remesh (hole punch)
-            if dr and (((j*rf) % self.delaunay_remesh_frequency) == 0):
+            if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
                 self.delaunay_remesh(points, sigma)
 
             # Remesh
-            if r and (((j*rf) % self.remesh_frequency) == 0):
-                target_length = initial_length + m*j*rf
+            if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
+                target_length = initial_length + m*(j+1)*rf
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
-
-        self._faces['normal'][:] = -1
-        self._vertices['neighbors'][:] = -1
-        self.face_normals
-        self.vertex_neighbors
         
     def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None):
 
