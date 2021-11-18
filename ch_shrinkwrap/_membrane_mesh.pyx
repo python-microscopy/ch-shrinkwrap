@@ -876,7 +876,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r:
             initial_length = self._mean_edge_length
-            final_length = np.clip(np.min(sigma)/2.5, 0.0, 5.0)
+            final_length = np.clip(np.min(sigma)/2.5, 0.0, 50.0)
             m = (final_length - initial_length)/max_iter
 
         for j in range(max_iter//rf):
