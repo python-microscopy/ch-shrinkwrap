@@ -6,29 +6,10 @@ from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
 
-# def estimate_density(ot):
-#     """
-#     Estimate the mean density of the octree.
-
-#     Parameters
-#     ----------
-#         ot : PYME.experimental._octree.Octree
-#             Octree
-#     """
-#     import numpy as np
-
-#     max_depth = ot._nodes['depth'].max()
-#     density_sc = 1.0/np.prod(ot.box_size(np.arange(max_depth + 1)), axis=0)
-#     node_mask = (ot._nodes['nPoints'] != 0)
-#     nodes_in_use = ot._nodes[node_mask]
-#     density = nodes_in_use['nPoints']*density_sc[nodes_in_use['depth']]
-
-#     return np.median(density)
-
 @register_module('ShrinkwrapMembrane')
 class ShrinkwrapMembrane(ModuleBase):
     input = Input('surf')
-    ouput = Output('membrane')
+    output = Output('membrane')
     points = Input('filtered_localizations')
 
     max_iters = Int(100)
@@ -41,6 +22,7 @@ class ShrinkwrapMembrane(ModuleBase):
     skip_prob = Float(0.0)
     remesh_frequency = Int(0)
     delaunay_remesh_frequency = Int(0)
+    sigma = CStr('sigma')
     method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):
@@ -65,8 +47,9 @@ class ShrinkwrapMembrane(ModuleBase):
                                               namespace[self.points]['y'],
                                               namespace[self.points]['z']]).T)
         try:
-            sigma = namespace[self.points]['sigma']
+            sigma = namespace[self.points][self.sigma]
         except(KeyError):
+            print(f"{self.sigma} not found in data source, defaulting to 10 nm precision.")
             sigma = 10*np.ones_like(namespace[self.points]['x'])
 
         # from PYME.util import mProfile
