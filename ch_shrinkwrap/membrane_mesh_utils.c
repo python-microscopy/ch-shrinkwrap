@@ -763,12 +763,14 @@ void moore_penrose_2x2(const double *A, double *Ainv)
  *  @param dEdN PRECISION n_vertices vector of energy gradient
  *  @return Void
  */
-static void c_curvature_grad_centroid2(void *vertices_, 
+static void c_curvature_grad(void *vertices_, 
                              void *faces_,
                              halfedge_t *halfedges,
                              PRECISION dN,
                              PRECISION skip_prob,
                              int n_vertices,
+                             PRECISION *k_0,
+                             PRECISION *k_1,
                              PRECISION *H,
                              PRECISION *K,
                              PRECISION *dH,
@@ -783,7 +785,7 @@ static void c_curvature_grad_centroid2(void *vertices_,
 {
     int i, j, jj, neighbor, n_neighbors;
     double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
-    double kj, kj_1, k, Aj, dAj, areas, dareas, w, k_0, k_1;
+    double kj, kj_1, k, Aj, dAj, areas, dareas, w;
     double dEdN_H, dEdN_K, dEdN_sum;
     double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
@@ -973,19 +975,19 @@ static void c_curvature_grad_centroid2(void *vertices_,
 
         if isnan(l1) {
             // weird tensor
-            k_0 = 0.0; k_1 = 0.0;
+            k_0[i] = 0.0; k_1[i] = 0.0;
             v1[0] = v1[1] = v1[2] = 0.0;
             v2[0] = v2[1] = v2[2] = 0.0;
         } else {
 
             // principal curvatures (1/nm)
-            k_0 = 3.0*l1 - l2;
-            k_1 = 3.0*l2 - l1;
+            k_0[i] = 3.0*l1 - l2;
+            k_1[i] = 3.0*l2 - l1;
         }
 
         // mean and gaussian curvatures
-        H[i] = (PRECISION)(0.5*(k_0+k_1));  // 1/nm
-        K[i] = (PRECISION)(k_0*k_1); // 1/nm^2
+        H[i] = (PRECISION)(0.5*(k_0[i]+k_1[i]));  // 1/nm
+        K[i] = (PRECISION)(k_0[i]*k_1[i]); // 1/nm^2
 
         // create little m (eigenvector matrix)
         m[0] = v1[0]; m[3] = v1[1]; m[6] = v1[2];
@@ -1012,7 +1014,7 @@ static void c_curvature_grad_centroid2(void *vertices_,
             A[2*j+1] = SQUARE(dv[0]*m[1]+dv[1]*m[4]+dv[2]*m[7]);
 
             // Update the equation y-intercept to displace the curve along the normal direction
-            b[j] = A[2*j]*k_0+A[2*j+1]*k_1 - (double)dN;
+            b[j] = A[2*j]*k_0[i]+A[2*j+1]*k_1[i] - (double)dN;
         }
 
         // solve 
@@ -1052,7 +1054,7 @@ static void c_curvature_grad_centroid2(void *vertices_,
             printf("vivj_norm: %e\n", vivj_norm);
             printf("areas: %e\n", areas);
             printf("dareas: %e\n", dareas);
-            printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0, k_1, k_p[0], k_p[1]);
+            printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0[i], k_1[i], k_p[0], k_p[1]);
             printf("H[i]: %e dH[i]: %e\n", H[i], dH[i]);
             printf("K[i]: %e dK[i]: %e\n", K[i], dK[i]);
             printf("E[i]: %e\n", E[i]);
