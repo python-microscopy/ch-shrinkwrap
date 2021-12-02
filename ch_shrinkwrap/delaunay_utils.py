@@ -265,9 +265,9 @@ def voronoi_poles(vor, point_normals):
     Returns
     -------
     p_pos : np.array
-        Index of positive Vonoroni pole for corresponding point in vor.points
+        Index of positive Vonoroni pole for corresponding point in vor.vertices
     p_neg : np.array
-        Index of negative Voronoi pole for corresponding point in vor.points
+        Index of negative Voronoi pole for corresponding point in vor.vertices
     """
     # pregame
     sz = len(vor.point_region)

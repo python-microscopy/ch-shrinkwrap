@@ -43,7 +43,7 @@ class TikhonovConjugateGradient(object):
     def default_guess(self, default):
         """ guesses for regularization function default solutions, can be overriden
         in derived classes"""
-        return np.zeros(self.f.shape, 'f')
+        return default*np.ones(self.f.shape, 'f')
 
     def searchp(self, args):
         """ convenience function for searching in parallel using processing.Pool.map"""
@@ -229,6 +229,7 @@ class TikhonovConjugateGradient(object):
     def Lhfunc(self, f):
         """ Function that applies conjugate transpose of L to a vector"""
         pass
+
 class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     _search_k = 200
     _points = None
