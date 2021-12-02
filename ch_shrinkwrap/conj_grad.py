@@ -49,7 +49,7 @@ class TikhonovConjugateGradient(object):
         """ convenience function for searching in parallel using processing.Pool.map"""
         self.search(*args)
     
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False):
+    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, dir3=True):
         """This is what you actually call to do the deconvolution.
         parameters are:
 
@@ -159,8 +159,9 @@ class TikhonovConjugateGradient(object):
                 fnew = (fnew*(fnew > 0))
 
             #add last step to search directions, as per classical conj. gradient
-            S[:,(s_size-1)] = (fnew - self.f)
-            n_search = s_size
+            if dir3:
+                S[:,(s_size-1)] = (fnew - self.f)
+                n_search = s_size
 
             #set the current estimate to out new estimate
             self.f[:] = fnew
@@ -200,7 +201,11 @@ class TikhonovConjugateGradient(object):
             H += l2*Hw[:,:,i]
             G += l2*Gw[:,i]
 
+        #print(H,G)
+
         c = np.linalg.solve(H, G)
+
+        #print(c)
 
         cpred = c0 + np.dot(np.dot(np.transpose(c), Hc), c) - np.dot(np.transpose(c), Gc)
         for i in range(n_smooth):
