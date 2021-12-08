@@ -12,7 +12,7 @@ from ch_shrinkwrap import membrane_mesh_utils
 from ch_shrinkwrap import delaunay_utils
 
 # Gradient descent methods
-DESCENT_METHODS = ['conjugate_gradient', 'euler', 'expectation_maximization', 'adam']
+DESCENT_METHODS = ['conjugate_gradient', 'skeleton']
 DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 
 KBT = 0.0257  # eV # 4.11e-21  # joules
@@ -91,6 +91,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public int max_iter
     cdef public int remesh_frequency
     cdef public int delaunay_remesh_frequency
+    cdef public float delaunay_eps
     cdef public object _E
     cdef public object _pE
     cdef object _k_0
@@ -676,7 +677,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         return dirs
 
-    def delaunay_remesh(self, points, sigma):
+    def delaunay_remesh(self, points, eps=1):
         print('Delaunay remesh...')
 
         # Generate tesselation from mesh control points
@@ -695,14 +696,14 @@ cdef class MembraneMesh(TriangleMesh):
                                           # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
                                           # TODO: account for sigma?
         #print('Guessed eps: {}'.format(eps))
-        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=np.mean(sigma))
+        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
         faces = delaunay_utils.surf_from_delaunay(simps_)
 
         # Rebuild mesh
-        self.build_from_verts_faces(v, faces, True)
+        self.build_from_verts_faces(v, faces)
 
         # Delaunay remeshing has a penchant for flanges
         while np.any(self.singular):
@@ -836,8 +837,10 @@ cdef class MembraneMesh(TriangleMesh):
             # Update the vertices
             self._vertices['position'] += shift
 
-            self._faces['normal'][:] = -1
-            self._vertices['neighbors'][:] = -1
+            # self._faces['normal'][:] = -1
+            # self._vertices['neighbors'][:] = -1
+            self._face_normals_valid = 0
+            self._vertex_normals_valid = 0
             self.face_normals
             self.vertex_neighbors
 
@@ -858,7 +861,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Delaunay remesh
             if dr and ((_i % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points, sigma)
+                self.delaunay_remesh(points, self.delaunay_eps)
 
     def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
         for _i in np.arange(max_iter):
@@ -881,8 +884,10 @@ cdef class MembraneMesh(TriangleMesh):
             # Update the vertices
             self._vertices['position'] += shift
 
-            self._faces['normal'][:] = -1
-            self._vertices['neighbors'][:] = -1
+            # self._faces['normal'][:] = -1
+            # self._vertices['neighbors'][:] = -1
+            self._face_normals_valid = 0
+            self._vertex_normals_valid = 0
             self.face_normals
             self.vertex_neighbors
 
@@ -923,14 +928,16 @@ cdef class MembraneMesh(TriangleMesh):
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
 
-            self._faces['normal'][:] = -1
-            self._vertices['neighbors'][:] = -1
+            # self._faces['normal'][:] = -1
+            # self._vertices['neighbors'][:] = -1
+            self._face_normals_valid = 0
+            self._vertex_normals_valid = 0
             self.face_normals
             self.vertex_neighbors
 
             # Delaunay remesh (hole punch)
             if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points, sigma)
+                self.delaunay_remesh(points, self.delaunay_eps)
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
@@ -938,8 +945,46 @@ cdef class MembraneMesh(TriangleMesh):
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
+
+    def opt_skeleton(self, points, sigma, max_iter=10, step_size=1.0, lam=[0,0], **kwargs):
+        from ch_shrinkwrap.conj_grad import SkeletonConjGrad
+
+        self.remesh_frequency = 1
+
+        r = (self.remesh_frequency != 0) and (self.remesh_frequency < max_iter)
+
+        if r:
+            rf = self.remesh_frequency
+        else:
+            rf = max_iter
+
+        j = 0
+        while (self.volume(np.arange(self._faces.shape[0])[self._faces['halfedge'] != -1]) > 100) and (j < max_iter):
+            print(self.volume(np.arange(self._faces.shape[0])[self._faces['halfedge'] != -1]), j)
+            n = self._halfedges['vertex'][self._vertices['neighbors']]
+            n[self._vertices['neighbors'] == -1] = -1
+            cg = SkeletonConjGrad(self._vertices['position'], self._vertices['normal'], n)
+
+            vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf,
+                           pos=False,last_step=False)
+
+            k = (self._vertices['halfedge'] != -1)
+            self._vertices['position'][k] = vp[k]
+
+            # self._faces['normal'][:] = -1
+            # self._vertices['neighbors'][:] = -1
+            self._face_normals_valid = 0
+            self._vertex_normals_valid = 0
+            self.face_normals
+            self.vertex_neighbors
+
+            # Remesh
+            if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
+                self.remesh()
+
+            j += 1
         
-    def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None):
+    def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None, **kwargs):
 
         if method not in DESCENT_METHODS:
             print('Unknown gradient descent method. Using {}.'.format(DEFAULT_DESCENT_METHOD))
@@ -954,7 +999,8 @@ cdef class MembraneMesh(TriangleMesh):
                     step_size=self.step_size, 
                     beta_1=self.beta_1, 
                     beta_2=self.beta_2,
-                    eps=self.eps)
+                    eps=self.eps,
+                    **kwargs)
 
         return getattr(self, 'opt_{}'.format(method))(**opts)
 

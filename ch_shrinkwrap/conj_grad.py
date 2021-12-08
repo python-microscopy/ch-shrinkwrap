@@ -4,6 +4,8 @@
 # Based on PYME.Deconv.dec dec.py
 ###################################
 
+from .delaunay_utils import voronoi_poles
+
 import numpy as np
 import scipy.spatial
 
@@ -49,7 +51,7 @@ class TikhonovConjugateGradient(object):
         """ convenience function for searching in parallel using processing.Pool.map"""
         self.search(*args)
     
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, dir3=True):
+    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
         """This is what you actually call to do the deconvolution.
         parameters are:
 
@@ -159,7 +161,7 @@ class TikhonovConjugateGradient(object):
                 fnew = (fnew*(fnew > 0))
 
             #add last step to search directions, as per classical conj. gradient
-            if dir3:
+            if last_step:
                 S[:,(s_size-1)] = (fnew - self.f)
                 n_search = s_size
 
@@ -430,6 +432,141 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     
     def calc_w(self):
         if self._prev_loopcount < self.loopcount:
+            self._prev_loopcount = self.loopcount
+            return True
+        return False
+class SkeletonConjGrad(TikhonovConjugateGradient):
+    """
+    Collapse surface to a skeleton. Note this requries last_step=False when
+    calling search().
+
+    Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
+    "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
+    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    """
+    _vertices = None
+    _neighbors = None
+    _prev_vertices = None
+        
+    @property
+    def vertices(self):
+        return self._vertices
+    
+    @vertices.setter
+    def vertices(self, vertices):
+        self._vertices = vertices
+        self.M = vertices.shape[0]
+        self.dims = vertices.shape[1]
+        self.shape = vertices.shape  # hack
+        self._on_deck_vertices = vertices.copy().ravel()
+        self._prev_vertices = vertices.copy().ravel()+0.01*np.random.randn(*vertices.shape).ravel()
+        self._vor = scipy.spatial.Voronoi(self._vertices)
+        
+    @property
+    def vertex_normals(self):
+        return self._vertex_normals
+    
+    @vertex_normals.setter
+    def vertex_normals(self, normals):
+        self._vertex_normals = normals
+        
+    @property
+    def neighbors(self):
+        return self._neighbors
+    
+    @neighbors.setter
+    def neighbors(self, neighbors):
+        self.n = neighbors
+        self.N = self.n.shape[1]
+        
+    def Afunc(self, f):
+        """
+        Minimize distance between a vertex and the centroid of its neighbors.
+        """
+        # note that f is raveled, by default in C order so 
+        # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
+        d = np.zeros_like(f)
+        for i in np.arange(self.M):
+            for j in np.arange(self.dims):
+                nn = self.n[i,:]
+                N = len(nn)
+                for n in nn:
+                    if n == -1:
+                        break
+                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
+        return d
+    
+    def Ahfunc(self, f):
+        # Now we are transposed, so we want to add the neighbors to d in column order
+        # should be symmetric, unless we change the weighting
+        d = np.zeros_like(f)
+        for i in np.arange(self.M):
+            for j in np.arange(self.dims):
+                nn = self.n[i,:]
+                N = len(nn)
+                for n in nn:
+                    if n == -1:
+                        break
+                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+        return d
+    
+    def Lfunc(self, f):
+        """
+        Velocity term.
+        """
+        if self._updated_loopcount():
+            self._prev_vertices = self._on_deck_vertices
+            self._on_deck_vertices = self.f.copy()
+        return (f - self._prev_vertices)
+    
+    def Lhfunc(self, f):
+        return f
+    
+    def Mfunc(self, f):
+        """
+        Distance to medial axis.
+        """
+        fr = f.reshape(self.shape)
+        #print(fr)
+        _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
+        #print(nearest_pole)
+        #print(self._neg_vor_poles[nearest_pole,:])
+        return (self._neg_vor_poles[nearest_pole,:]-fr).ravel()
+    
+    def Mhfunc(self, f):
+        # fr = f.reshape(self.shape)
+        # _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
+        return f
+    
+    def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):
+        TikhonovConjugateGradient.__init__(self, *args, **kwargs)
+        self.Lfuncs = ["Lfunc", "Mfunc"]
+        self.Lhfuncs = ["Lhfunc", "Mhfunc"]
+        self.vertices, self.neighbors, self.vertex_normals = vertices, neighbors, vertex_normals
+        self._prev_loopcount = 1
+        _, pn = voronoi_poles(self._vor, self.vertex_normals)
+        self._neg_vor_poles = self._vor.vertices[pn[pn!=-1]]
+        self._neg_vor_poles_tree = scipy.spatial.cKDTree(self._neg_vor_poles)
+        
+    def start_guess(self, data):
+        # since we want to solve ||Af-0|| as part of the
+        # equation, we need to pass an array of zeros as
+        # data, but guess the verticies for the starting
+        # f value
+        return self.vertices.copy()
+
+    def _stop_cond(self):
+        # Stop if last three test statistcs are within eps of one another
+        # (and monotonically decreasing)
+        if len(self.tests) < 3:
+            return False
+        eps = 1e-6
+        a, b, c = self.tests[-3:]
+        return ((c < b) and (b < a) and (a < eps))
+    
+    def _updated_loopcount(self):
+        if self._prev_loopcount < self.loopcount:
+            print("calculate")
             self._prev_loopcount = self.loopcount
             return True
         return False

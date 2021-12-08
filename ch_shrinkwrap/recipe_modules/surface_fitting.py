@@ -22,6 +22,7 @@ class ShrinkwrapMembrane(ModuleBase):
     skip_prob = Float(0.0)
     remesh_frequency = Int(0)
     delaunay_remesh_frequency = Int(0)
+    min_hole_radius = Int(100)
     sigma = CStr('sigma')
     method = Enum(DESCENT_METHODS)
 
@@ -38,6 +39,7 @@ class ShrinkwrapMembrane(ModuleBase):
                                           skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
                                           delaunay_remesh_frequency=self.delaunay_remesh_frequency,
+                                          delaunay_eps=self.min_hole_radius,
                                           a=self.attraction_weight,
                                           c=self.curvature_weight)
 

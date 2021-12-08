@@ -1,1 +1,2 @@
 ch_shrinkwrap.visgui_modules.shrinkwrap
+ch_shrinkwrap.visgui_modules.surface_feature_extraction

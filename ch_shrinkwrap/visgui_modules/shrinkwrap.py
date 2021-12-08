@@ -19,7 +19,7 @@ def shrinkwrap(visFr):
         recipe.add_module(sw)
         recipe.execute()
         surf_count = 0
-        layer = TriangleRenderLayer(visFr.pipeline, dsname=membrane_name, method='shaded', cmap = ['C', 'M', 'Y', 'R', 'G', 'B'][surf_count % 6])
+        layer = TriangleRenderLayer(visFr.pipeline, dsname=membrane_name, method='shaded')
         visFr.add_layer(layer)
         sw._invalidate_parent = True
 
