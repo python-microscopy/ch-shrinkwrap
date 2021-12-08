@@ -8,12 +8,20 @@ logger = logging.getLogger(__name__)
 
 @register_module('SkeletonizeMembrane')
 class SkeletonizeMembrane(ModuleBase):
+    """
+    Create a skeleton of a mesh using mean curvature flow.
+
+    Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
+    "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
+    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    """
     input = Input('surf')
     ouput = Output('skeleton')
 
     max_iters = Int(10)
     velocity_weight = Float(20.0)
     medial_axis_weight = Float(40.0)
+    collapse_threshold = Float(8.0)
     mesoskeleton = Bool(False)
 
     def execute(self, namespace):
@@ -31,26 +39,28 @@ class SkeletonizeMembrane(ModuleBase):
         except(KeyError):
             sigma = 10*np.ones_like(namespace[self.points]['x'])
 
+        # Upsample to create better Voronoi poles
+        mesh.remesh(target_edge_length=self.collapse_threshold)
+
         # Shrinkwrap membrane surface subject to curvature, velocity, and medial axis forces
-        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, self.medial_axis_weight])
+        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, 
+                         self.medial_axis_weight], target_edge_length=self.collapse_threshold)
 
         if not self.mesoskeleton:
-            # Once complete, collapse all edges that can be collapsed without making the mesh non-manifold
-            xl = np.min(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,0])
-            xu = np.max(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,0])
-            yl = np.min(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,1])
-            yu = np.max(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,1])
-            zl = np.min(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,2])
-            zu = np.max(mesh._vertices['position'][mesh._vertices['halfedge']!=-1][:,2])
-            bbox_diag_length = np.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
-            collapse_threshold = 0.002*bbox_diag_length
-            print(f"Diag length: {bbox_diag_length}  collapse_threshold: {collapse_threshold}")
-            ct = mesh.collapse_edges(collapse_threshold)
-            while (ct > 0):
-                ct = mesh.collapse_edges(collapse_threshold)
+            collapse_count = 1
+            while (collapse_count > 0):
+                collapse_count = 0
+                for i in range(mesh._vertices.shape[0]):
+                    if mesh._vertices['halfedge'][i] == -1:
+                        continue
+                    # collapse the shortest edge on this vertex
+                    n = mesh._vertices['neighbors'][i]
+                    l = mesh._halfedges['length'][n[n!=-1]]
+                    j = np.argmin(l)
+                    collapse_ret = mesh.edge_collapse(n[j])
+                    collapse_count += collapse_ret
 
             # At this point we should be left with a set of edges defining the skeleton
-
             namespace[self.output] = mesh
         else:
             # return mesoskeleton mesh

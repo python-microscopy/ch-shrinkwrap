@@ -946,7 +946,7 @@ cdef class MembraneMesh(TriangleMesh):
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
 
-    def opt_skeleton(self, points, sigma, max_iter=10, step_size=1.0, lam=[0,0], **kwargs):
+    def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=5.0, **kwargs):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad
 
         self.remesh_frequency = 1
@@ -958,9 +958,7 @@ cdef class MembraneMesh(TriangleMesh):
         else:
             rf = max_iter
 
-        j = 0
-        while (self.volume(np.arange(self._faces.shape[0])[self._faces['halfedge'] != -1]) > 100) and (j < max_iter):
-            print(self.volume(np.arange(self._faces.shape[0])[self._faces['halfedge'] != -1]), j)
+        for j in range(max_iter//rf):
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n[self._vertices['neighbors'] == -1] = -1
             cg = SkeletonConjGrad(self._vertices['position'], self._vertices['normal'], n)
@@ -980,9 +978,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
-                self.remesh()
-
-            j += 1
+                self.remesh(target_edge_length=target_edge_length)
         
     def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None, **kwargs):
 
