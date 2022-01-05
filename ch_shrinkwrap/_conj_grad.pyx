@@ -6,10 +6,12 @@
 
 from .delaunay_utils import voronoi_poles
 
+cimport numpy as np
 import numpy as np
 import scipy.spatial
+import cython
 
-class TikhonovConjugateGradient(object):
+cdef class TikhonovConjugateGradient(object):
     """Base N-directional conjugate gradient class for quadratics
     with Tikhonov-regularized terms, implementing a variant of the ICTM algorithm.
     ie. find f such that:
@@ -26,7 +28,20 @@ class TikhonovConjugateGradient(object):
     LHFuncs - conj. transpose of regularization functions
 
     """
-    def __init__(self, *args, **kwargs):
+    cdef public list tests
+    cdef public list ress
+    cdef public list prefs
+    cdef public list Lfuncs
+    cdef public list Lhfuncs
+    cdef public np.ndarray f
+    cdef np.ndarray fs
+    cdef public np.ndarray res
+    cdef int loopcount
+    cdef np.ndarray mask
+    cdef public object cpred
+    cdef public object wpreds
+
+    def __init__(self):
         #allocate some empty lists to track our progress in
         self.tests = []
         self.ress = []
@@ -45,7 +60,7 @@ class TikhonovConjugateGradient(object):
     def default_guess(self, default):
         """ guesses for regularization function default solutions, can be overriden
         in derived classes"""
-        return default*np.ones(self.f.shape, 'f')
+        return default*np.ones_like(self.f, 'f')
 
     def searchp(self, args):
         """ convenience function for searching in parallel using processing.Pool.map"""
@@ -237,12 +252,19 @@ class TikhonovConjugateGradient(object):
         """ Function that applies conjugate transpose of L to a vector"""
         pass
 
-class ShrinkwrapConjGrad(TikhonovConjugateGradient):
-    _search_k = 200
-    _points = None
-    _vertices = None
-    _neighbors = None
-    _sigma = None
+cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
+    cdef object _search_k
+    cdef object _points
+    cdef object _vertices
+    cdef object _neighbors
+    cdef object _sigma
+    cdef object M
+    cdef object dims
+    cdef object shape
+    cdef object n
+    cdef object N
+    cdef object _prev_loopcount
+    cdef object _tree
     
     def prep(self):
         pass
@@ -388,9 +410,6 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
             for j in np.arange(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
@@ -405,9 +424,6 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
             for j in np.arange(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
@@ -416,12 +432,9 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                         break
                     d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
         return d
-
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
-        self._prev_loopcount = -1
-        return TikhonovConjugateGradient.search(self, data, lams, defaults=defaults, 
-                                                num_iters=num_iters, weights=weights, 
-                                                pos=pos, last_step=last_step)
+    
+    def calc_w(self):
+        return True
         
     def start_guess(self, data):
         # since we want to solve ||Af-0|| as part of the
@@ -445,18 +458,30 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             return True
         return False
 
-class SkeletonConjGrad(TikhonovConjugateGradient):
+cdef class SkeletonConjGrad(TikhonovConjugateGradient):
     """
     Collapse surface to a skeleton. Note this requries last_step=False when
     calling search().
 
     Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
     "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
-    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    (August 2012): 1735-44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
     """
-    _vertices = None
-    _neighbors = None
-    _prev_vertices = None
+
+    cdef np.ndarray _vertices
+    cdef np.ndarray _neighbors
+    cdef np.ndarray _prev_vertices
+    cdef int M
+    cdef int dims
+    cdef tuple shape
+    cdef np.ndarray _on_deck_vertices
+    cdef object _vor
+    cdef np.ndarray _vertex_normals
+    cdef np.ndarray n
+    cdef int N
+    cdef np.ndarray _neg_vor_poles
+    cdef object _neg_vor_poles_tree
+    cdef int _prev_loopcount
         
     @property
     def vertices(self):
@@ -494,36 +519,40 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         """
         # note that f is raveled, by default in C order so 
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
-        d = np.zeros_like(f)
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in np.arange(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
+        cdef int i, j, N, n
+        cdef np.int32_t * nn
+        cdef float * d
+        N = 20
+
+        dp = np.zeros_like(f)
+        d = <float *>np.PyArray_DATA(dp)
+        for i in range(self.M):
+            for j in range(self.dims):
+                nn = <np.int32_t *>np.PyArray_DATA(self.n[i,:])
+                for n in range(N):
+                    if nn[n] == -1:
                         break
-                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
-        return d
+                    d[i*self.dims+j] += (f[nn[n]*self.dims+j] - f[i*self.dims+j])/N
+        return dp
     
     def Ahfunc(self, f):
         # Now we are transposed, so we want to add the neighbors to d in column order
         # should be symmetric, unless we change the weighting
-        d = np.zeros_like(f)
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in np.arange(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
+        cdef int i, j, N, n
+        cdef np.int32_t * nn
+        cdef float * d
+
+        dp = np.zeros_like(f)
+        d = <float *>np.PyArray_DATA(dp)
+        N = 20
+        for i in range(self.M):
+            for j in range(self.dims):
+                nn = <np.int32_t *>np.PyArray_DATA(self.n[i,:])
+                for n in range(N):
+                    if nn[n] == -1:
                         break
-                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
-        return d
+                    d[n*self.dims+j] += (f[i*self.dims+j] - f[nn[n]*self.dims+j])/N
+        return dp
     
     def Lfunc(self, f):
         """
@@ -532,15 +561,9 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         if self._updated_loopcount():
             self._prev_vertices = self._on_deck_vertices
             self._on_deck_vertices = self.f.copy()
-        idxs = np.repeat(self.n[:,0]==-1,3)
-        val = (f - self._prev_vertices)
-        val[idxs] = 0
-        return val
+        return (f - self._prev_vertices)
     
     def Lhfunc(self, f):
-        idxs = np.repeat(self.n[:,0]==-1,3)
-        val = f
-        val[idxs] = 0
         return f
     
     def Mfunc(self, f):
@@ -550,40 +573,29 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         fr = f.reshape(self.shape)
         #print(fr)
         _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
-
-        # none of the missing voronoi poles will matter to the final result,
-        # as they are from -1 halfedge vertices, but they will throw an error
-        # as such, replace them with something "valid"
-        idxs = (self.n[:,0]==-1) | (nearest_pole == self._neg_vor_poles.shape[0])
-        nearest_pole[idxs] = 0
-
         #print(nearest_pole)
         #print(self._neg_vor_poles[nearest_pole,:])
-        val = (self._neg_vor_poles[nearest_pole,:]-fr)
-        val[idxs,:] = 0
-        return val.ravel()
+        return (self._neg_vor_poles[nearest_pole,:]-fr).ravel()
     
     def Mhfunc(self, f):
         # fr = f.reshape(self.shape)
         # _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
-        idxs = np.repeat(self.n[:,0]==-1,3)
-        val = f
-        val[idxs] = 0
         return f
     
     def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
+
         self.Lfuncs = ["Lfunc", "Mfunc"]
         self.Lhfuncs = ["Lhfunc", "Mhfunc"]
+        
         self.vertices, self.neighbors, self.vertex_normals = vertices, neighbors, vertex_normals
-        self._prev_loopcount = 1
+        
         self._vor = scipy.spatial.Voronoi(self._vertices)
         _, pn = voronoi_poles(self._vor, self.vertex_normals)
         self._neg_vor_poles = self._vor.vertices[pn[pn!=-1]]
-        if kwargs.get('mesh'):
-            from .delaunay_utils import clean_neg_voronoi_poles
-            self._neg_vor_poles = clean_neg_voronoi_poles(kwargs.get('mesh'),self._neg_vor_poles)
         self._neg_vor_poles_tree = scipy.spatial.cKDTree(self._neg_vor_poles)
+
+        self._prev_loopcount = 1
 
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=False):
         self._prev_loopcount = 1

@@ -42,4 +42,4 @@ def noise(shape, model=None, **kw):
     else:
         sigma = 10.0*np.ones(shape)
 
-    return sigma
+    return sigma*np.random.randn(*sigma.shape)

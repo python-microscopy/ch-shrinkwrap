@@ -71,6 +71,22 @@ class Shape:
     def mse(self, points):
         return self.surface_res(points)/len(points)
 
+class Sphere(Shape):
+    def __init__(self, radius=2, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._radius = radius
+
+    @property
+    def surface_area(self):
+        return 4*np.pi*self._radius*self._radius
+
+    @property
+    def volume(self):
+        return (4.0/3.0)*np.pi*self._radius*self._radius*self._radius
+
+    def sdf(self, p):
+        return sdf.sphere(p, self._radius)
+
 class Torus(Shape):
     def __init__(self, radius=2, r=0.05, **kwargs):
         Shape.__init__(self, **kwargs)

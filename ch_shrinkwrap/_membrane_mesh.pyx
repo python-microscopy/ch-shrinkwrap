@@ -17,6 +17,7 @@ DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
+COS110 = -0.34202014332
 
 MAX_VERTEX_COUNT = 2**31
 
@@ -27,14 +28,60 @@ USE_C = True
 cdef extern from 'triangle_mesh_utils.h':
     const int NEIGHBORSIZE  # Note this must match NEIGHBORSIZE in triangle_mesh_utils.h
     const int VECTORSIZE
+
+    cdef struct face_d:
+        np.int32_t halfedge
+        float normal0
+        float normal1
+        float normal2
+        float area
+        np.int32_t component
+
+    cdef struct face_t:
+        np.int32_t halfedge
+        float normal[VECTORSIZE]
+        float area
+        np.int32_t component
+
+    cdef struct vertex_d :
+        float position0
+        float position1
+        float position2
+        float normal0
+        float normal1
+        float normal2
+        np.int32_t halfedge
+        np.int32_t valence
+        np.int32_t neighbor0
+        np.int32_t neighbor1
+        np.int32_t neighbor2
+        np.int32_t neighbor3
+        np.int32_t neighbor4
+        np.int32_t neighbor5
+        np.int32_t neighbor6
+        np.int32_t neighbor7
+        np.int32_t neighbor8
+        np.int32_t neighbor9
+        np.int32_t neighbor10
+        np.int32_t neighbor11
+        np.int32_t neighbor12
+        np.int32_t neighbor13
+        np.int32_t neighbor14
+        np.int32_t neighbor15
+        np.int32_t neighbor16
+        np.int32_t neighbor17
+        np.int32_t neighbor18
+        np.int32_t neighbor19
+        np.int32_t component
+        np.int32_t locally_manifold
         
     cdef struct vertex_t:
-        float position[VECTORSIZE];
-        float normal[VECTORSIZE];
-        np.int32_t halfedge;
-        np.int32_t valence;
-        np.int32_t neighbors[NEIGHBORSIZE];
-        np.int32_t component;
+        float position[VECTORSIZE]
+        float normal[VECTORSIZE]
+        np.int32_t halfedge
+        np.int32_t valence
+        np.int32_t neighbors[NEIGHBORSIZE]
+        np.int32_t component
         np.int32_t locally_manifold
 
     cdef struct halfedge_t:
@@ -54,6 +101,11 @@ POINTS_DTYPE = np.dtype([('position', '3f4')])
 POINTS_DTYPE2 = np.dtype([('position0', 'f4'), 
                           ('position1', 'f4'), 
                           ('position2', 'f4')])
+
+cdef extern from "triangle_mesh_utils.c":
+    void _update_face_normals(np.int32_t *f_idxs, halfedge_t *halfedges, vertex_t *vertices, face_t *faces, signed int n_idxs)
+    void update_face_normal(int f_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
+    void update_single_vertex_neighbours(int v_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
 
 cdef extern from "membrane_mesh_utils.c":
     void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
@@ -276,6 +328,253 @@ cdef class MembraneMesh(TriangleMesh):
         # self._K = None
         # self._E = None
         self._initialize_curvature_vectors()
+
+    cpdef int skeleton_edge_split(self, np.int32_t _curr, bint live_update=1):
+        """
+        Split triangles evenly along an edge specified by halfedge index _curr.
+
+        Parameters
+        ----------
+            _curr : int
+                Pointer to halfedge defining edge to split.
+            live_update : bool
+                Update associated faces and vertices after split. Set to False
+                to handle this externally (useful if operating on multiple, 
+                disjoint edges).
+        """
+        cdef halfedge_t *curr_edge
+        cdef halfedge_t *twin_edge
+        cdef np.int32_t _prev, _twin, _next, _twin_prev, _twin_next, _face_1_idx, _face_2_idx, _he_0_idx, _he_1_idx, _he_2_idx, _he_3_idx, _he_4_idx, _he_5_idx, _vertex_idx
+        cdef bint interior
+        cdef np.int32_t v0, v1
+        cdef int i
+        cdef np.float32_t x0x, x0y, x0z, x1x, x1y, x1z, n0x, n0y, n0z, n1x, n1y, n1z, ndot
+        cdef np.float32_t[VECTORSIZE] _vertex
+
+        if _curr == -1:
+            return 0
+        
+        curr_edge = &self._chalfedges[_curr]
+        _prev = curr_edge.prev
+        _next = curr_edge.next
+
+        # Grab the new vertex position
+        v0 = curr_edge.vertex
+        v1 = self._chalfedges[_prev].vertex
+        x0x = self._cvertices[v0].position0
+        x0y = self._cvertices[v0].position1
+        x0z = self._cvertices[v0].position2
+        x1x = self._cvertices[v1].position0
+        x1y = self._cvertices[v1].position1
+        x1z = self._cvertices[v1].position2
+
+        # FROM HERE
+        # project the _next vertex perpendicularly onto the edge
+        n0x = x1x - x0x
+        n0y = x1y - x0y
+        n0z = x1z - x0z
+        n1x = self._cvertices[self._chalfedges[_next].vertex].position0 - x0x
+        n1y = self._cvertices[self._chalfedges[_next].vertex].position1 - x0y
+        n1z = self._cvertices[self._chalfedges[_next].vertex].position2 - x0z
+
+        # displacement along the x1-x0 direction
+        #print(curr_edge.length)
+        if curr_edge.length > 1e-6:
+            ndot = ((n0x*n1x)+(n0y*n1y)+(n0z*n1z))/(curr_edge.length*curr_edge.length)
+        else:
+            ndot = 0.5
+
+        _vertex[0] = x0x + (x1x-x0x)*ndot
+        _vertex[1] = x0y + (x1y-x0y)*ndot
+        _vertex[2] = x0z + (x1z-x0z)*ndot
+
+        # TO HERE
+
+        _vertex_idx = self._new_vertex(_vertex)
+
+        _twin = curr_edge.twin
+        interior = (_twin != -1)  # Are we on a boundary?
+        
+        if interior:
+            twin_edge = &self._chalfedges[_twin]
+            _twin_prev = twin_edge.prev
+            _twin_next = twin_edge.next
+        
+        # Ensure the original faces have the correct pointers and add two new faces
+        self._cfaces[curr_edge.face].halfedge = _curr
+        if interior:
+            self._cfaces[twin_edge.face].halfedge = _twin
+            _face_1_idx = self._new_face(_twin_prev)
+            self._chalfedges[_twin_prev].face = _face_1_idx
+        _face_2_idx = self._new_face(_next)
+        self._chalfedges[_next].face = _face_2_idx
+
+        # Insert the new faces
+        _he_0_idx = self._insert_new_edge(self._chalfedges[_next].vertex, prev=_curr, next=_prev, face=self._chalfedges[_curr].face)
+        if interior:
+            _he_1_idx = self._insert_new_edge(_vertex_idx, prev=_twin_next, next=_twin, face=self._chalfedges[_twin].face)
+        
+            _he_2_idx = self._insert_new_edge(self._chalfedges[_twin_next].vertex, next=_twin_prev, face=_face_1_idx)
+            _he_3_idx = self._insert_new_edge(_vertex_idx, prev=_twin_prev, next=_he_2_idx, face=_face_1_idx)
+            self._chalfedges[_he_2_idx].prev = _he_3_idx
+
+        _he_4_idx = self._insert_new_edge(self._chalfedges[_curr].vertex, next=_next, face=_face_2_idx, twin=-1)
+        _he_5_idx = self._insert_new_edge(_vertex_idx, prev=_next, next=_he_4_idx, face=_face_2_idx)
+        self._chalfedges[_he_4_idx].prev = _he_5_idx
+
+        self._chalfedges[_he_0_idx].twin = _he_5_idx
+        self._chalfedges[_he_5_idx].twin = _he_0_idx
+
+        if interior:
+            self._chalfedges[_he_1_idx].twin = _he_2_idx
+            self._chalfedges[_he_2_idx].twin = _he_1_idx
+
+            self._chalfedges[_he_3_idx].twin = _he_4_idx
+            self._chalfedges[_he_4_idx].twin = _he_3_idx
+
+        # Update _prev, next
+        self._chalfedges[_prev].prev = _he_0_idx
+        self._chalfedges[_next].prev = _he_4_idx
+        self._chalfedges[_next].next = _he_5_idx
+
+        if interior:
+            # Update _twin_next, _twin_prev
+            self._chalfedges[_twin_next].next = _he_1_idx
+            self._chalfedges[_twin_prev].prev = _he_2_idx
+            self._chalfedges[_twin_prev].next = _he_3_idx
+
+            self._chalfedges[_twin].prev = _he_1_idx
+        # Update _curr and _twin
+        self._chalfedges[_curr].vertex = _vertex_idx
+        self._chalfedges[_curr].next = _he_0_idx
+
+        # Update halfedges
+        if interior:
+            self._cvertices[self._chalfedges[_he_2_idx].vertex].halfedge = _he_1_idx
+        self._cvertices[self._chalfedges[_prev].vertex].halfedge = _curr
+        self._cvertices[self._chalfedges[_he_4_idx].vertex].halfedge = _next
+        self._cvertices[_vertex_idx].halfedge = _he_4_idx
+        self._cvertices[self._chalfedges[_he_0_idx].vertex].halfedge = _he_5_idx
+
+        if live_update:
+            if interior:
+                #self._update_face_normals([self._chalfedges[_he_0_idx].face, self._chalfedges[_he_1_idx].face, self._chalfedges[_he_2_idx].face, self._chalfedges[_he_4_idx].face])
+                #self._update_vertex_neighbors([self._chalfedges[_curr].vertex, self._chalfedges[_twin].vertex, self._chalfedges[_he_0_idx].vertex, self._chalfedges[_he_2_idx].vertex, self._chalfedges[_he_4_idx].vertex])
+            
+                update_face_normal(self._chalfedges[_he_0_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                update_face_normal(self._chalfedges[_he_1_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                update_face_normal(self._chalfedges[_he_2_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                update_face_normal(self._chalfedges[_he_4_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                
+                update_single_vertex_neighbours(self._chalfedges[_curr].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_twin].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_he_0_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_he_2_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_he_4_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+            
+            else:
+                #self._update_face_normals([self._chalfedges[_he_0_idx].face, self._chalfedges[_he_4_idx].face])
+                #self._update_vertex_neighbors([self._chalfedges[_curr].vertex, self._chalfedges[_prev].vertex, self._chalfedges[_he_0_idx].vertex, self._chalfedges[_he_4_idx].vertex])
+                
+                update_face_normal(self._chalfedges[_he_0_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                update_face_normal(self._chalfedges[_he_4_idx].face, self._chalfedges, self._cvertices, self._cfaces)
+                
+                update_single_vertex_neighbours(self._chalfedges[_curr].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_prev].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_he_0_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                update_single_vertex_neighbours(self._chalfedges[_he_4_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+            
+            
+            self._faces_by_vertex = None
+            self._H = None
+            self._K = None
+        
+        return 1
+
+    cdef int skeleton_split_edges(self):
+        cdef int split_count = 0
+        cdef int i
+        cdef int n_halfedges = self._halfedges.shape[0]
+        cdef float *v0
+        cdef float *v1
+        cdef float *v2
+        cdef float *v3
+        cdef float *v4
+        cdef float *v5
+        cdef float t0d
+        cdef float t1d
+        cdef float t0l
+        cdef float t1l
+        
+        for i in range(n_halfedges):
+            if (self._chalfedges[i].vertex != -1):
+                v0 = &self._cvertices[self._chalfedges[i].vertex].position0
+                v1 = &self._cvertices[self._chalfedges[self._chalfedges[i].next].vertex].position0
+                v2 = &self._cvertices[self._chalfedges[self._chalfedges[i].prev].vertex].position0
+                t0d = (v0[0]-v1[0])*(v2[0]-v1[0]) + (v0[1]-v1[1])*(v2[1]-v1[1]) + (v0[2]-v1[2])*(v2[2]-v1[2])
+                t0l = self._chalfedges[self._chalfedges[i].next].length*self._chalfedges[self._chalfedges[i].prev].length
+                
+                if t0l > 0:
+                    t0d /= t0l
+                else:
+                    # do not split an edge of length 0
+                    continue
+
+                if (self._chalfedges[i].twin != -1):
+                    v3 = &self._cvertices[self._chalfedges[self._chalfedges[i].twin].vertex].position0
+                    v4 = &self._cvertices[self._chalfedges[self._chalfedges[self._chalfedges[i].twin].next].vertex].position0
+                    v5 = &self._cvertices[self._chalfedges[self._chalfedges[self._chalfedges[i].twin].prev].vertex].position0
+                
+                    t1d = (v3[0]-v4[0])*(v5[0]-v4[0]) + (v3[1]-v4[1])*(v5[1]-v4[1]) + (v3[2]-v4[2])*(v5[2]-v4[2])
+                    t1l = self._chalfedges[self._chalfedges[self._chalfedges[i].twin].next].length*self._chalfedges[self._chalfedges[self._chalfedges[i].twin].prev].length
+
+                    if t1l > 0:
+                        t1d /= t1l
+                    else:
+                        # do not split an edge of length 0
+                        continue
+                else:
+                    t1d = 0
+
+                if (t0d < COS110) and (t0d < t1d):
+                    #print(f"Splitting {i}")
+                    self.skeleton_edge_split(i)
+                    split_count += 1
+                elif (t1d < COS110) and (t1d < t0d):
+                    #print(f"Splitting {self._chalfedges[i].twin}")
+                    self.skeleton_edge_split(self._chalfedges[i].twin)
+                    split_count += 1
+                
+        print('Split count: %d' % (split_count))
+        return split_count
+
+    cdef int skeleton_remesh(self, float target_edge_length=-1):
+        cdef int k, i, ct
+        cdef float collapse_threshold, xl, xu, yl, yu, zl, zu, diag
+
+        cdef int n_halfedges = self._halfedges.shape[0]
+        cdef int n_vertices = self._vertices.shape[0]
+
+        if (target_edge_length < 0):
+            # Guess edge_length
+            xl, yl, zl, xu, yu, zu = self.bbox
+            diag = math.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
+            collapse_threshold = 0.002*diag
+            print(f"Guessing as {collapse_threshold}")
+        else:
+            collapse_threshold = target_edge_length
+        
+        print(f"Target edge length: {collapse_threshold}")
+        ct = self.collapse_edges(collapse_threshold)
+
+        ct = self.skeleton_split_edges()
+
+        # Let's double-check the mesh manifoldness
+        self._manifold = None
+        self.manifold
+        self._initialize_curvature_vectors()
+
+        return 1
 
     def _compute_curvature_tensor_eig(self, Mvi):
         """
@@ -923,7 +1222,7 @@ cdef class MembraneMesh(TriangleMesh):
             cg = ShrinkwrapConjGrad(self._vertices['position'], n, points=points, search_k=self.search_k)
 
             vp = cg.search(points,lams=step_size,num_iters=rf,
-                           weights=1.0/np.repeat(sigma,points.shape[1]),pos=False)
+                           weights=1.0/np.repeat(sigma,points.shape[1]))
 
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
@@ -946,7 +1245,7 @@ cdef class MembraneMesh(TriangleMesh):
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
 
-    def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=5.0, **kwargs):
+    def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=-1, **kwargs):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad
 
         self.remesh_frequency = 1
@@ -958,16 +1257,25 @@ cdef class MembraneMesh(TriangleMesh):
         else:
             rf = max_iter
 
+        # initialize skeleton, construct Voronoi diagram once
+        n = self._halfedges['vertex'][self._vertices['neighbors']]
+        n[self._vertices['neighbors'] == -1] = -1
+        cg = SkeletonConjGrad(self._vertices['position'], self._vertices['normal'], n, mesh=self)
         for j in range(max_iter//rf):
+            k = (self._vertices['halfedge'] != -1)
+            print(f"{k.sum()} vertices")
+
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n[self._vertices['neighbors'] == -1] = -1
-            cg = SkeletonConjGrad(self._vertices['position'], self._vertices['normal'], n)
 
-            vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf,
-                           pos=False,last_step=False)
+            # Update positions
+            cg.vertices, cg.neighbors, cg.vertex_normals = self._vertices['position'], n, self._vertices['normal']
 
-            k = (self._vertices['halfedge'] != -1)
+            vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf)
+
+            print(self._vertices['position'][k][:5])
             self._vertices['position'][k] = vp[k]
+            print(self._vertices['position'][k][:5])
 
             # self._faces['normal'][:] = -1
             # self._vertices['neighbors'][:] = -1
@@ -978,7 +1286,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
-                self.remesh(target_edge_length=target_edge_length)
+                self.skeleton_remesh(target_edge_length=target_edge_length)
         
     def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None, **kwargs):
 

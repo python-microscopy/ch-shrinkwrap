@@ -4,7 +4,7 @@ import scipy.spatial
 
 from PYME.experimental import isosurface
 
-from ch_shrinkwrap import sdf, util
+from . import sdf, util
 
 def orient_simps(d, v):
     """
@@ -251,7 +251,7 @@ def voronoi_poles(vor, point_normals):
     -1 index indicates a point at infinity.
     
     Amenta, N, and M Bern. "Surface Reconstruction by Voronoi Filtering." 
-    Discrete & Computational Geometry 22 (1999): 481–504.
+    Discrete & Computational Geometry 22 (1999): 481-504.
     
     Parameters
     ----------
@@ -296,4 +296,12 @@ def voronoi_poles(vor, point_normals):
         p_neg[i] = cell_points[np.argmax(s*d)]
     
     return p_pos, p_neg
-    
+
+def clean_neg_voronoi_poles(mesh, np):
+    # Make sure we have no negative voronoi poles outside of the mesh
+    # TODO: This shouldn't be necessary, all negative voronoi poles
+    # should lie on the medial axis of the mesh.
+
+    from PYME.experimental.isosurface import distance_to_mesh
+    d = distance_to_mesh(np, mesh)
+    return np[d < 0.0,:]

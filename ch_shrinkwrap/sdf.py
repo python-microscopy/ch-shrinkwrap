@@ -1,10 +1,60 @@
 import math
 import numpy as np
-from ch_shrinkwrap import util
+from . import util
+
+def grad_sdf(pts, sdf, delta=0.1):
+    """
+    Gradient of the signed distance function, calculated via central differences.
+    
+    Parameters
+    ----------
+    pts : np.array
+        3 x N array of points on which we evaluate the gradient
+    sdf : function
+        Signed-distance function. Expects 3xN vector of x, y, z coordinates.
+    delta : float
+        Shift in gradient direction.
+
+    Returns
+    -------
+    np.array
+        3 x N gradient for each point in pts
+    """
+    d2 = delta/2.0
+    hx = np.array([d2,0,0])[:,None]
+    hy = np.array([0,d2,0])[:,None]
+    hz = np.array([0,0,d2])[:,None]
+    dx = (sdf(pts + hx) - sdf(pts - hx))/delta
+    dy = (sdf(pts + hy) - sdf(pts - hy))/delta
+    dz = (sdf(pts + hz) - sdf(pts - hz))/delta
+    
+    return np.vstack([dx, dy, dz])
+
+def sdf_normals(pts, sdf, delta=0.1):
+    g = grad_sdf(pts, sdf, delta=delta)
+    g_norm = np.linalg.norm(g, axis=0)
+    return g/g_norm[None,:]
 
 # Most SDFs from http://iquilezles.org/www/articles/distfunctions/distfunctions.htm.
 
+def sphere(p, R):
+    """
+    p : np.array
+        (3,N) point to calculate
+    R : float
+        Sphere radius
+    """
+    return np.linalg.norm(p, axis=0) - R
+
 def torus(p, r, R):
+    """
+    p : np.array
+        (3,N) point to calculate
+    r : float
+        inner radius
+    R : float
+        outer radius
+    """
     q = np.array([np.sqrt(p[0,:]**2 + p[2,:]**2)-r,p[1,:]])
     return np.linalg.norm(q,axis=0)-R
 

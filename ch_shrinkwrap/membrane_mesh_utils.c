@@ -1094,7 +1094,7 @@ static PyMethodDef membrane_mesh_utils_methods[] = {
 };
 
 #if PY_MAJOR_VERSION >= 3
-static struct PyModuleDef moduledef = {
+static struct PyModuleDef moduledef2 = {
         PyModuleDef_HEAD_INIT,
         "membrane_mesh_utils",     /* m_name */
         "C implementations of membrane_mesh operations for speed improvement",  /* m_doc */
@@ -1109,7 +1109,7 @@ static struct PyModuleDef moduledef = {
 PyMODINIT_FUNC PyInit_membrane_mesh_utils(void)
 {
 	PyObject *m;
-    m = PyModule_Create(&moduledef);
+    m = PyModule_Create(&moduledef2);
     import_array()
     return m;
 }
