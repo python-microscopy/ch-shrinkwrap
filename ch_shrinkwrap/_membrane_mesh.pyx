@@ -161,6 +161,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef float * _cdK
     cdef float * _cdE_neighbors
     cdef public int search_k
+    cdef public float search_rad
     cdef public float skip_prob
     cdef object _tree
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -200,6 +201,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
+        self.search_rad = 100
 
         # Percentage of vertices to skip on each refinement iteration
         self.skip_prob = 0.0
@@ -560,7 +562,6 @@ cdef class MembraneMesh(TriangleMesh):
             xl, yl, zl, xu, yu, zu = self.bbox
             diag = math.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
             collapse_threshold = 0.002*diag
-            print(f"Guessing as {collapse_threshold}")
         else:
             collapse_threshold = target_edge_length
         
@@ -1002,7 +1003,7 @@ cdef class MembraneMesh(TriangleMesh):
         faces = delaunay_utils.surf_from_delaunay(simps_)
 
         # Rebuild mesh
-        self.build_from_verts_faces(v, faces)
+        self.build_from_verts_faces(v, faces, clear=True)
 
         # Delaunay remeshing has a penchant for flanges
         while np.any(self.singular):
@@ -1216,10 +1217,15 @@ cdef class MembraneMesh(TriangleMesh):
             final_length = np.clip(np.min(sigma)/2.5, 0.0, 50.0)
             m = (final_length - initial_length)/max_iter
 
+        # initialize area values (used in termination condition)
+        original_area = self.area()
+        last_area, area = original_area, 0
+
         for j in range(max_iter//rf):
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n[self._vertices['neighbors'] == -1] = -1
-            cg = ShrinkwrapConjGrad(self._vertices['position'], n, points=points, search_k=self.search_k)
+            cg = ShrinkwrapConjGrad(self._vertices['position'], n, points=points, 
+                                    search_k=self.search_k, search_rad=self.search_rad)
 
             vp = cg.search(points,lams=step_size,num_iters=rf,
                            weights=1.0/np.repeat(sigma,points.shape[1]))
@@ -1233,6 +1239,14 @@ cdef class MembraneMesh(TriangleMesh):
             self._vertex_normals_valid = 0
             self.face_normals
             self.vertex_neighbors
+
+            # Terminate if area change is minimal
+            area = self.area()
+            area_ratio = math.fabs(last_area-area)/last_area
+            print(f"Area ratio is {area_ratio:.4f}")
+            if area_ratio < 0.01:
+                break
+            last_area = area
 
             # Delaunay remesh (hole punch)
             if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
@@ -1257,6 +1271,10 @@ cdef class MembraneMesh(TriangleMesh):
         else:
             rf = max_iter
 
+        # initialize area values (used in termination condition)
+        original_area = self.area()
+        last_area, area = original_area, 0
+
         # initialize skeleton, construct Voronoi diagram once
         n = self._halfedges['vertex'][self._vertices['neighbors']]
         n[self._vertices['neighbors'] == -1] = -1
@@ -1273,9 +1291,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf)
 
-            print(self._vertices['position'][k][:5])
             self._vertices['position'][k] = vp[k]
-            print(self._vertices['position'][k][:5])
 
             # self._faces['normal'][:] = -1
             # self._vertices['neighbors'][:] = -1
@@ -1283,6 +1299,14 @@ cdef class MembraneMesh(TriangleMesh):
             self._vertex_normals_valid = 0
             self.face_normals
             self.vertex_neighbors
+
+            # Check if area ratio is met
+            area = self.area()
+            area_ratio = math.fabs(last_area-area)/original_area
+            print(f"Area ratio is {area_ratio:.4f}")
+            if area_ratio < 0.0001:
+                break
+            last_area = area
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):

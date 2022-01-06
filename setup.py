@@ -10,7 +10,7 @@ this_dir = os.path.dirname(__file__)
 
 module0 = Extension('ch_shrinkwrap.membrane_mesh_utils', sources=[os.path.join(this_dir, 'ch_shrinkwrap/membrane_mesh_utils.c')])
 module1 = Extension('ch_shrinkwrap._membrane_mesh', sources=[os.path.join(this_dir, 'ch_shrinkwrap/_membrane_mesh.pyx')], include_dirs=get_numpy_include_dirs())
-module2 = Extension('ch_shrinkwrap._conj_grad', sources=[os.path.join(this_dir, 'ch_shrinkwrap/_conj_grad.pyx')], include_dirs=get_numpy_include_dirs())
+#module2 = Extension('ch_shrinkwrap._conj_grad', sources=[os.path.join(this_dir, 'ch_shrinkwrap/_conj_grad.pyx')], include_dirs=get_numpy_include_dirs())
 
 setup(name='ch_shrinkwrap',
       version='0.0',
@@ -19,5 +19,5 @@ setup(name='ch_shrinkwrap',
       author='Zach Marin',
       author_email='zach.marin@yale.edu',
       packages=find_packages(),
-      ext_modules = cythonize([module0, module1, module2])
+      ext_modules = cythonize([module0, module1]) #, module2])
      )

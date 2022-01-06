@@ -243,6 +243,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     _vertices = None
     _neighbors = None
     _sigma = None
+    _search_rad = 100
     
     def prep(self):
         pass
@@ -292,11 +293,20 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def search_k(self, search_k):
         self._search_k = min(search_k, self.points.shape[0])
 
-    def __init__(self, vertices, neighbors, points, sigma=None, search_k=200):
+    @property
+    def search_rad(self):
+        return self._search_rad
+
+    @search_rad.setter
+    def search_rad(self, search_rad):
+        self._search_rad = max(search_rad, 1.0)
+
+    def __init__(self, vertices, neighbors, points, sigma=None, search_k=200, search_rad=100):
         TikhonovConjugateGradient.__init__(self)
         self.vertices, self.neighbors, self.sigma = vertices, neighbors, sigma
         self.points = points
         self.search_k = search_k
+        self.search_rad = search_rad
         self._prev_loopcount = -1
         
     def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
@@ -310,7 +320,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             if self.n[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
-            _, neighbors = self._tree.query(fv[i,:], self.search_k)
+            # Grab all neighbors within search_rad or the nearest search_k neighbors
+            # if there are no neighbors within search_rad
+            neighbors = self._tree.query_ball_point(fv[i,:], self.search_rad)
+            if len(neighbors) == 0:
+                _, neighbors = self._tree.query(fv[i,:], self.search_k)
             for k in neighbors:  # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     dik = (f[i*self.dims+j] - self.points[k,j])
@@ -350,7 +364,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
             iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            _, neighbors = self._tree.query(iv, self.search_k)
+            neighbors = self._tree.query_ball_point(iv, self.search_rad)
+            if len(neighbors) == 0:
+                _, neighbors = self._tree.query(iv, self.search_k)
+            #print(f"# neighbors: {len(neighbors)}")
             for k in neighbors:  # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
@@ -373,7 +390,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
             iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            _, neighbors = self._tree.query(iv, self.search_k)
+            neighbors = self._tree.query_ball_point(iv, self.search_rad)
+            if len(neighbors) == 0:
+                _, neighbors = self._tree.query(iv, self.search_k)
+            #print(f"# neighbors: {len(neighbors)}")
             for k in neighbors:  # np.arange(self.points.shape[0]):
                 for j in np.arange(self.dims):
                     d[i*self.dims+j] += f[k*self.dims+j]*self.w[i,k]

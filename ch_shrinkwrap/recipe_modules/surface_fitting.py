@@ -13,15 +13,16 @@ class ShrinkwrapMembrane(ModuleBase):
     points = Input('filtered_localizations')
 
     max_iters = Int(100)
-    step_size = Float(0.1)
+    step_size = Float(10.0)
     attraction_weight = Float(1)
     curvature_weight = Float(1)
-    search_k = Int(200)
+    search_rad = Float(100.0)
+    search_k = Int(20)
     kc = Float(0.514)
     kg = Float(-0.514)
     skip_prob = Float(0.0)
-    remesh_frequency = Int(0)
-    delaunay_remesh_frequency = Int(0)
+    remesh_frequency = Int(5)
+    delaunay_remesh_frequency = Int(50)
     min_hole_radius = Int(100)
     sigma = CStr('sigma')
     method = Enum(DESCENT_METHODS)
@@ -41,7 +42,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           delaunay_remesh_frequency=self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
                                           a=self.attraction_weight,
-                                          c=self.curvature_weight)
+                                          c=self.curvature_weight,
+                                          search_rad=self.search_rad)
 
         namespace[self.output] = mesh
 

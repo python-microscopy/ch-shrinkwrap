@@ -40,8 +40,13 @@ cdef class TikhonovConjugateGradient(object):
     cdef np.ndarray mask
     cdef public object cpred
     cdef public object wpreds
+    cdef float * _cf
+    cdef float * _cres
+    cdef float * _cdefaults
+    cdef float * _cprefs
+    cdef float * _cS
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         #allocate some empty lists to track our progress in
         self.tests = []
         self.ress = []
@@ -60,11 +65,29 @@ cdef class TikhonovConjugateGradient(object):
     def default_guess(self, default):
         """ guesses for regularization function default solutions, can be overriden
         in derived classes"""
-        return default*np.ones_like(self.f, 'f')
+        return default*np.ones(self.f.shape, 'f')
 
     def searchp(self, args):
         """ convenience function for searching in parallel using processing.Pool.map"""
         self.search(*args)
+
+    cdef _set_cf(self, np.ndarray f):
+        self._cf = <float *> np.PyArray_DATA(f)
+
+    cdef _set_cS(self, np.ndarray s):
+        self._cS = <float *> np.PyArray_DATA(s)
+
+    cdef _set_cf_minus_defaults(self, np.ndarray f):
+        self._cf_minus_defaults = <float *> np.PyArray_DATA(f)
+
+    cdef _set_cres(self, np.ndarray res):
+        self._cres = <float *> np.PyArray_DATA(res)
+
+    cdef _set_cdefaults(self, np.ndarray defaults):
+        self._cdefaults = <float *> np.PyArray_DATA(_cdefaults)
+    
+    cdef _set_cprefs(self, np.ndarray prefs):
+        self._cprefs = <float *> np.PyArray_DATA(prefs)
     
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
         """This is what you actually call to do the deconvolution.
@@ -99,14 +122,22 @@ cdef class TikhonovConjugateGradient(object):
 
         # create a flattened view of our result
         self.f = self.fs.ravel()
+        self._set_cf(self.f)
 
         # Assume defaults are 0 for each regularization term if we don't pass any explicitly
         if defaults is None:
             defaults = np.vstack([self.default_guess(0) for x in self.Lfuncs]).T
 
+        _flat_defaults = defaults.ravel()
+        self._cdefaults(_flat_defaults)
+
+        _cf_minus_defaults = np.zeros(defaults.shape[0], dtype=float)
+        self._set_cf_minus_defaults(_cf_minus_defaults)
+
         #make things 1 dimensional
         data = data.ravel()
         self.res = 0*data
+        self._set_cres(self.res)
 
         #number of search directions
         n_smooth = len(self.Lfuncs)
@@ -130,9 +161,13 @@ cdef class TikhonovConjugateGradient(object):
 
         # directions for regularized parameters
         prefs = np.zeros((np.size(self.f), n_smooth), 'f')
+        _flat_prefs = prefs.ravel()
+        self._set_cprefs(_flat_prefs)
 
         #initial search directions
         S = np.zeros((np.size(self.f), s_size), 'f')
+        _flat_S = S.ravel()
+        self._set_cS(_flat_S)
 
         # replace any empty lambdas with zeros
         if len(lams) < len(self.Lfuncs):
@@ -147,12 +182,14 @@ cdef class TikhonovConjugateGradient(object):
             self.loopcount += 1
             
             # residuals
-            self.res[:] = (weights*(data - self.Afunc(self.f)))
+            self.res[:] = (weights*(data - self.Afunc(&(self._cf[0]))))
 
             # search directions
-            S[:,0] = self.Ahfunc(self.res)
+            S[:,0] = self.Ahfunc(&(self._cres[0]))
             for i in np.arange(n_smooth):
-                prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[:,i]) # residuals
+                for j in np.arange(defaults.shape[0]):
+                    self._cf_minus_defaults = self._cf[j] - self._cdefaults[i*defaults.shape[0]+j]
+                prefs[:,i] = getattr(self, self.Lfuncs[i])(&(self._cf_minus_defaults[0]))) # residuals
                 S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
             
             # check to see if the search directions are orthogonal
@@ -252,212 +289,6 @@ cdef class TikhonovConjugateGradient(object):
         """ Function that applies conjugate transpose of L to a vector"""
         pass
 
-cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
-    cdef object _search_k
-    cdef object _points
-    cdef object _vertices
-    cdef object _neighbors
-    cdef object _sigma
-    cdef object M
-    cdef object dims
-    cdef object shape
-    cdef object n
-    cdef object N
-    cdef object _prev_loopcount
-    cdef object _tree
-    
-    def prep(self):
-        pass
-        
-    @property
-    def vertices(self):
-        return self._vertices
-    
-    @vertices.setter
-    def vertices(self, vertices):
-        self._vertices = vertices
-        self.M = vertices.shape[0]
-        self.dims = vertices.shape[1]
-        self.shape = vertices.shape  # hack
-        
-    @property
-    def neighbors(self):
-        return self._neighbors
-    
-    @neighbors.setter
-    def neighbors(self, neighbors):
-        self.n = neighbors
-        self.N = self.n.shape[1]
-    
-    @property
-    def sigma(self):
-        return self._sigma
-    
-    @sigma.setter
-    def sigma(self, sigma):
-        self._sigma = sigma
-    
-    @property
-    def points(self):
-        return self._points
-    
-    @points.setter
-    def points(self, pts):
-        self._points = pts
-        self._tree = scipy.spatial.cKDTree(self._points)
-        
-    @property
-    def search_k(self):
-        return self._search_k
-
-    @search_k.setter
-    def search_k(self, search_k):
-        self._search_k = min(search_k, self.points.shape[0])
-
-    def __init__(self, vertices, neighbors, points, sigma=None, search_k=200):
-        TikhonovConjugateGradient.__init__(self)
-        self.vertices, self.neighbors, self.sigma = vertices, neighbors, sigma
-        self.points = points
-        self.search_k = search_k
-        self._prev_loopcount = -1
-        
-    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
-        """
-        Construct an n_vertices x n_points matrix.
-        """
-        dd = np.zeros((self.M,self.points.shape[0]))
-        fv = f.reshape(-1,self.dims)
-        
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            _, neighbors = self._tree.query(fv[i,:], self.search_k)
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    dik = (f[i*self.dims+j] - self.points[k,j])
-                    dd[i,k] += dik*dik
-                    
-                if dd[i,k] > 0:
-                    #dd[i,k] = self.sigma[k]*self.sigma[k]/dd[i,k]
-                    dd[i,k] = (1.0/dd[i,k])*np.exp(-dd[i,k]/(2*shield_sigma*shield_sigma))
-
-        # normalize s.t. the sum of the distances from each point to every other vertex = 1
-#         dd2 = np.copy(dd)
-        ds = dd.sum(0)                 
-        dd[:,ds>0] /= ds[None,ds>0]
-        
-        # normalize s.t. the sum of the distances from each vertex to every other point = 1
-#         ds = dd2.sum(1)
-#         dd2[ds>0,:] /= ds[ds>0,None]
-                        
-        return dd  # , dd2
-    
-    
-    def Afunc(self, f):
-        """
-        Create a map of which (weighted average) vertex each point should drive toward.
-        
-        f is a set of vertices
-        d is the weighted sum of all of the vertices indicating the closest vertex to each point
-        """
-        if self.calc_w():
-            self.w = self._compute_weight_matrix(self.f)
-        
-        # Compute the distance between the vertex and all the self.pts, weighted
-        # by distance to the vertex, sigma, etc.
-        d = np.zeros_like(self.points.ravel())
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            _, neighbors = self._tree.query(iv, self.search_k)
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
-
-        return d
-    
-    def Ahfunc(self, f):
-        """
-        Map each distance between a point and its closest (weighted average) vertex to
-        a new vertex position.
-        
-        f is a set of points
-        d is the weighted sum of all of the points indicating the closest point to each vertex
-        """
-        
-        d = np.zeros(self.M*self.dims)
-        
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            _, neighbors = self._tree.query(iv, self.search_k)
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    d[i*self.dims+j] += f[k*self.dims+j]*self.w[i,k]
-
-        return d
-
-    def Lfunc(self, f):
-        """
-        Minimize distance between a vertex and the centroid of its neighbors.
-        """
-        # note that f is raveled, by default in C order so 
-        # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
-        d = np.zeros_like(f)
-        for i in np.arange(self.M):
-            for j in np.arange(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
-        return d
-    
-    def Lhfunc(self, f):
-        # Now we are transposed, so we want to add the neighbors to d in column order
-        # should be symmetric, unless we change the weighting
-        d = np.zeros_like(f)
-        for i in np.arange(self.M):
-            for j in np.arange(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
-        return d
-    
-    def calc_w(self):
-        return True
-        
-    def start_guess(self, data):
-        # since we want to solve ||Af-0|| as part of the
-        # equation, we need to pass an array of zeros as
-        # data, but guess the verticies for the starting
-        # f value
-        return self.vertices.copy()
-
-    def _stop_cond(self):
-        # Stop if last three test statistcs are within eps of one another
-        # (and monotonically decreasing)
-        if len(self.tests) < 3:
-            return False
-        eps = 1e-6
-        a, b, c = self.tests[-3:]
-        return ((c < b) and (b < a) and (a < eps))
-    
-    def calc_w(self):
-        if self._prev_loopcount < self.loopcount:
-            self._prev_loopcount = self.loopcount
-            return True
-        return False
-
 cdef class SkeletonConjGrad(TikhonovConjugateGradient):
     """
     Collapse surface to a skeleton. Note this requries last_step=False when
@@ -465,9 +296,8 @@ cdef class SkeletonConjGrad(TikhonovConjugateGradient):
 
     Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
     "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
-    (August 2012): 1735-44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
     """
-
     cdef np.ndarray _vertices
     cdef np.ndarray _neighbors
     cdef np.ndarray _prev_vertices
@@ -519,40 +349,36 @@ cdef class SkeletonConjGrad(TikhonovConjugateGradient):
         """
         # note that f is raveled, by default in C order so 
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
-        cdef int i, j, N, n
-        cdef np.int32_t * nn
-        cdef float * d
-        N = 20
-
-        dp = np.zeros_like(f)
-        d = <float *>np.PyArray_DATA(dp)
-        for i in range(self.M):
-            for j in range(self.dims):
-                nn = <np.int32_t *>np.PyArray_DATA(self.n[i,:])
-                for n in range(N):
-                    if nn[n] == -1:
+        d = np.zeros_like(f)
+        for i in np.arange(self.M):
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            for j in np.arange(self.dims):
+                nn = self.n[i,:]
+                N = len(nn)
+                for n in nn:
+                    if n == -1:
                         break
-                    d[i*self.dims+j] += (f[nn[n]*self.dims+j] - f[i*self.dims+j])/N
-        return dp
+                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
+        return d
     
     def Ahfunc(self, f):
         # Now we are transposed, so we want to add the neighbors to d in column order
         # should be symmetric, unless we change the weighting
-        cdef int i, j, N, n
-        cdef np.int32_t * nn
-        cdef float * d
-
-        dp = np.zeros_like(f)
-        d = <float *>np.PyArray_DATA(dp)
-        N = 20
-        for i in range(self.M):
-            for j in range(self.dims):
-                nn = <np.int32_t *>np.PyArray_DATA(self.n[i,:])
-                for n in range(N):
-                    if nn[n] == -1:
+        d = np.zeros_like(f)
+        for i in np.arange(self.M):
+            if self.n[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            for j in np.arange(self.dims):
+                nn = self.n[i,:]
+                N = len(nn)
+                for n in nn:
+                    if n == -1:
                         break
-                    d[n*self.dims+j] += (f[i*self.dims+j] - f[nn[n]*self.dims+j])/N
-        return dp
+                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+        return d
     
     def Lfunc(self, f):
         """
@@ -561,9 +387,15 @@ cdef class SkeletonConjGrad(TikhonovConjugateGradient):
         if self._updated_loopcount():
             self._prev_vertices = self._on_deck_vertices
             self._on_deck_vertices = self.f.copy()
-        return (f - self._prev_vertices)
+        idxs = np.repeat(self.n[:,0]==-1,3)
+        val = (f - self._prev_vertices)
+        val[idxs] = 0
+        return val
     
     def Lhfunc(self, f):
+        idxs = np.repeat(self.n[:,0]==-1,3)
+        val = f
+        val[idxs] = 0
         return f
     
     def Mfunc(self, f):
@@ -573,29 +405,40 @@ cdef class SkeletonConjGrad(TikhonovConjugateGradient):
         fr = f.reshape(self.shape)
         #print(fr)
         _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
+
+        # none of the missing voronoi poles will matter to the final result,
+        # as they are from -1 halfedge vertices, but they will throw an error
+        # as such, replace them with something "valid"
+        idxs = (self.n[:,0]==-1) | (nearest_pole == self._neg_vor_poles.shape[0])
+        nearest_pole[idxs] = 0
+
         #print(nearest_pole)
         #print(self._neg_vor_poles[nearest_pole,:])
-        return (self._neg_vor_poles[nearest_pole,:]-fr).ravel()
+        val = (self._neg_vor_poles[nearest_pole,:]-fr)
+        val[idxs,:] = 0
+        return val.ravel()
     
     def Mhfunc(self, f):
         # fr = f.reshape(self.shape)
         # _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
+        idxs = np.repeat(self.n[:,0]==-1,3)
+        val = f
+        val[idxs] = 0
         return f
     
     def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
-
         self.Lfuncs = ["Lfunc", "Mfunc"]
         self.Lhfuncs = ["Lhfunc", "Mhfunc"]
-        
         self.vertices, self.neighbors, self.vertex_normals = vertices, neighbors, vertex_normals
-        
+        self._prev_loopcount = 1
         self._vor = scipy.spatial.Voronoi(self._vertices)
         _, pn = voronoi_poles(self._vor, self.vertex_normals)
         self._neg_vor_poles = self._vor.vertices[pn[pn!=-1]]
+        if kwargs.get('mesh'):
+            from .delaunay_utils import clean_neg_voronoi_poles
+            self._neg_vor_poles = clean_neg_voronoi_poles(kwargs.get('mesh'),self._neg_vor_poles)
         self._neg_vor_poles_tree = scipy.spatial.cKDTree(self._neg_vor_poles)
-
-        self._prev_loopcount = 1
 
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=False):
         self._prev_loopcount = 1
