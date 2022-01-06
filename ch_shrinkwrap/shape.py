@@ -14,7 +14,8 @@ class Shape:
         """
         self._density = None  # Shape density
         self._points = None  # Point queue representing Shape
-        self._noise = None  # noise profile
+        self._sigma = None
+        self._normals = None  # normals for self._points
         self._radius = None  # maximum diameter of the shape/2
         self._sdf = None
         self.centroid = np.array([0,0,0],dtype=float)  # where is the shape centered?
@@ -39,9 +40,10 @@ class Shape:
         Noise model for 
         """
 
-        return util.noise(self._points.shape, model, **kw)
+        self._sigma = util.loc_error(self._points.shape, model, **kw)
+        return self._sigma*np.random.randn(*self._sigma.shape)
     
-    def points(self, density=1, p=0.1, resample=False, noise='poisson', psf_width=250.0, mean_photon_count=300.0):
+    def points(self, density=1, p=0.1, resample=False, noise='poisson', psf_width=250.0, mean_photon_count=300.0, return_normals=False):
         """
         Monte-Carlo sampling of uniform points on the Shape surface.
         
@@ -60,8 +62,12 @@ class Shape:
             self._density = density
             self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
             if noise:
-                self._noise = self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count)
-                self._points += self._noise
+                self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count)
+            if return_normals:
+                self._normals = sdf.sdf_normals(self._points.T, self.sdf).T
+
+        if return_normals:
+            return self._points, self._normals
 
         return self._points
     

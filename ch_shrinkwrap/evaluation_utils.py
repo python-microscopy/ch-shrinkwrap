@@ -19,7 +19,7 @@ import math
 import scipy.spatial
 import numpy as np
 
-def points_from_mesh(mesh, dx_min=1, p=0.1, normals=False):
+def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
     """
     Generate random uniform sampling of points on a mesh.
 
@@ -40,7 +40,7 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, normals=False):
 
     d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=dx_min, p=p)
 
-    if normals:
+    if return_normals:
         # TODO: This repeats a fair bit of distance_to_mesh
 
         # Create a list of face centroids for search
@@ -154,4 +154,3 @@ def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
     mean = 0.5*(np.mean(angle_o) + np.mean(angle_m))
 
     return hausdorff, mean
-    
