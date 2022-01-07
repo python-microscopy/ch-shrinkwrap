@@ -117,8 +117,8 @@ def construct_ordered_pairs(o, m, no, nm, dx_max=1, rad=100.0):
     # If the dot product is larger than if the vectors o[oi]-m and m+g*N(m)
     # were displaced tip to tip by dx_max, keep them (o[oi]-m is within
     # dx_max of m+g*N(m))
-    omp = om - dx_max*dx_max/(2*om)
-    mop = mo - dx_max*dx_max/(2*mo)
+    mop = om - dx_max*dx_max/(2*om)
+    omp = mo - dx_max*dx_max/(2*mo)
     mdot_bool = np.abs(mdot) > mop
     odot_bool = np.abs(odot) > omp
     mdot_idxs = np.flatnonzero(mdot_bool) 
