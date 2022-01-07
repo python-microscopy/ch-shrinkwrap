@@ -489,7 +489,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         self.dims = vertices.shape[1]
         self.shape = vertices.shape  # hack
         self._on_deck_vertices = vertices.copy().ravel()
-        self._prev_vertices = vertices.copy().ravel()+0.01*np.random.randn(*vertices.shape).ravel()
+        self._prev_vertices = vertices.copy().ravel()+0.01*self._vertex_normals.ravel()
         
     @property
     def vertex_normals(self):
@@ -595,7 +595,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
         self.Lfuncs = ["Lfunc", "Mfunc"]
         self.Lhfuncs = ["Lhfunc", "Mhfunc"]
-        self.vertices, self.neighbors, self.vertex_normals = vertices, neighbors, vertex_normals
+        self.neighbors, self.vertex_normals, self.vertices = neighbors, vertex_normals, vertices
         self._prev_loopcount = 1
         self._vor = scipy.spatial.Voronoi(self._vertices)
         _, pn = voronoi_poles(self._vor, self.vertex_normals)

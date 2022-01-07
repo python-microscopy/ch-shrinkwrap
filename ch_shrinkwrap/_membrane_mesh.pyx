@@ -1000,14 +1000,14 @@ cdef class MembraneMesh(TriangleMesh):
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
-        faces = delaunay_utils.surf_from_delaunay(simps_)
+        faces = delaunay_utils.surf_from_delaunay(simps)
 
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, clear=True)
 
         # Delaunay remeshing has a penchant for flanges
-        while np.any(self.singular):
-            self._remove_singularities()
+        #while np.any(self.singular):
+        #    self._remove_singularities()
 
         self._initialize_curvature_vectors()
 
@@ -1287,7 +1287,7 @@ cdef class MembraneMesh(TriangleMesh):
             n[self._vertices['neighbors'] == -1] = -1
 
             # Update positions
-            cg.vertices, cg.neighbors, cg.vertex_normals = self._vertices['position'], n, self._vertices['normal']
+            cg.neighbors, cg.vertex_normals, cg.vertices = n, self._vertices['normal'], self._vertices['position']
 
             vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf)
 
