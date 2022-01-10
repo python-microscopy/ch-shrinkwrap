@@ -424,34 +424,40 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # note that f is raveled, by default in C order so 
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
-        for i in range(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in range(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
+        if USE_C:
+            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+        else:
+            for i in range(self.M):
+                if self.n[i,0] == -1:
+                    # cheat to find self._vertices['halfedge'] == -1
+                    continue
+                for j in range(self.dims):
+                    nn = self.n[i,:]
+                    N = (nn!=-1).sum()
+                    for n in nn:
+                        if n == -1:
+                            break
+                        d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
         return d
     
     def Lhfunc(self, f):
         # Now we are transposed, so we want to add the neighbors to d in column order
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
-        for i in range(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in range(self.dims):
-                nn = self.n[i,:]
-                N = len(nn)
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+        if USE_C:
+            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+        else:
+            for i in range(self.M):
+                if self.n[i,0] == -1:
+                    # cheat to find self._vertices['halfedge'] == -1
+                    continue
+                for j in range(self.dims):
+                    nn = self.n[i,:]
+                    N = (nn!=-1).sum()
+                    for n in nn:
+                        if n == -1:
+                            break
+                        d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
         return d
 
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
@@ -538,7 +544,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
                 continue
             for j in range(self.dims):
                 nn = self.n[i,:]
-                N = len(nn)
+                N = (nn!=-1).sum()
                 for n in nn:
                     if n == -1:
                         break
@@ -555,7 +561,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
                 continue
             for j in range(self.dims):
                 nn = self.n[i,:]
-                N = len(nn)
+                N = (nn!=-1).sum()
                 for n in nn:
                     if n == -1:
                         break
