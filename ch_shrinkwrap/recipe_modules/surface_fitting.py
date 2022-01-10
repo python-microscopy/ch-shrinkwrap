@@ -23,7 +23,7 @@ class ShrinkwrapMembrane(ModuleBase):
     skip_prob = Float(0.0)
     remesh_frequency = Int(5)
     delaunay_remesh_frequency = Int(50)
-    min_hole_radius = Int(100)
+    min_hole_radius = Float(100)
     sigma = CStr('sigma')
     method = Enum(DESCENT_METHODS)
 

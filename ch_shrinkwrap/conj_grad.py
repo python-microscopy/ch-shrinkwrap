@@ -9,6 +9,11 @@ from .delaunay_utils import voronoi_poles
 import numpy as np
 import scipy.spatial
 
+USE_C = True
+
+if USE_C:
+    from . import conj_grad_utils
+
 class TikhonovConjugateGradient(object):
     """Base N-directional conjugate gradient class for quadratics
     with Tikhonov-regularized terms, implementing a variant of the ICTM algorithm.
@@ -136,7 +141,7 @@ class TikhonovConjugateGradient(object):
 
             # search directions
             S[:,0] = self.Ahfunc(self.res)
-            for i in np.arange(n_smooth):
+            for i in range(n_smooth):
                 prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[:,i]) # residuals
                 S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
             
@@ -313,35 +318,39 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         """
         Construct an n_vertices x n_points matrix.
         """
-        dd = np.zeros((self.M,self.points.shape[0]))
-        fv = f.reshape(-1,self.dims)
-        
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            # Grab all neighbors within search_rad or the nearest search_k neighbors
-            # if there are no neighbors within search_rad
-            neighbors = self._tree.query_ball_point(fv[i,:], self.search_rad)
-            if len(neighbors) == 0:
-                _, neighbors = self._tree.query(fv[i,:], self.search_k)
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    dik = (f[i*self.dims+j] - self.points[k,j])
-                    dd[i,k] += dik*dik
-                    
-                if dd[i,k] > 0:
-                    #dd[i,k] = self.sigma[k]*self.sigma[k]/dd[i,k]
-                    dd[i,k] = (1.0/dd[i,k])*np.exp(-dd[i,k]/(2*shield_sigma*shield_sigma))
+        dd = np.zeros((self.M,self.points.shape[0]), dtype='f')
 
-        # normalize s.t. the sum of the distances from each point to every other vertex = 1
-#         dd2 = np.copy(dd)
-        ds = dd.sum(0)                 
-        dd[:,ds>0] /= ds[None,ds>0]
-        
-        # normalize s.t. the sum of the distances from each vertex to every other point = 1
-#         ds = dd2.sum(1)
-#         dd2[ds>0,:] /= ds[ds>0,None]
+        if USE_C:
+            conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.n, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
+        else:
+            fv = f.reshape(-1,self.dims)
+            
+            for i in range(self.M):
+                if self.n[i,0] == -1:
+                    # cheat to find self._vertices['halfedge'] == -1
+                    continue
+                # Grab all neighbors within search_rad or the nearest search_k neighbors
+                # if there are no neighbors within search_rad
+                neighbors = self._tree.query_ball_point(fv[i,:], self.search_rad)
+                if len(neighbors) == 0:
+                    _, neighbors = self._tree.query(fv[i,:], self.search_k)
+                for k in neighbors:  # np.arange(self.points.shape[0]):
+                    for j in range(self.dims):
+                        dik = (f[i*self.dims+j] - self.points[k,j])
+                        dd[i,k] += dik*dik
+                        
+                    if dd[i,k] > 0:
+                        #dd[i,k] = self.sigma[k]*self.sigma[k]/dd[i,k]
+                        dd[i,k] = (1.0/dd[i,k])*np.exp(-dd[i,k]/(2*shield_sigma*shield_sigma))
+
+            # normalize s.t. the sum of the distances from each point to every other vertex = 1
+    #         dd2 = np.copy(dd)
+            ds = dd.sum(0)                 
+            dd[:,ds>0] /= ds[None,ds>0]
+            
+            # normalize s.t. the sum of the distances from each vertex to every other point = 1
+    #         ds = dd2.sum(1)
+    #         dd2[ds>0,:] /= ds[ds>0,None]
                         
         return dd  # , dd2
     
@@ -359,18 +368,23 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # Compute the distance between the vertex and all the self.pts, weighted
         # by distance to the vertex, sigma, etc.
         d = np.zeros_like(self.points.ravel())
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            neighbors = self._tree.query_ball_point(iv, self.search_rad)
-            if len(neighbors) == 0:
-                _, neighbors = self._tree.query(iv, self.search_k)
-            #print(f"# neighbors: {len(neighbors)}")
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
+
+        if USE_C:
+            #print(self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+        else:
+            for i in range(self.M):
+                if self.n[i,0] == -1:
+                    # cheat to find self._vertices['halfedge'] == -1
+                    continue
+                iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
+                neighbors = self._tree.query_ball_point(iv, self.search_rad)
+                if len(neighbors) == 0:
+                    _, neighbors = self._tree.query(iv, self.search_k)
+                #print(f"# neighbors: {len(neighbors)}")
+                for k in neighbors:  # range(self.points.shape[0]):
+                    for j in range(self.dims):
+                        d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
 
         return d
     
@@ -383,20 +397,23 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the points indicating the closest point to each vertex
         """
         
-        d = np.zeros(self.M*self.dims)
+        d = np.zeros(self.M*self.dims, dtype='f')
         
-        for i in np.arange(self.M):
-            if self.n[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-            neighbors = self._tree.query_ball_point(iv, self.search_rad)
-            if len(neighbors) == 0:
-                _, neighbors = self._tree.query(iv, self.search_k)
-            #print(f"# neighbors: {len(neighbors)}")
-            for k in neighbors:  # np.arange(self.points.shape[0]):
-                for j in np.arange(self.dims):
-                    d[i*self.dims+j] += f[k*self.dims+j]*self.w[i,k]
+        if USE_C:
+            conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+        else:
+            for i in range(self.M):
+                if self.n[i,0] == -1:
+                    # cheat to find self._vertices['halfedge'] == -1
+                    continue
+                iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
+                neighbors = self._tree.query_ball_point(iv, self.search_rad)
+                if len(neighbors) == 0:
+                    _, neighbors = self._tree.query(iv, self.search_k)
+                #print(f"# neighbors: {len(neighbors)}")
+                for k in neighbors:  # range(self.points.shape[0]):
+                    for j in range(self.dims):
+                        d[i*self.dims+j] += f[k*self.dims+j]*self.w[i,k]
 
         return d
 
@@ -407,11 +424,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # note that f is raveled, by default in C order so 
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
-        for i in np.arange(self.M):
+        for i in range(self.M):
             if self.n[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
-            for j in np.arange(self.dims):
+            for j in range(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
                 for n in nn:
@@ -424,11 +441,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # Now we are transposed, so we want to add the neighbors to d in column order
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
-        for i in np.arange(self.M):
+        for i in range(self.M):
             if self.n[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
-            for j in np.arange(self.dims):
+            for j in range(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
                 for n in nn:
@@ -515,11 +532,11 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # note that f is raveled, by default in C order so 
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
-        for i in np.arange(self.M):
+        for i in range(self.M):
             if self.n[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
-            for j in np.arange(self.dims):
+            for j in range(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
                 for n in nn:
@@ -532,11 +549,11 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # Now we are transposed, so we want to add the neighbors to d in column order
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
-        for i in np.arange(self.M):
+        for i in range(self.M):
             if self.n[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
-            for j in np.arange(self.dims):
+            for j in range(self.dims):
                 nn = self.n[i,:]
                 N = len(nn)
                 for n in nn:

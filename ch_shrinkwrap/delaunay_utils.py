@@ -155,7 +155,7 @@ def ext_simps(d, mesh):
     v = mesh._vertices['position'][mesh._vertices['halfedge']!=-1]
     simp_centers = np.mean(v[d],axis=1)
     simp_dist = distance_to_mesh(simp_centers, mesh)
-    return np.where(simp_dist>0)[0]
+    return np.flatnonzero(simp_dist > 0)
 
 def empty_simps(d, v, pts, eps=0.0):
     """

@@ -1006,8 +1006,8 @@ cdef class MembraneMesh(TriangleMesh):
         self.build_from_verts_faces(v, faces, clear=True)
 
         # Delaunay remeshing has a penchant for flanges
-        #while np.any(self.singular):
-        #    self._remove_singularities()
+        while np.any(self.singular):
+            self._remove_singularities()
 
         self._initialize_curvature_vectors()
 
