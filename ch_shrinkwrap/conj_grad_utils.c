@@ -171,6 +171,7 @@ static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
             // update to point attraction force
             dik = *((float *)PyArray_GETPTR2(v_dd, i, k));
             if (dik > 0) {
+                // *((float *)PyArray_GETPTR2(v_dd, i, k)) = (1.0/dik)*exp(-dik/ss2);
                 *((float *)PyArray_GETPTR2(v_dd, i, k)) = (1.0/dik)*exp(-dik/ss2);
             }
 

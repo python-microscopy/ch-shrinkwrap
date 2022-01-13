@@ -257,6 +257,9 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     cdef np.ndarray _points
     cdef np.ndarray _vertices
     cdef np.ndarray _sigma
+    cdef np.ndarray _normals
+    cdef np.ndarray _faces
+    cdef np.ndarray _neighboring_faces
     cdef float _search_rad
     cdef object _tree
     cdef int _prev_loopcount
@@ -264,7 +267,7 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     cdef int M
     cdef int dims
     cdef tuple shape
-    cdef np.ndarray n
+    cdef np.ndarray _neighbors
     cdef int N
     
     def prep(self):
@@ -287,8 +290,16 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     
     @neighbors.setter
     def neighbors(self, neighbors):
-        self.n = neighbors
-        self.N = self.n.shape[1]
+        self._neighbors = neighbors
+        self.N = self._neighbors.shape[1]
+
+    @property
+    def normals(self):
+        return self._normals
+
+    @normals.setter
+    def normals(self, normals):
+    self._normals = normals
     
     @property
     def sigma(self):
@@ -338,12 +349,12 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         dd = np.zeros((self.M,self.points.shape[0]), dtype='f')
 
         if USE_C:
-            conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.n, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
+            conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.neighbors, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
         else:
             fv = f.reshape(-1,self.dims)
         
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 # Grab all neighbors within search_rad or the nearest search_k neighbors
@@ -393,10 +404,10 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         #print(d[0:5])
         if USE_C:
             #print(self.dims, self.points.shape[0], self.M, self.N)
-            conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
@@ -427,10 +438,10 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d = np.zeros(self.M*self.dims, dtype='f')
         
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
@@ -452,14 +463,14 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 for j in range(self.dims):
-                    nn = self.n[i,:]
+                    nn = self.neighbors[i,:]
                     N = (nn!=-1).sum()
                     for n in nn:
                         if n == -1:
@@ -472,14 +483,14 @@ cdef class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 for j in range(self.dims):
-                    nn = self.n[i,:]
+                    nn = self.neighbors[i,:]
                     N = (nn!=-1).sum()
                     for n in nn:
                         if n == -1:

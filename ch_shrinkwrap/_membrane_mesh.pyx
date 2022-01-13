@@ -1223,8 +1223,16 @@ cdef class MembraneMesh(TriangleMesh):
 
         for j in range(max_iter//rf):
             n = self._halfedges['vertex'][self._vertices['neighbors']]
-            n[self._vertices['neighbors'] == -1] = -1
-            cg = ShrinkwrapConjGrad(self._vertices['position'], n, points=points, 
+            n_idxs = self._vertices['neighbors'] == -1
+            n[n_idxs] = -1
+            fn = self._halfedges['face'][self._vertices['neighbors']]
+            fn[n_idxs] = -1
+            faces = self._faces['halfedge']
+            v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
+            v1 = self._halfedges['vertex'][faces]
+            v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
+            faces_by_vertex = np.vstack([v0, v1, v2]).T
+            cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
                                     search_k=self.search_k, search_rad=self.search_rad)
 
             vp = cg.search(points,lams=step_size,num_iters=rf,
@@ -1240,15 +1248,7 @@ cdef class MembraneMesh(TriangleMesh):
             self.face_normals
             self.vertex_neighbors
 
-            # Terminate if area change is minimal
-            area = self.area()
-            area_ratio = math.fabs(last_area-area)/last_area
-            print(f"Area ratio is {area_ratio:.4f}")
-            if area_ratio < 0.01:
-                break
-            last_area = area
-
-            # Delaunay remesh (hole punch)
+                        # Delaunay remesh (hole punch)
             if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
                 self.delaunay_remesh(points, self.delaunay_eps)
 
@@ -1258,6 +1258,15 @@ cdef class MembraneMesh(TriangleMesh):
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
+
+            # Terminate if area change is minimal
+            area = self.area()
+            area_ratio = math.fabs(last_area-area)/last_area
+            print(f"Area ratio is {area_ratio:.4f}")
+            if area_ratio < 0.01:
+                print("CONVERGED!!!")
+                break
+            last_area = area
 
     def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=-1, **kwargs):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad

@@ -4,6 +4,7 @@
 # Based on PYME.Deconv.dec dec.py
 ###################################
 
+from numpy.compat.py3k import npy_load_module
 from .delaunay_utils import voronoi_poles
 
 import numpy as np
@@ -246,9 +247,13 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     _search_k = 200
     _points = None
     _vertices = None
-    _neighbors = None
+    _vertex_neighbors = None
+    _faces = None
+    _face_neighbors = None
     _sigma = None
     _search_rad = 100
+    N, M = None, None
+    dims, shape = None, None
     
     def prep(self):
         pass
@@ -265,13 +270,36 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         self.shape = vertices.shape  # hack
         
     @property
-    def neighbors(self):
-        return self._neighbors
+    def vertex_neighbors(self):
+        return self._vertex_neighbors
     
-    @neighbors.setter
-    def neighbors(self, neighbors):
-        self.n = neighbors
-        self.N = self.n.shape[1]
+    @vertex_neighbors.setter
+    def vertex_neighbors(self, neighbors):
+        self._vertex_neighbors = neighbors
+        if self.N:
+            assert(self._vertex_neighbors.shape[1] == self.N)
+        else:
+            self.N = self._vertex_neighbors.shape[1]
+
+    @property
+    def faces(self):
+        return self._faces
+
+    @faces.setter
+    def faces(self, faces):
+        self._faces = faces
+
+    @property
+    def face_neighbors(self):
+        return self._face_neighbors
+    
+    @face_neighbors.setter
+    def face_neighbors(self, neighbors):
+        self._face_neighbors = neighbors
+        if self.N:
+            assert(self._face_neighbors.shape[1] == self.N)
+        else:
+            self.N = self._face_neighbors.shape[1]
     
     @property
     def sigma(self):
@@ -306,9 +334,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def search_rad(self, search_rad):
         self._search_rad = max(search_rad, 1.0)
 
-    def __init__(self, vertices, neighbors, points, sigma=None, search_k=200, search_rad=100):
+    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
         TikhonovConjugateGradient.__init__(self)
-        self.vertices, self.neighbors, self.sigma = vertices, neighbors, sigma
+        self.Lfuncs, self.Lhfuncs = ["Lfuncn"], ["Lhfuncn"]
+        self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
+        self.faces, self.face_neighbors = faces, face_neighbors
         self.points = points
         self.search_k = search_k
         self.search_rad = search_rad
@@ -321,12 +351,12 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         dd = np.zeros((self.M,self.points.shape[0]), dtype='f')
 
         if USE_C:
-            conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.n, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
+            conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.vertex_neighbors, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
         else:
             fv = f.reshape(-1,self.dims)
             
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.vertex_neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 # Grab all neighbors within search_rad or the nearest search_k neighbors
@@ -371,10 +401,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
         if USE_C:
             #print(self.dims, self.points.shape[0], self.M, self.N)
-            conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.vertex_neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
@@ -400,10 +430,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d = np.zeros(self.M*self.dims, dtype='f')
         
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.vertex_neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
@@ -425,19 +455,19 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.vertex_neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 for j in range(self.dims):
-                    nn = self.n[i,:]
-                    N = (nn!=-1).sum()
+                    nn = self.vertex_neighbors[i,:]
+                    S = (nn!=-1).sum()
                     for n in nn:
                         if n == -1:
                             break
-                        d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
+                        d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/S
         return d
     
     def Lhfunc(self, f):
@@ -445,19 +475,86 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.n, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
-                if self.n[i,0] == -1:
+                if self.vertex_neighbors[i,0] == -1:
                     # cheat to find self._vertices['halfedge'] == -1
                     continue
                 for j in range(self.dims):
-                    nn = self.n[i,:]
-                    N = (nn!=-1).sum()
+                    nn = self.vertex_neighbors[i,:]
+                    S = (nn!=-1).sum()
                     for n in nn:
                         if n == -1:
                             break
-                        d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+                        d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/S
+        return d
+
+    def calculate_normals(self, f):
+        fn = f.reshape(self.shape)
+        verts = fn[self.faces[self.face_neighbors]]  # (n_vertices, n_neighbors, n_tri_verts, (x,y,z))
+        v0 = verts[:,:,0,:]
+        v1 = verts[:,:,1,:]
+        v2 = verts[:,:,2,:]
+        t0 = v0-v1
+        t1 = v2-v1
+        norms = np.cross(t0,t1,axis=2)
+        idxs = (self.face_neighbors!=-1)
+        S = idxs.sum(1)
+
+        norms *= idxs[...,None]
+        # unit_norms = norms/((np.linalg.norm(norms,axis=2)*N[:,None])[...,None])
+        # return unit_norms.nansum(1).ravel()
+        norms = norms.sum(1)/S[:,None]
+        norms /= np.linalg.norm(norms,axis=1)[:,None]
+        norms[S==0,:] = 0
+        return norms.ravel()
+
+    def Lfuncn(self, f):
+        """
+        Minimize difference in normals between a vertex and its neighbors.
+        """
+        d = np.zeros_like(f)
+        norm = self.calculate_normals(f)
+
+        for i in range(self.M):
+            if self.vertex_neighbors[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            nn = self.vertex_neighbors[i,:]
+            S = (nn!=-1).sum()
+            for n in nn:
+                if n == -1:
+                    break
+                dist = 0
+                for j in range(self.dims):
+                    dist += (f[n*self.dims+j] - f[i*self.dims+j])*(f[n*self.dims+j] - f[i*self.dims+j])
+                    d[i*self.dims+j] += (norm[n*self.dims+j] - norm[i*self.dims+j])
+                for j in range(self.dims):
+                    d[i*self.dims+j] /= (S*np.sqrt(dist)+1)
+        return d
+
+    def Lhfuncn(self, f):
+        # Now we are transposed, so we want to add the neighbors to d in column order
+        # should be symmetric, unless we change the weighting
+        d = np.zeros_like(f)
+        norm = self.calculate_normals(f)
+
+        for i in range(self.M):
+            if self.vertex_neighbors[i,0] == -1:
+                # cheat to find self._vertices['halfedge'] == -1
+                continue
+            nn = self.vertex_neighbors[i,:]
+            S = (nn!=-1).sum()
+            for n in nn:
+                if n == -1:
+                    break
+                dist = 0
+                for j in range(self.dims):
+                    dist += (f[i*self.dims+j] - f[n*self.dims+j])*(f[i*self.dims+j] - f[n*self.dims+j])
+                    d[n*self.dims+j] += (norm[i*self.dims+j] - norm[n*self.dims+j])
+                for j in range(self.dims):
+                    d[n*self.dims+j] /= (S*np.sqrt(dist)+1)
         return d
 
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
@@ -498,7 +595,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
     (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
     """
     _vertices = None
-    _neighbors = None
+    _vertex_neighbors = None
     _prev_vertices = None
         
     @property
@@ -523,13 +620,13 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         self._vertex_normals = normals
         
     @property
-    def neighbors(self):
-        return self._neighbors
+    def vertex_neighbors(self):
+        return self._vertex_neighbors
     
-    @neighbors.setter
-    def neighbors(self, neighbors):
-        self.n = neighbors
-        self.N = self.n.shape[1]
+    @vertex_neighbors.setter
+    def vertex_neighbors(self, neighbors):
+        self._vertex_neighbors = neighbors
+        self.N = self._vertex_neighbors.shape[1]
         
     def Afunc(self, f):
         """
@@ -539,11 +636,11 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         for i in range(self.M):
-            if self.n[i,0] == -1:
+            if self.vertex_neighbors[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
             for j in range(self.dims):
-                nn = self.n[i,:]
+                nn = self.vertex_neighbors[i,:]
                 N = (nn!=-1).sum()
                 for n in nn:
                     if n == -1:
@@ -556,11 +653,11 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         for i in range(self.M):
-            if self.n[i,0] == -1:
+            if self.vertex_neighbors[i,0] == -1:
                 # cheat to find self._vertices['halfedge'] == -1
                 continue
             for j in range(self.dims):
-                nn = self.n[i,:]
+                nn = self.vertex_neighbors[i,:]
                 N = (nn!=-1).sum()
                 for n in nn:
                     if n == -1:
@@ -575,13 +672,13 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         if self._updated_loopcount():
             self._prev_vertices = self._on_deck_vertices
             self._on_deck_vertices = self.f.copy()
-        idxs = np.repeat(self.n[:,0]==-1,3)
+        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = (f - self._prev_vertices)
         val[idxs] = 0
         return val
     
     def Lhfunc(self, f):
-        idxs = np.repeat(self.n[:,0]==-1,3)
+        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = f
         val[idxs] = 0
         return f
@@ -597,7 +694,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # none of the missing voronoi poles will matter to the final result,
         # as they are from -1 halfedge vertices, but they will throw an error
         # as such, replace them with something "valid"
-        idxs = (self.n[:,0]==-1) | (nearest_pole == self._neg_vor_poles.shape[0])
+        idxs = (self.vertex_neighbors[:,0]==-1) | (nearest_pole == self._neg_vor_poles.shape[0])
         nearest_pole[idxs] = 0
 
         #print(nearest_pole)
@@ -609,7 +706,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
     def Mhfunc(self, f):
         # fr = f.reshape(self.shape)
         # _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
-        idxs = np.repeat(self.n[:,0]==-1,3)
+        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = f
         val[idxs] = 0
         return f
@@ -618,7 +715,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
         self.Lfuncs = ["Lfunc", "Mfunc"]
         self.Lhfuncs = ["Lhfunc", "Mhfunc"]
-        self.neighbors, self.vertex_normals, self.vertices = neighbors, vertex_normals, vertices
+        self.vertex_neighbors, self.vertex_normals, self.vertices = neighbors, vertex_normals, vertices
         self._prev_loopcount = 1
         self._vor = scipy.spatial.Voronoi(self._vertices)
         _, pn = voronoi_poles(self._vor, self.vertex_normals)
