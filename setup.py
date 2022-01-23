@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 import os
-from setuptools import find_packages, Extension
-from numpy.distutils.core import setup
+from setuptools import find_packages #, Extension
+
+from numpy.distutils.core import setup, Extension
 from numpy.distutils.misc_util import get_numpy_include_dirs
 from Cython.Build import cythonize
 
