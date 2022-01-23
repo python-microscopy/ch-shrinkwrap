@@ -49,10 +49,11 @@ static PyObject *c_shrinkwrap_a_func(PyObject *self, PyObject *args)
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
         for (k=0; k<n_points; ++k)
         {
+            w = *((float *)PyArray_GETPTR2(v_w, i, k));
             for (j=0; j<n_dims; ++j)
             {
                 // p_d[k*n_dims+j] += p_f[i*n_dims+j]*(p_w[i*n_points+k]);
-                w = *((float *)PyArray_GETPTR2(v_w, i, k));
+                
                 p_d[k*n_dims+j] += p_f[i*n_dims+j]*w;
             }
         }
@@ -105,10 +106,11 @@ static PyObject *c_shrinkwrap_ah_func(PyObject *self, PyObject *args)
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
         for (k=0; k<n_points; ++k)
         {
+            w = *((float *)PyArray_GETPTR2(v_w, i, k));
             for (j=0; j<n_dims; ++j)
             {
                 // p_d[i*n_dims+j] += p_f[k*n_dims+j]*(p_w[i*n_points+k]);
-                w = *((float *)PyArray_GETPTR2(v_w, i, k));
+                
                 p_d[i*n_dims+j] += p_f[k*n_dims+j]*w;
             }
         }
@@ -116,6 +118,79 @@ static PyObject *c_shrinkwrap_ah_func(PyObject *self, PyObject *args)
 
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+void compute_weight_matrix_3D(PyObject* v_f, PyObject* v_n, PyObject* v_points, PyObject* v_dd, int n_verts, int n_points, float shield_sigma)
+{
+    int i, j, k;
+    float * pt3;
+    float * pfi;
+    float * p_f;
+    float *ds;
+    float dd_ik, dik, ss2, w; 
+    #define N_DIMS 3 //use a fixed constant to allow loop-unrolling and/or vectorisation
+    
+    // replace with python/numpy allocation (typically faster as from pre-allocated heap) 
+    //ds = (float *) calloc(n_points, sizeof(float));
+    ds = (float *) PyMem_Calloc(n_points, sizeof(float));
+
+    //initialise to zero
+    for (k=0; k<n_points; ++k)
+    {
+        ds[k] = 0;
+    }
+
+    ss2 = 2*shield_sigma*shield_sigma;
+
+    p_f = (float *)PyArray_GETPTR1(v_f, 0);
+
+    for (i=0; i<n_verts; ++i)
+    {
+        if ((*((float *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+
+        pfi = p_f + i*N_DIMS;
+
+        for (k=0; k<n_points; ++k)
+        {
+            w = 0;
+            pt3 = (float *)PyArray_GETPTR2(v_points, k, 0);
+
+            dd_ik = 0; //*((float *)PyArray_GETPTR2(v_dd, i, k)) 
+            
+            for (j=0; j<N_DIMS; ++j)
+            {
+                dik = pfi[j] - pt3[j];
+                dd_ik += dik*dik;
+            }
+
+            // update to point attraction force
+            if (dd_ik > 0) {
+                // *((float *)PyArray_GETPTR2(v_dd, i, k)) = (1.0/dik)*exp(-dik/ss2);
+                //w = expf(-dd_ik/ss2); // use fexp to avoid casts
+                //dd_ik = (1.0/dd_ik)*w; 
+                dd_ik = (1.0/sqrtf(dd_ik));
+                *((float *)PyArray_GETPTR2(v_dd, i, k)) = dd_ik; 
+            }
+
+            // keep track of sum along n_verts
+            ds[k] += dd_ik;
+        }
+    }
+
+    // normalize
+    for (i=0; i<n_verts; ++i)
+    {
+        if ((*((float *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+        for (k=0; k<n_points; ++k)
+        {
+            if (ds[k] == 0) continue;
+            *((float *)PyArray_GETPTR2(v_dd, i, k)) /= ds[k];
+        }
+    }
+
+    //free(ds);
+    PyMem_Free(ds);
+
 }
 
 static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
@@ -147,6 +222,13 @@ static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
         PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the output data.");
         return NULL;
     } 
+
+    if (n_dims == 3){
+        // use fixed size code
+        compute_weight_matrix_3D(v_f, v_n, v_points, v_dd, n_verts, n_points, shield_sigma);
+        Py_INCREF(Py_None);
+        return Py_None; 
+    }
 
     p_f = (float *)PyArray_GETPTR1(v_f, 0);
 
