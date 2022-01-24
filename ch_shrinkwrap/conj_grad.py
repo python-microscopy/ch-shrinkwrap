@@ -140,6 +140,8 @@ class TikhonovConjugateGradient(object):
             # residuals
             self.res[:] = (weights*(data - self.Afunc(self.f)))
 
+            #print ('res:', self.res.reshape(-1, self.dims))
+
             # search directions
             S[:,0] = self.Ahfunc(self.res)
             for i in range(n_smooth):
@@ -336,7 +338,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
     def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
         TikhonovConjugateGradient.__init__(self)
-        self.Lfuncs, self.Lhfuncs = ["Lfuncn"], ["Lhfuncn"]
+        self.Lfuncs, self.Lhfuncs = ["Lfunc"], ["Lhfunc"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
         self.faces, self.face_neighbors = faces, face_neighbors
         self.points = points
@@ -346,43 +348,55 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         
     def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
         """
-        Construct an n_vertices x n_points matrix.
-        """
-        dd = np.zeros((self.M,self.points.shape[0]), dtype='f')
+        find which vertices are tied to which points.
 
-        if USE_C:
+        To start with, make each point act on it's nearest face (TODO - nearest N face and smoothing?)
+        computes a sparse representation of the influence matrix: 
+        - an n_points x 3 array of vertex indices corresponding to the nearest face (which vertices each point operates on)
+        - an n_points x 3 array of weights  (1 - d_j/sum(d_j)) where d_j is the distance from the point to the each of the 3 vertices
+
+        """
+        #dd = np.zeros((self.M,self.points.shape[0]), dtype='f')
+
+        if False: #USE_C:
+            # we don't have a c version of this yet
             conj_grad_utils.c_compute_weight_matrix(np.ascontiguousarray(f), self.vertex_neighbors, self.points, dd, self.dims, self.points.shape[0], self.M, self.N, shield_sigma, self.search_rad)
         else:
             fv = f.reshape(-1,self.dims)
             
-            for i in range(self.M):
-                if self.vertex_neighbors[i,0] == -1:
-                    # cheat to find self._vertices['halfedge'] == -1
-                    continue
-                # Grab all neighbors within search_rad or the nearest search_k neighbors
-                # if there are no neighbors within search_rad
-                neighbors = self._tree.query_ball_point(fv[i,:], self.search_rad)
-                if len(neighbors) == 0:
-                    _, neighbors = self._tree.query(fv[i,:], self.search_k)
-                for k in neighbors:  # np.arange(self.points.shape[0]):
-                    for j in range(self.dims):
-                        dik = (f[i*self.dims+j] - self.points[k,j])
-                        dd[i,k] += dik*dik
-                        
-                    if dd[i,k] > 0:
-                        #dd[i,k] = self.sigma[k]*self.sigma[k]/dd[i,k]
-                        dd[i,k] = (1.0/dd[i,k])*np.exp(-dd[i,k]/(2*shield_sigma*shield_sigma))
+            import scipy.spatial
 
-            # normalize s.t. the sum of the distances from each point to every other vertex = 1
-    #         dd2 = np.copy(dd)
-            ds = dd.sum(0)                 
-            dd[:,ds>0] /= ds[None,ds>0]
+            # Create a list of face centroids for search
+            face_centers = fv[self._faces].mean(1)
+
+            # Construct a kdtree over the face centers
+            tree = scipy.spatial.cKDTree(face_centers)
+
+            # Get k closet face centroids for each point
+            _, _faces = tree.query(self.points, k=1)
             
-            # normalize s.t. the sum of the distances from each vertex to every other point = 1
-    #         ds = dd2.sum(1)
-    #         dd2[ds>0,:] /= ds[ds>0,None]
-                        
-        return dd  # , dd2
+            #print(self._faces.shape, _faces.shape)
+            
+            # vertex indices (n_points x 3)
+            v_idx = self._faces[_faces, :]
+
+            #compute distances
+            d = np.zeros(v_idx.shape, 'f4')
+            
+            for j in range(3):
+                d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
+                d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
+
+            #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
+            
+            w = 1.0/np.maximum(d, 1e-6)
+
+            w = w/w.sum(1)[:,None]
+
+            #print(d, d/d.sum(1)[:,None], w)
+            assert(not np.any(np.isnan(w)))
+            
+            return v_idx, w 
     
     
     def Afunc(self, f):
@@ -394,29 +408,25 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         """
         if self.calc_w():
             self.w = self._compute_weight_matrix(self.f)
-        
-        # Compute the distance between the vertex and all the self.pts, weighted
-        # by distance to the vertex, sigma, etc.
-        d = np.zeros_like(self.points.ravel())
+            #print(self.w)
 
-        if USE_C:
+        if False: #USE_C:
             #print(self.dims, self.points.shape[0], self.M, self.N)
             conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
-            for i in range(self.M):
-                if self.vertex_neighbors[i,0] == -1:
-                    # cheat to find self._vertices['halfedge'] == -1
-                    continue
-                iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-                neighbors = self._tree.query_ball_point(iv, self.search_rad)
-                if len(neighbors) == 0:
-                    _, neighbors = self._tree.query(iv, self.search_k)
-                #print(f"# neighbors: {len(neighbors)}")
-                for k in neighbors:  # range(self.points.shape[0]):
-                    for j in range(self.dims):
-                        d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
+            fv = f.reshape(-1,self.dims)
 
-        return d
+            surface_points = np.zeros_like(self.points)
+
+            v_idx, w = self.w
+
+            for i in range(3):
+                surface_points += fv[v_idx[:,i]]*w[:,i][:,None]
+
+            assert(not np.any(np.isnan(surface_points)))
+            
+            #print('a:', surface_points)
+            return surface_points.ravel()
     
     def Ahfunc(self, f):
         """
@@ -427,25 +437,21 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the points indicating the closest point to each vertex
         """
         
-        d = np.zeros(self.M*self.dims, dtype='f')
+        d = np.zeros([self.M,self.dims], dtype='f')
+        fv = f.reshape(-1,self.dims)
         
-        if USE_C:
+        if False:#USE_C:
             conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
-            for i in range(self.M):
-                if self.vertex_neighbors[i,0] == -1:
-                    # cheat to find self._vertices['halfedge'] == -1
-                    continue
-                iv = np.array([self.f[i*self.dims+j] for j in range(self.dims)])
-                neighbors = self._tree.query_ball_point(iv, self.search_rad)
-                if len(neighbors) == 0:
-                    _, neighbors = self._tree.query(iv, self.search_k)
-                #print(f"# neighbors: {len(neighbors)}")
-                for k in neighbors:  # range(self.points.shape[0]):
-                    for j in range(self.dims):
-                        d[i*self.dims+j] += f[k*self.dims+j]*self.w[i,k]
+            v_idx, w = self.w
+            
+            for i in range(3):
+                d[v_idx[:,i], :] += (w[:,i][:,None])*fv 
 
-        return d
+        
+        assert(not np.any(np.isnan(d)))
+        #print('ah:',d)
+        return d.ravel()
 
     def Lfunc(self, f):
         """
@@ -455,7 +461,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            w = d
+            conj_grad_utils.c_shrinkwrap_l_func(np.ascontiguousarray(f), self.vertex_neighbors, w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
                 if self.vertex_neighbors[i,0] == -1:
@@ -468,6 +475,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                         if n == -1:
                             break
                         d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/S
+        
+        assert(not np.any(np.isnan(d)))
         return d
     
     def Lhfunc(self, f):
@@ -475,7 +484,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # should be symmetric, unless we change the weighting
         d = np.zeros_like(f)
         if USE_C:
-            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
+            w = d
+            conj_grad_utils.c_shrinkwrap_lh_func(np.ascontiguousarray(f), self.vertex_neighbors, w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
                 if self.vertex_neighbors[i,0] == -1:
@@ -488,6 +498,9 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                         if n == -1:
                             break
                         d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/S
+        
+        assert(not np.any(np.isnan(d)))
+        
         return d
 
     def calculate_normals(self, f):
@@ -499,15 +512,23 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         t0 = v0-v1
         t1 = v2-v1
         norms = np.cross(t0,t1,axis=2)
+
+        #print(norms, np.any(np.isnan(norms)))
+
         idxs = (self.face_neighbors!=-1)
         S = idxs.sum(1)
 
         norms *= idxs[...,None]
+
+        print(norms, np.any(np.isnan(norms)))
         # unit_norms = norms/((np.linalg.norm(norms,axis=2)*N[:,None])[...,None])
         # return unit_norms.nansum(1).ravel()
         norms = norms.sum(1)/S[:,None]
         norms /= np.linalg.norm(norms,axis=1)[:,None]
         norms[S==0,:] = 0
+
+        assert(not np.any(np.isnan(norms)))
+
         return norms.ravel()
 
     def Lfuncn(self, f):
@@ -532,6 +553,9 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                     d[i*self.dims+j] += (norm[n*self.dims+j] - norm[i*self.dims+j])
                 for j in range(self.dims):
                     d[i*self.dims+j] /= (S*np.sqrt(dist)+1)
+        
+        assert(not np.any(np.isnan(d)))
+        
         return d
 
     def Lhfuncn(self, f):
@@ -555,6 +579,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                     d[n*self.dims+j] += (norm[i*self.dims+j] - norm[n*self.dims+j])
                 for j in range(self.dims):
                     d[n*self.dims+j] /= (S*np.sqrt(dist)+1)
+        
+        assert(not np.any(np.isnan(d)))
         return d
 
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
