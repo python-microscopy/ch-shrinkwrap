@@ -334,7 +334,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def search_rad(self, search_rad):
         self._search_rad = max(search_rad, 1.0)
 
-    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
+    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None):
         TikhonovConjugateGradient.__init__(self)
         self.Lfuncs, self.Lhfuncs = ["Lfuncn"], ["Lhfuncn"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
@@ -343,8 +343,12 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         self.search_k = search_k
         self.search_rad = search_rad
         self._prev_loopcount = -1
+        if shield_sigma == None:
+            self._shield_sigma = 20
+        else:
+            self._shield_sigma = shield_sigma
         
-    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
+    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=10):
         """
         Construct an n_vertices x n_points matrix.
         """
@@ -393,14 +397,14 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the vertices indicating the closest vertex to each point
         """
         if self.calc_w():
-            self.w = self._compute_weight_matrix(self.f)
+            self.w = self._compute_weight_matrix(self.f, shield_sigma=self._shield_sigma)
         
         # Compute the distance between the vertex and all the self.pts, weighted
         # by distance to the vertex, sigma, etc.
         d = np.zeros_like(self.points.ravel())
 
         if USE_C:
-            #print(self.dims, self.points.shape[0], self.M, self.N)
+            # print(self.dims, self.points.shape[0], self.M, self.N)
             conj_grad_utils.c_shrinkwrap_a_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             for i in range(self.M):
@@ -411,7 +415,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
                 neighbors = self._tree.query_ball_point(iv, self.search_rad)
                 if len(neighbors) == 0:
                     _, neighbors = self._tree.query(iv, self.search_k)
-                #print(f"# neighbors: {len(neighbors)}")
+                # print(f"# neighbors: {len(neighbors)}")
                 for k in neighbors:  # range(self.points.shape[0]):
                     for j in range(self.dims):
                         d[k*self.dims+j] += f[i*self.dims+j]*self.w[i,k]
@@ -506,8 +510,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # unit_norms = norms/((np.linalg.norm(norms,axis=2)*N[:,None])[...,None])
         # return unit_norms.nansum(1).ravel()
         norms = norms.sum(1)/S[:,None]
-        norms /= np.linalg.norm(norms,axis=1)[:,None]
-        norms[S==0,:] = 0
+        norms[S==0,...] = 0
+        nn = np.linalg.norm(norms,axis=1)
+        norms /= nn[:,None]
+        norms[nn==0,...] = 0
         return norms.ravel()
 
     def Lfuncn(self, f):

@@ -122,7 +122,7 @@ static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
 {
     PyObject *v_f = 0, *v_n = 0, *v_points = 0, *v_dd = 0;
     int n_dims, n_points, n_verts, n_n, i, j, k;
-    float pt, dik, dik2, shield_sigma, ss2, search_rad, rad2, sr2;
+    float pt, dik, dik2, shield_sigma, ss2, search_rad, rad2, sr2, dsk;
     float *p_f;
     float *ds;
 
@@ -176,6 +176,7 @@ static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
             }
 
             // keep track of sum along n_verts
+            // dsk = *((float *)PyArray_GETPTR2(v_dd, i, k));
             ds[k] += *((float *)PyArray_GETPTR2(v_dd, i, k));
         }
     }

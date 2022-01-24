@@ -1233,7 +1233,8 @@ cdef class MembraneMesh(TriangleMesh):
             v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
             faces_by_vertex = np.vstack([v0, v1, v2]).T
             cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
-                                    search_k=self.search_k, search_rad=self.search_rad)
+                                    search_k=self.search_k, search_rad=self.search_rad,
+                                    shield_sigma=self._mean_edge_length/2.0)
 
             vp = cg.search(points,lams=step_size,num_iters=rf,
                            weights=1.0/np.repeat(sigma,points.shape[1]))
