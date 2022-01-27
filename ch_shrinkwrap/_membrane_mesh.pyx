@@ -1263,9 +1263,9 @@ cdef class MembraneMesh(TriangleMesh):
             area = self.area()
             area_ratio = math.fabs(last_area-area)/last_area
             print(f"Area ratio is {area_ratio:.4f}")
-            if area_ratio < 0.001:
-                print(f"CONVERGED in {j*rf}!!!")
-                break
+            # if area_ratio < 0.001:
+            #     print(f"CONVERGED in {j*rf}!!!")
+            #     break
             last_area = area
 
     def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=-1, **kwargs):

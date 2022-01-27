@@ -338,7 +338,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
     def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
         TikhonovConjugateGradient.__init__(self)
-        self.Lfuncs, self.Lhfuncs = ["Lfunc3"], ["Lhfunc3"]
+        self.Lfuncs, self.Lhfuncs = ["Lfunc4"], ["Lhfunc4"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
         self.faces, self.face_neighbors = faces, face_neighbors
         self.points = points
@@ -549,6 +549,42 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def Lhfunc3(self, f):
         d = np.zeros_like(f)
         conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, self.points.shape[0], self.M, self.N)
+        
+        assert(not np.any(np.isnan(d)))
+        return d
+
+    def Lfunc4(self, f):
+        """
+        Minimize distance between a vertex and the centroid of its neighbors.
+        """
+        # note that f is raveled, by default in C order so 
+        # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
+        d1 = np.zeros_like(f)
+        w = self.f
+        conj_grad_utils.c_shrinkwrap_lw_func(np.ascontiguousarray(f), self.vertex_neighbors, w, d1, self.dims, self.points.shape[0], self.M, self.N)
+        
+        d = np.zeros_like(d1)
+        conj_grad_utils.c_shrinkwrap_lw_func(d1, self.vertex_neighbors, w, d, self.dims, self.points.shape[0], self.M, self.N)
+
+        d = (d - d1)#*2 + d1
+        
+        assert(not np.any(np.isnan(d)))
+        return d
+
+    def Lhfunc4(self, f):
+        """
+        Minimize distance between a vertex and the centroid of its neighbors.
+        """
+        # note that f is raveled, by default in C order so 
+        # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
+        d1 = np.zeros_like(f)
+        w = self.f
+        conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), self.vertex_neighbors, w, d1, self.dims, self.points.shape[0], self.M, self.N)
+        
+        d = np.zeros_like(d1)
+        conj_grad_utils.c_shrinkwrap_lhw_func(d1, self.vertex_neighbors, w, d, self.dims, self.points.shape[0], self.M, self.N)
+
+        d = (d - d1)#*2 + d1
         
         assert(not np.any(np.isnan(d)))
         return d
