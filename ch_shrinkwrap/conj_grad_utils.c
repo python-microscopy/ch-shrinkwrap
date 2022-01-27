@@ -206,6 +206,7 @@ static PyObject *c_shrinkwrap_l_func(PyObject *self, PyObject *args)
     // float *p_n;
     // float *p_w;
     float *p_d;
+    float d;
 
     if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
     if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
@@ -317,6 +318,158 @@ static PyObject *c_shrinkwrap_lh_func(PyObject *self, PyObject *args)
     return Py_None;
 }
 
+static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
+{
+    PyObject *v_f = 0, *v_n = 0, *v_w = 0, *v_d = 0;
+    int n_dims, n_points, n_verts, n_n, i, j, k, N;
+    int32_t n;
+    float *p_f;
+    // float *p_n;
+    float *p_w;
+    float *p_d;
+    float d;
+    float d2;
+    float w;
+
+    if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
+    if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the f data.");
+        return NULL;
+    }
+    if (!PyArray_Check(v_n) || !PyArray_ISCONTIGUOUS(v_n))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the neighbor data.");
+        return NULL;
+    }
+    if (!PyArray_Check(v_w) || !PyArray_ISCONTIGUOUS(v_w)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the weigh matrix.");
+        return NULL;
+    } 
+    if (!PyArray_Check(v_d) || !PyArray_ISCONTIGUOUS(v_d)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the output data.");
+        return NULL;
+    } 
+
+
+    p_f = (float *)PyArray_GETPTR1(v_f, 0);
+    p_d = (float *)PyArray_GETPTR1(v_d, 0);
+    p_w = (float *)PyArray_GETPTR1(v_w, 0);  // original f
+
+    for (i=0; i<n_verts; ++i)
+    {
+        if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+        N = 0;
+        // loop over the neighbors of vertex i
+        for (k=0; k<n_n; ++k)
+        {
+            n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+            if (n == -1) break;
+
+            // find the distance between the original set of points
+            d2 = 0;
+            for (j=0; j<n_dims; ++j)
+            {
+                d = (p_w[n*n_dims+j] - p_w[i*n_dims+j]); 
+                d2 += d*d;
+            }
+            w = sqrtf(d2+1);
+            
+            // sum the distances between this vertex and its neighbors
+            // divided by original distance
+            for (j=0; j<n_dims; ++j) {
+                p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])/w;
+            }
+            N += 1;
+        }
+        // average the contribution of the neighbors?
+        // for (j=0; j<n_dims; ++j) p_d[i*n_dims+j] /= N;
+    }
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
+{
+    PyObject *v_f = 0, *v_n = 0, *v_w = 0, *v_d = 0;
+    int n_dims, n_points, n_verts, n_n, i, j, k, N;
+    int32_t n;
+    float *p_f;
+    // float *p_n;
+    float *p_w;
+    float *p_d;
+    float d;
+    float d2;
+    float w;
+
+    if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
+    if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the f data.");
+        return NULL;
+    }
+    if (!PyArray_Check(v_n) || !PyArray_ISCONTIGUOUS(v_n))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the neighbor data.");
+        return NULL;
+    }
+    if (!PyArray_Check(v_w) || !PyArray_ISCONTIGUOUS(v_w)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the weigh matrix.");
+        return NULL;
+    } 
+    if (!PyArray_Check(v_d) || !PyArray_ISCONTIGUOUS(v_d)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the output data.");
+        return NULL;
+    } 
+
+
+    p_f = (float *)PyArray_GETPTR1(v_f, 0);
+    p_d = (float *)PyArray_GETPTR1(v_d, 0);
+    p_w = (float *)PyArray_GETPTR1(v_w, 0);  // original f
+
+    for (i=0; i<n_verts; ++i)
+    {
+        if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+        N = 0;
+        // loop over the neighbors of vertex i
+        for (k=0; k<n_n; ++k)
+        {
+            n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+            if (n == -1) break;
+
+            // find the distance between the original set of points
+            d2 = 0;
+            for (j=0; j<n_dims; ++j)
+            {
+                d = (p_w[i*n_dims+j] - p_w[n*n_dims+j]);
+                d2 += d*d;
+            }
+            w = sqrtf(d2+1);
+            
+            // sum the distances between this vertex and its neighbors
+            // divided by original distance
+            for (j=0; j<n_dims; ++j) {
+                p_d[n*n_dims+j] += (p_f[i*n_dims+j] - p_f[n*n_dims+j])/w;
+            }
+            N += 1;
+        } 
+        // average the contribution of the neighbors?
+        // for (k=0; k<N; ++k)
+        // {
+        //     n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+        //     for (j=0; j<n_dims; ++j) p_d[n*n_dims+j] /= N;
+        // }
+    }
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 
 static PyMethodDef conj_grad_utils_methods[] = {
     {"c_shrinkwrap_a_func", c_shrinkwrap_a_func, METH_VARARGS},
@@ -324,6 +477,8 @@ static PyMethodDef conj_grad_utils_methods[] = {
     {"c_compute_weight_matrix", c_compute_weight_matrix, METH_VARARGS},
     {"c_shrinkwrap_l_func", c_shrinkwrap_l_func, METH_VARARGS},
     {"c_shrinkwrap_lh_func", c_shrinkwrap_lh_func, METH_VARARGS},
+    {"c_shrinkwrap_lw_func", c_shrinkwrap_lw_func, METH_VARARGS},
+    {"c_shrinkwrap_lhw_func", c_shrinkwrap_lhw_func, METH_VARARGS},
     {NULL, NULL, 0}  /* Sentinel */
 };
 

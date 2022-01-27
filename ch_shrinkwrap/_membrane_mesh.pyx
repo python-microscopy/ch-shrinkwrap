@@ -1214,7 +1214,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r:
             initial_length = self._mean_edge_length
-            final_length = np.clip(np.min(sigma)/2.5, 0.0, 50.0)
+            final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
             m = (final_length - initial_length)/max_iter
 
         # initialize area values (used in termination condition)
@@ -1263,8 +1263,8 @@ cdef class MembraneMesh(TriangleMesh):
             area = self.area()
             area_ratio = math.fabs(last_area-area)/last_area
             print(f"Area ratio is {area_ratio:.4f}")
-            if area_ratio < 0.01:
-                print("CONVERGED!!!")
+            if area_ratio < 0.001:
+                print(f"CONVERGED in {j*rf}!!!")
                 break
             last_area = area
 
