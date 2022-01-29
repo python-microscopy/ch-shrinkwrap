@@ -57,7 +57,7 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
 
     return d.T
 
-def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=False):
+def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=True):
     """
     Find pairs between point sets omega (o) and m s.t.
 
