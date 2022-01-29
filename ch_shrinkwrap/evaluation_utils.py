@@ -57,7 +57,7 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
 
     return d.T
 
-def construct_ordered_pairs(o, m, no, nm, dx_max=1, rad=100.0):
+def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=False):
     """
     Find pairs between point sets omega (o) and m s.t.
 
@@ -85,9 +85,9 @@ def construct_ordered_pairs(o, m, no, nm, dx_max=1, rad=100.0):
         Maximum distance \Phi or \Psi can be from an 
         actual data point (sampling rate of uniformly
         sampled point set)
-    rad : float
-        What radius of closest points should we consider? [nm]
-
+    k : int
+        Up to how many nearest neighbors should we consider?
+        
     Returns
     -------
         ox : np.array
@@ -124,16 +124,60 @@ def construct_ordered_pairs(o, m, no, nm, dx_max=1, rad=100.0):
     mdot_idxs = np.flatnonzero(mdot_bool) 
     odot_idxs = np.flatnonzero(odot_bool)
 
-    # TODO: For any points that don't pass the check, see if there is 
-    # another point nearby that does pass the check.
-    # If it does, add that point and its nearest point to the
-    # correspondence set. See Figure 10 of Berger et al.
-
     # Clean up duplicates
     ox, ox_inds = np.unique(mi[odot_idxs], return_index=True)
     oa = odot_idxs[ox_inds]
     ma, ma_inds = np.unique(oi[mdot_idxs], return_index=True)
     mx = mdot_idxs[ma_inds]
+
+    if special_case:
+        #########
+        # For any points that don't pass the check, expand the 
+        # search. Find the closest point that does pass the check.
+        m2, o2 = m[~mdot_bool], o[~odot_bool]
+        om2, oi2 = otree.query(m2, k)
+        mo2, mi2 = mtree.query(o2, k)
+
+        mdot2 = ((nm[~mdot_bool])[:,None,:]*(o[oi2]-m2[:,None,:])).sum(2) # (M,k)  # candidate mapping psi(x)
+        odot2 = ((no[~odot_bool])[:,None,:]*(m[mi2]-o2[:,None,:])).sum(2) # (N,k)  # candidate mapping phi(alpha)
+        mop2 = om2 - dx_max*dx_max/(2*om2+1e6)
+        omp2 = mo2 - dx_max*dx_max/(2*mo2+1e6)
+        mdot_bool2 = np.abs(mdot2) > mop2
+        odot_bool2 = np.abs(odot2) > omp2
+
+        mdot_idxs2 = mi2[np.arange(len(mi2)),np.argmax(odot_bool2, axis=1)].squeeze()
+        odot_idxs2 = oi2[np.arange(len(oi2)),np.argmax(mdot_bool2, axis=1)].squeeze()
+
+        # Throw way indices that did not meet the condition anywhere
+        mdot_idxs2 = mdot_idxs2[np.sum(odot_bool2, axis=1)>0]
+        odot_idxs2 = odot_idxs2[np.sum(mdot_bool2, axis=1)>0]
+
+        # Then, add that point and its closest point in
+        # this set to the correspondence set. See Figure 10 of 
+        # Berger et al.
+        _, oi3 = otree.query(m[mdot_idxs2], 1)
+        _, mi3 = mtree.query(o[odot_idxs2], 1)
+
+        # Clean up duplicates
+        ox2, ox_inds2 = np.unique(mi3, return_index=True)
+        oa2 = odot_idxs2[ox_inds2]
+        ma2, ma_inds2 = np.unique(oi3, return_index=True)
+        mx2 = mdot_idxs2[ma_inds2]
+
+        #####
+
+        # Intersection
+
+        # One more unique call, as the special case may create a second mapping on an 
+        # already existing mapping.
+        oa2_inds = np.isin(oa2,oa)  # defined by mapping from a to x, throw away accordingly
+        mx2_inds = np.isin(mx2,mx)
+
+        # Stack them
+        ox = np.hstack([ox, ox2[~oa2_inds]])
+        oa = np.hstack([oa, oa2[~oa2_inds]])
+        mx = np.hstack([mx, mx2[~mx2_inds]])
+        ma = np.hstack([ma, ma2[~mx2_inds]])
 
     return ox, oa, mx, ma
 
