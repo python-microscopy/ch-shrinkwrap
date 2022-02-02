@@ -122,3 +122,25 @@ def tetrahedron(p, v0, v1, v2, v3):
 
     # Intersect the planes
     return np.max(np.vstack([p021, p013, p032, p123]).T,axis=1)
+
+def round_box(p, w, r):
+    """Draw a box of width w rounded by radius r.
+
+    Parameters
+    ----------
+    p : np.array
+        (3,N) point to calculate
+    w : np.array
+        (3,) width of box in x, y, z
+    r : float
+        Radius of rounded corners
+
+    Returns
+    -------
+    np.array
+        (N,) array of distances to box
+    """
+
+    q = np.abs(p) - w[:,None]
+    return np.linalg.norm(np.maximum(q,0.0),axis=0) + np.minimum(np.maximum(q[0,:],np.maximum(q[1,:],q[2,:])),0.0) - r
+    
