@@ -983,6 +983,9 @@ cdef class MembraneMesh(TriangleMesh):
         # Generate tesselation from mesh control points
         v = self._vertices['position'][self._vertices['halfedge']!=-1]
         d = scipy.spatial.Delaunay(v)
+        
+        # circumradius = v[d].mean(1)
+
         # Ensure all simplex vertices are wound s.t. normals point away from simplex centroid
         tri = delaunay_utils.orient_simps(d, v)
 
@@ -1000,14 +1003,14 @@ cdef class MembraneMesh(TriangleMesh):
         simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
-        faces = delaunay_utils.surf_from_delaunay(simps)
+        faces = delaunay_utils.surf_from_delaunay(simps_)
 
         # Rebuild mesh
         self.build_from_verts_faces(v, faces, clear=True)
 
         # Delaunay remeshing has a penchant for flanges
-        while np.any(self.singular):
-            self._remove_singularities()
+        # self._remove_singularities()
+        self.repair()
 
         self._initialize_curvature_vectors()
 
@@ -1198,8 +1201,8 @@ cdef class MembraneMesh(TriangleMesh):
     def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
         from ch_shrinkwrap.conj_grad import ShrinkwrapConjGrad
 
-        r = (self.remesh_frequency != 0) and (self.remesh_frequency < max_iter)
-        dr = (self.delaunay_remesh_frequency != 0) and (self.delaunay_remesh_frequency < max_iter)
+        r = (self.remesh_frequency != 0) and (self.remesh_frequency <= max_iter)
+        dr = (self.delaunay_remesh_frequency != 0) and (self.delaunay_remesh_frequency <= max_iter)
 
         if r and dr:
             # Make sure we stop for both
@@ -1248,13 +1251,14 @@ cdef class MembraneMesh(TriangleMesh):
             self.face_normals
             self.vertex_neighbors
 
-                        # Delaunay remesh (hole punch)
+            # Delaunay remesh (hole punch)
             if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
                 self.delaunay_remesh(points, self.delaunay_eps)
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
                 target_length = initial_length + m*(j+1)*rf
+                # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
                                                                                 str(self._mean_edge_length)))
