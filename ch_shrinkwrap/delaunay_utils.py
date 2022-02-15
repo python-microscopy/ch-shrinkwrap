@@ -514,7 +514,8 @@ def sliver_simps(d, v, sigma0=0.1, rho0=0.1):
     """
     Find the simplicies making up slivers.
     
-    Li, “SLIVER-FREE THREE DIMENSIONAL DELAUNAY MESH GENERATION.”
+    Li, Xiangyang. “SLIVER-FREE THREE DIMENSIONAL DELAUNAY MESH GENERATION.” 
+    University of Illinois at Urbana-Champaign, 2000.
     
     Parameters
     ----------
@@ -552,9 +553,10 @@ def sliver_simps(d, v, sigma0=0.1, rho0=0.1):
     bB = nv23*nv10
     cC = nv20*nv13
     
-    V = (1.0/6.0)*np.abs((v21*np.cross(v23,v20),axis=1).sum(1))  # volume
+    V = (1.0/6.0)*np.abs((v21*np.cross(v23,v20,axis=1)).sum(1))  # volume
     l = np.min([nv21,nv23,nv20,nv30,nv10,nv13])  # minimum edge length
     
+    # https://math.stackexchange.com/questions/2820212/circumradius-of-a-tetrahedron
     R = np.sqrt((aA+bB+cC)*(aA+bB-cC)*(aA-bB+cC)*(-aA+bB+cC))/(24*V) # circumradius
     
     sigma = V/(l*l*l)  # shape quality
