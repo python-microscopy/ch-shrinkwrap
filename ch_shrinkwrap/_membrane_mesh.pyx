@@ -1005,8 +1005,13 @@ cdef class MembraneMesh(TriangleMesh):
         # Recover new triangulation
         faces = delaunay_utils.surf_from_delaunay(simps_)
 
+        # Make sure we pass in only the vertices used
+        old_v, idxs = np.unique(faces.ravel(), return_inverse=True)
+        new_v = np.arange(old_v.shape[0])
+        reindexed_faces = new_v[idxs].reshape(faces.shape)
+
         # Rebuild mesh
-        self.build_from_verts_faces(v, faces, clear=True)
+        self.build_from_verts_faces(v[old_v,:], reindexed_faces, clear=True)
 
         # Delaunay remeshing has a penchant for flanges
         # self._remove_singularities()

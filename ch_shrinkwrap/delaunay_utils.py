@@ -305,3 +305,260 @@ def clean_neg_voronoi_poles(mesh, np):
     from PYME.experimental.isosurface import distance_to_mesh
     d = distance_to_mesh(np, mesh)
     return np[d < 0.0,:]
+
+CORNER_ANGLE = 3*np.pi/2
+
+def remove_singular_faces(faces, v):
+    # precompute normals
+    v1 = v[faces[:,1]]
+    a = (v[faces[:,0]]-v1)
+    b = (v[faces[:,2]]-v1)
+    norms = np.cross(a,b,axis=1)
+    nn = np.linalg.norm(norms,axis=1)
+    norms /= nn[:,None]
+    norms[nn==0] = 0  # this should not happen
+
+    # Find unique edge occurances
+    edges = np.zeros((3*faces.shape[0],2),dtype=faces.dtype)
+    edges[::3] = faces[:,[0,1]]
+    edges[1::3] = faces[:,[1,2]]
+    edges[2::3] = faces[:,[2,0]]
+    edges = np.sort(edges,axis=1)
+    _, idxs, counts = np.unique(edges,axis=0,return_counts=True,return_inverse=True)
+
+    kept_faces = np.ones(faces.shape[0], dtype=bool)
+    
+    # Remove slivers
+    a_norm = np.linalg.norm(a,axis=1)
+    b_norm = np.linalg.norm(b,axis=1)
+    ab_norm = np.linalg.norm(a-b,axis=1)
+    circumradius = a_norm*b_norm*ab_norm/(2*nn)
+    area = np.pi*circumradius*circumradius
+    adiff = 0.5*nn/area
+    # remove triangles that have 10% of the area of their circumcircle
+    kept_faces[adiff < 0.1] = False
+    
+    # Delete any unshared faces
+    for i in np.flatnonzero(counts==1):
+        candidate_faces = np.flatnonzero(idxs==i)//3
+        kept_faces[candidate_faces[0]] = False
+    
+    # Delete any faces with sharp angles between them
+    for i in np.flatnonzero(counts==2):
+        candidate_faces = np.flatnonzero(idxs==i)//3
+        dot = np.abs((norms[candidate_faces[0],:]*norms[candidate_faces[1],:]).sum())
+        if np.arccos(dot) > CORNER_ANGLE:
+            kept_faces[candidate_faces[0]] = False
+            kept_faces[candidate_faces[1]] = False
+
+    # Loop over edges with more than 2 incident faces
+    for i in np.flatnonzero(counts>2):
+        # grab their faces
+        candidate_faces = np.flatnonzero(idxs==i)//3
+        
+        # compute the average normal of each face and its neighbors
+#         candidate_face_norms = np.zeros((candidate_faces.shape[0],3),dtype=float)
+#         for j, f in enumerate(candidate_faces):
+#             edge0, edge1, edge2 = np.sort(np.vstack([faces[f,[0,1]],
+#                                                      faces[f,[1,2]],
+#                                                      faces[f,[2,0]]]),
+#                                           axis=1)
+
+#             # Check which faces contain these edges
+#             norm_faces = np.unique(np.flatnonzero((edges==edge0).prod(1) | (edges==edge1).prod(1) | (edges==edge2).prod(1))//3)
+#             candidate_face_norms[j,:] = np.mean(norms[norm_faces,:],axis=0)
+#             print(norms[f,:], candidate_face_norms[j,:])
+
+        # compare them and keep the two that have the least
+        # sharp angles
+        max_dot = -2
+        _kept_face0 = 0
+        _kept_face1 = 0
+        for jj, j in enumerate(candidate_faces):
+            for kk, k in enumerate(candidate_faces):
+                if j==k:
+                    continue
+                dot = np.abs((norms[j,:]*norms[k,:]).sum())
+                # dot = np.abs((candidate_face_norms[jj,:]*candidate_face_norms[kk,:]).sum())
+                if dot > max_dot:
+                    max_dot = dot
+                    _kept_face0 = j
+                    _kept_face1 = k
+                    
+        if max_dot == -2:
+            print("max_dot is still -2??")
+                    
+        if np.arccos(max_dot) > CORNER_ANGLE:
+            # Delete everything
+            for j in candidate_faces:
+                kept_faces[j] = False
+        else:
+            for j in candidate_faces:
+                if (j == _kept_face0) or (j == _kept_face1):
+                    continue
+                kept_faces[j] = False
+            
+    return faces[kept_faces,:]
+
+def construct_outer_surface(faces, v, starting_face=0):
+    """
+    Compute the outer surface from candidate faces.
+    """
+    # precompute normals
+    v1 = v[faces[:,1]]
+    a = (v[faces[:,0]]-v1)
+    b = (v[faces[:,2]]-v1)
+    norms = np.cross(a,b,axis=1)
+    nn = np.linalg.norm(norms,axis=1)
+    norms /= nn[:,None]
+    norms[nn==0] = 0  # this should not happen
+
+    # Find unique edge occurances
+    edges = np.zeros((3*faces.shape[0],2),dtype=faces.dtype)
+    edges[::3] = faces[:,[0,1]]
+    edges[1::3] = faces[:,[1,2]]
+    edges[2::3] = faces[:,[2,0]]
+    edges = np.sort(edges,axis=1)
+    unique_edges, edge_idxs, edge_counts = np.unique(edges,axis=0,return_counts=True,return_inverse=True)
+    edge_inds = dict()
+    for i in range(unique_edges.shape[0]):
+        edge_inds[tuple(unique_edges[i,:])] = i
+
+    visited_faces = np.zeros(faces.shape[0], dtype=bool)
+    kept_edges = np.zeros(edge_idxs.shape[0], dtype=int)
+    kept_faces = np.zeros(faces.shape[0], dtype=bool)
+    
+    faces_to_visit = [starting_face]
+    
+    while faces_to_visit:
+        curr_face = faces_to_visit.pop()
+        #print(curr_face)
+        
+        if visited_faces[curr_face]:
+            # we've already been here
+            continue
+        
+        # Label that we've been here
+        visited_faces[curr_face] = True
+        
+        # Look at the current edges
+        edge0, edge1, edge2 = np.sort(np.vstack([faces[curr_face,[0,1]],
+                                                  faces[curr_face,[1,2]],
+                                                  faces[curr_face,[2,0]]]),
+                                            axis=1)
+        edge0_idx, edge1_idx, edge2_idx = edge_inds.get(tuple(edge0)), edge_inds.get(tuple(edge1)), edge_inds.get(tuple(edge2))
+        
+        if (edge_counts[edge0_idx] == 1) or (edge_counts[edge1_idx] == 1) or (edge_counts[edge2_idx] == 1):
+            # Don't add a face that doesn't connect to any other faces
+            continue
+            
+        # Test if this face is going to create a singularity
+        if (kept_edges[edge0_idx] == 2) or (kept_edges[edge1_idx] == 2) or (kept_edges[edge2_idx] == 2):
+            continue
+            
+        # No? Add it
+        kept_faces[curr_face] = True
+        kept_edges[edge0_idx] += 1
+        kept_edges[edge1_idx] += 1
+        kept_edges[edge2_idx] += 1
+        
+        # Add adjacent faces
+        add_faces(curr_face, edge0_idx, edge_idxs, edge_counts, faces_to_visit, norms)
+        add_faces(curr_face, edge1_idx, edge_idxs, edge_counts, faces_to_visit, norms)
+        add_faces(curr_face, edge2_idx, edge_idxs, edge_counts, faces_to_visit, norms)
+        
+    return faces[kept_faces]
+
+def add_faces(curr_face, edge_idx, edge_idxs, edge_counts, faces_to_visit, norms):
+    if (edge_counts[edge_idx] == 1):
+        #print("one edge?")
+        return
+    elif (edge_counts[edge_idx] == 2):
+        candidate_faces = np.flatnonzero(edge_idxs==edge_idx)//3
+        #print(candidate_faces)
+        
+        # Don't add corners
+        dot = np.abs((norms[candidate_faces[0],:]*norms[candidate_faces[1],:]).sum())
+        if np.arccos(dot) > CORNER_ANGLE:
+            #print("No corner")
+            return
+        
+        # Add the adjacent face
+        if candidate_faces[0] == curr_face:
+            faces_to_visit.append(candidate_faces[1])
+        else:
+            faces_to_visit.append(candidate_faces[0])
+    else:
+        # edge counts > 2
+        candidate_faces = np.flatnonzero(edge_idxs==edge_idx)//3
+        
+        # Keep the smoothest transition between this face and the candidate faces
+        max_dot = -2
+        _kept_face = 0
+        for i in range(len(candidate_faces)):
+            if candidate_faces[i] == curr_face:
+                continue
+            dot = np.abs((norms[curr_face,:]*norms[candidate_faces[i],:]).sum())
+            if dot > max_dot:
+                max_dot = dot
+                _kept_face = candidate_faces[i]
+                    
+        # Don't add corners
+        if np.arccos(max_dot) > CORNER_ANGLE:
+            #print("No corner")
+            return
+        
+        faces_to_visit.append(_kept_face)
+
+def sliver_simps(d, v, sigma0=0.1, rho0=0.1):
+    """
+    Find the simplicies making up slivers.
+    
+    Li, “SLIVER-FREE THREE DIMENSIONAL DELAUNAY MESH GENERATION.”
+    
+    Parameters
+    ----------
+        d : scipy.spatial.qhull.Delaunay or np.array
+            Delaunay triangulation or an (N,4) array 
+            of simplices
+        v : np.array
+            (M,3) array of x,y,z coordinates of vertices
+            in Delaunay triangulation d
+            
+    Returns
+    -------
+        tri : np.array
+            (N, 4) array of oriented simplices
+    """
+    if isinstance(d, scipy.spatial.qhull.Delaunay):
+        d = d.simplices
+    
+    v_tri = v[d]
+
+    v21 = v_tri[:,1,:]-v_tri[:,2,:]
+    nv21 = np.linalg.norm(v21,axis=1)
+    v23 = v_tri[:,3,:]-v_tri[:,2,:]
+    nv23 = np.linalg.norm(v23,axis=1)
+    v20 = v_tri[:,0,:]-v_tri[:,2,:]
+    nv20 = np.linalg.norm(v20,axis=1)
+    v30 = v_tri[:,0,:]-v_tri[:,3,:]
+    nv30 = np.linalg.norm(v30,axis=1)
+    v10 = v_tri[:,0,:]-v_tri[:,1,:]
+    nv10 = np.linalg.norm(v10,axis=1)
+    v13 = v_tri[:,1,:]-v_tri[:,3,:]
+    nv13 = np.linalg.norm(v13,axis=1)
+    
+    aA = nv21*nv30
+    bB = nv23*nv10
+    cC = nv20*nv13
+    
+    V = (1.0/6.0)*np.abs((v21*np.cross(v23,v20),axis=1).sum(1))  # volume
+    l = np.min([nv21,nv23,nv20,nv30,nv10,nv13])  # minimum edge length
+    
+    R = np.sqrt((aA+bB+cC)*(aA+bB-cC)*(aA-bB+cC)*(-aA+bB+cC))/(24*V) # circumradius
+    
+    sigma = V/(l*l*l)  # shape quality
+    
+    rho = R/l  # radius-edge ratio
+    
+    return d[(sigma<sigma0)&(rho<rho0)]
