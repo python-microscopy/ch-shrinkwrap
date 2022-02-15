@@ -243,6 +243,157 @@ def empty_simps(d, v, pts, eps=0.0):
             
     return np.where(d_mask)[0]
 
+def greedy_ext_simps(d, mesh, oriented=True):
+    from PYME.experimental.isosurface import distance_to_mesh
+
+    if isinstance(d, scipy.spatial.qhull.Delaunay):
+        d = d.simplices
+    
+    # Get the distance of every simplex centroid to the original mesh
+    v = mesh._vertices['position'][mesh._vertices['halfedge']!=-1]
+    simp_centers = np.mean(v[d],axis=1)
+    simp_dist = distance_to_mesh(simp_centers, mesh, smooth=False)
+    
+    # Find the exterior simplices
+    tris, simp_idxs = tris_from_delaunay(d, return_index=True, oriented=oriented)
+    _, inds, invs, counts = np.unique(np.sort(tris, axis=1), axis=0,
+                                      return_index=True, 
+                                      return_inverse=True, 
+                                      return_counts=True)
+    ext_simps = np.zeros(d.shape[0], dtype=bool)
+    ext_simps[simp_idxs[inds[counts==1]]] = True
+    
+    # Build an adjacency matrix
+    adj_simps = -1*np.ones((d.shape[0],4),dtype=int)
+    for i in range(len(inds)):
+        connected_simps = simp_idxs[invs == i]
+        for s in connected_simps:
+            j = 0
+            while adj_simps[s,j] != -1:
+                j += 1
+            for s2 in connected_simps:
+                if s==s2:
+                    continue
+                adj_simps[s,j] = s2
+                j += 1
+    
+    # keep track of faces we want to delete
+    simps_to_del = np.zeros(d.shape[0], dtype=bool)
+    
+    # keep track of visited simplices
+    visited_simps = np.zeros(d.shape[0], dtype=bool)
+    
+    # Find the exterior simplex the furthest from the mesh
+    curr_simp = np.argmax(simp_dist*ext_simps)
+    
+    # while we're considering simplices outside of the mesh (dist > 0)
+    while (simp_dist[curr_simp] > 0) and (ext_simps[curr_simp]):
+        # set this simplex to be deleted
+        simps_to_del[curr_simp] = True
+        
+        # don't consider it again
+        visited_simps[curr_simp] = True
+        
+        # it is no longer exterior
+        ext_simps[curr_simp] = False
+        
+        # its neighbors are exterior
+        neighbors = adj_simps[curr_simp,:]
+        #print(curr_simp, neighbors)
+        for neighbor in neighbors:
+            if neighbor == -1:
+                break
+            if visited_simps[neighbor]:
+                continue
+            ext_simps[neighbor] = True
+    
+        curr_simp = np.argmax(simp_dist*ext_simps)
+    
+    return np.flatnonzero(simps_to_del)
+
+def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
+    from PYME.experimental.isosurface import distance_to_mesh
+
+    if isinstance(d, scipy.spatial.qhull.Delaunay):
+        d = d.simplices
+    
+    # Get the distance of every simplex centroid to the original mesh
+    v = mesh._vertices['position'][mesh._vertices['halfedge']!=-1]
+    simp_centers = np.mean(v[d],axis=1)
+    simp_dist = distance_to_mesh(simp_centers, mesh, smooth=False)
+    
+    # Find the exterior simplices
+    tris, simp_idxs = tris_from_delaunay(d, return_index=True, oriented=oriented)
+    _, inds, invs, counts = np.unique(np.sort(tris, axis=1), axis=0,
+                                      return_index=True, 
+                                      return_inverse=True, 
+                                      return_counts=True)
+    ext_simps = np.zeros(d.shape[0], dtype=bool)
+    ext_simps[simp_idxs[inds[counts==1]]] = True
+    
+    # Build an adjacency matrix
+    adj_simps = -1*np.ones((d.shape[0],4),dtype=int)
+    for i in range(len(inds)):
+        connected_simps = simp_idxs[invs == i]
+        for s in connected_simps:
+            j = 0
+            while adj_simps[s,j] != -1:
+                j += 1
+            for s2 in connected_simps:
+                if s==s2:
+                    continue
+                adj_simps[s,j] = s2
+                j += 1
+    
+    # keep track of faces we want to delete
+    simps_to_del = np.zeros(d.shape[0], dtype=bool)
+    
+    # keep track of visited simplices
+    visited_simps = np.zeros(d.shape[0], dtype=bool)
+    
+    # Find the exterior simplex the furthest from the mesh
+    ext_simps_lookup = np.flatnonzero(ext_simps)
+    curr_simp = ext_simps_lookup[np.argmax(simp_dist[ext_simps])]
+    #print(curr_simp, ext_simps[curr_simp])
+        
+    # while we're considering simplices outside of the mesh (dist > 0)
+    while ext_simps[curr_simp]:
+        # don't consider it again
+        visited_simps[curr_simp] = True
+        
+        # it is no longer exterior
+        ext_simps[curr_simp] = False
+        
+        # check if it contains points
+        _vs = d[curr_simp,:]
+        vs = v[_vs]
+        n_inside = np.sum(sdf.tetrahedron(pts, *vs)<=eps)
+        print(curr_simp, n_inside)
+        if n_inside != 0:
+            # if it does, we're done here
+            if np.any(ext_simps):
+                ext_simps_lookup = np.flatnonzero(ext_simps)
+                curr_simp = ext_simps_lookup[np.argmax(simp_dist[ext_simps])]
+            continue
+        
+        simps_to_del[curr_simp] = True
+                
+        # its neighbors are exterior
+        neighbors = adj_simps[curr_simp,:]
+        #print(curr_simp, neighbors)
+        for neighbor in neighbors:
+            if neighbor == -1:
+                break
+            if visited_simps[neighbor]:
+                continue
+            ext_simps[neighbor] = True
+    
+        if np.any(ext_simps):
+            ext_simps_lookup = np.flatnonzero(ext_simps)
+            curr_simp = ext_simps_lookup[np.argmax(simp_dist[ext_simps])]
+    
+    return np.flatnonzero(simps_to_del)
+
 def voronoi_poles(vor, point_normals):
     """
     Compute the positive and negative Voronoi poles in vor. The poles are the
@@ -510,7 +661,7 @@ def add_faces(curr_face, edge_idx, edge_idxs, edge_counts, faces_to_visit, norms
         
         faces_to_visit.append(_kept_face)
 
-def sliver_simps(d, v, sigma0=0.1, rho0=0.1):
+def sliver_simps(d, v, sigma0=0.0, rho0=0.0):
     """
     Find the simplicies making up slivers.
     
@@ -562,5 +713,9 @@ def sliver_simps(d, v, sigma0=0.1, rho0=0.1):
     sigma = V/(l*l*l)  # shape quality
     
     rho = R/l  # radius-edge ratio
+
+    # c1 = 1/(96*rho*rho*rho)
+    # c = 1 - np.sqrt(1-1/(4*rho*rho))
+    # C4 = (c+1)/(c*c1)
     
-    return d[(sigma<sigma0)&(rho<rho0)]
+    return d[(sigma<sigma0)]
