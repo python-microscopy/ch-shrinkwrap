@@ -1,3 +1,4 @@
+from keyword import kwlist
 import numpy as np
 
 def fast_3x3_cross(a,b):
@@ -35,18 +36,17 @@ def sign(x):
 
 def loc_error(shape, model=None, **kw):
     if model == 'poisson':
-        if kw['psf_width'] > 0:
+        if kw['psf_width'][0] > 0:
             l = np.vstack([np.random.poisson(kw['mean_photon_count'],10*shape[0]) for i in range(shape[1])]).T
-            # note: currently isotropic
-            sigma = np.vstack([kw['psf_width']/np.sqrt(l[:,i][l[:,i] > kw.get('min_photon_count', kw['mean_photon_count'])][:shape[0]]) for i in range(shape[1])]).T
+            sigma = np.vstack([kw['psf_width'][i]/np.sqrt(l[:,i][l[:,i] > kw['mean_photon_count']][:shape[0]]) for i in range(shape[1])]).T
     else:
         sigma = 10.0*np.ones(shape)
 
     return sigma
 
 def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=250.0, 
-                                        mean_photon_count=300, min_photon_count=100,
-                                        noise_fraction=0.1, save_fn=None):
+                                        mean_photon_count=300,
+                                        noise_fraction=0.1, save_fn=None, **kw):
     """
     Generate an SMLM point cloud from a Shape object. 
     
@@ -60,8 +60,6 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
         Width of the microscope point spread function
     mean_photon_count : float
         Average number of photons within a PSF
-    min_photon_count : float
-        Threhsold number of photons for PSF detection
     noise_fraction : float
         Fraction of total points that will be noise
     save_fn : str
@@ -79,7 +77,7 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
     # simualte clusters at each of the points
     cap_points, cap_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
                                            mean_photon_count=mean_photon_count, 
-                                           min_photon_count=min_photon_count)
+                                           **kw)
 
     # set up bounding box of simulation to decide where to put background
     no, scale = noise_fraction, 1.2
@@ -96,13 +94,11 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
                    + (np.array([xl,yl,zl])[None,:])
     noise_sigma = loc_error(noise_points.shape, model='poisson', 
                             psf_width=psf_width, 
-                            mean_photon_count=mean_photon_count,
-                            min_photon_count=min_photon_count)
+                            mean_photon_count=mean_photon_count)
     
     # simulate clusters at each of the random noise points
     noise_points, noise_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
-                                               mean_photon_count=mean_photon_count, 
-                                               min_photon_count=min_photon_count)
+                                               mean_photon_count=mean_photon_count)
     
     # stack the regular and noise points
     points = np.vstack([cap_points,noise_points])
@@ -111,8 +107,7 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
 
     # pass metadata associated with this simulation
     md = {'shape': shape.__str__(), 'density': density, 'p': p, 'psf_width': psf_width, 
-          'mean_photon_count': mean_photon_count, 'min_photon_count': min_photon_count, 
-          'noise_fraction': noise_fraction}
+          'mean_photon_count': mean_photon_count, 'noise_fraction': noise_fraction}
     
     if save_fn is not None:
         import os
@@ -121,7 +116,7 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
             np.savetxt(save_fn, np.vstack([points.T,s]).T, header="x y z sigma")
         elif ext == '.hdf':
             from PYME.IO.tabular import ColumnSource
-            ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], sigma=s)
+            ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], sigma_z=sigma[:,2])
             ds.to_hdf(save_fn)
         else:
             raise UserWarning('File type unrecognized. File was not saved.')
@@ -129,7 +124,7 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
         
     return md
 
-def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, min_photon_count=100.0, max_points_per_cluster=10, max_points=None):
+def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, max_points_per_cluster=10, max_points=None):
     # simulate clusters of points around each noise point
     noise_points = np.vstack([np.random.normal(points, sigma) for i in range(max_points_per_cluster)])
     
@@ -141,7 +136,6 @@ def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, min_
     # Generate new sigma for each of these points
     noise_sigma = loc_error(noise_points.shape, model='poisson', 
                             psf_width=psf_width, 
-                            mean_photon_count=mean_photon_count,
-                            min_photon_count=min_photon_count)
+                            mean_photon_count=mean_photon_count)
     
     return noise_points, noise_sigma
