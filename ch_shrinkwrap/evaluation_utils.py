@@ -319,7 +319,7 @@ def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, max_
     
     return noise_points, noise_sigma
 
-def generate_coarse_isosurface(ds, min_pixel_size=5, max_depth=20, samples_per_node=1,
+def generate_coarse_isosurface(ds, samples_per_node=1,
                                threshold_density=2e-5, smooth_curvature=True, 
                                repair=False, remesh=True, cull_inner_surfaces=True, 
                                save_fn=None):
@@ -327,12 +327,10 @@ def generate_coarse_isosurface(ds, min_pixel_size=5, max_depth=20, samples_per_n
     from PYME.experimental import dual_marching_cubes
     from PYME.experimental import _triangle_mesh as triangle_mesh
     
-    ot = gen_octree_from_points(ds, min_pixel_size=min_pixel_size, 
-                                max_depth=max_depth, 
-                                samples_per_node=samples_per_node)
+    ot = gen_octree_from_points(ds)
     
     dmc = dual_marching_cubes.PiecewiseDualMarchingCubes(threshold_density)
-    dmc.set_octree(ot)
+    dmc.set_octree(ot.truncate_at_n_points(samples_per_node))
     tris = dmc.march(dual_march=False)
     
     surf = triangle_mesh.TriangleMesh.from_np_stl(tris, 
@@ -347,8 +345,7 @@ def generate_coarse_isosurface(ds, min_pixel_size=5, max_depth=20, samples_per_n
     if cull_inner_surfaces:
         surf.remove_inner_surfaces()
         
-    md = {'ot_min_pixel_size': min_pixel_size, 'ot_max_depth': max_depth,
-          'ot_samples_per_node': samples_per_node, 'threshold_density': threshold_density,
+    md = {'samples_per_node': samples_per_node, 'threshold_density': threshold_density,
           'smooth_curvature': smooth_curvature, 'repair': repair, 'remesh': remesh, 
           'cull_inner_surfaces': cull_inner_surfaces}
     
@@ -358,7 +355,7 @@ def generate_coarse_isosurface(ds, min_pixel_size=5, max_depth=20, samples_per_n
         
     return surf, md
 
-def screened_poisson(ds, k=10, smoothiter=0,
+def screened_poisson(points, k=10, smoothiter=0,
                      flipflag=False, viewpos=[0,0,0], depth=8, fulldepth=5,
                      cgdepth=0, scale=1.1, samplespernode=1.5, pointweight=4, 
                      iters=8, confidence=False, preclean=False, save_fn=None):
@@ -369,7 +366,8 @@ def screened_poisson(ds, k=10, smoothiter=0,
     
     Parameters
     ----------
-    ds : DataSource
+    points : np.array
+        (M,3) array 
     see meshlab
     
     Returns
@@ -379,7 +377,7 @@ def screened_poisson(ds, k=10, smoothiter=0,
         
     """
 
-    mesh = ml.Mesh(np.vstack([ds['x'],ds['y'],ds['z']]).T)
+    mesh = ml.Mesh(points)
 
     ms = ml.MeshSet()  # create a mesh
     ms.add_mesh(mesh)
@@ -404,18 +402,21 @@ def screened_poisson(ds, k=10, smoothiter=0,
     stop = time.time()
     duration = stop-start
 
-    md = {'k': k, 'smoothiter': smoothiter, 'flipflag': flipflag, viewpos: 'viewpos',
-          'depth': depth, 'fulldepth': fulldepth, 'cgdepth': cgdepth, 'scale': scale,
-          'samplespernode': samplespernode, 'pointweight': pointweight, 'iters': iters,
-          'confidence': confidence, 'preclean': preclean, 'duration': duration}
+    md = {'k': int(k), 'smoothiter': bool(smoothiter), 'flipflag': bool(flipflag), 'viewpos': list(viewpos),
+          'depth': int(depth), 'fulldepth': int(fulldepth), 'cgdepth': int(cgdepth), 'scale': float(scale),
+          'samplespernode': float(samplespernode), 'pointweight': float(pointweight), 'iters': int(iters),
+          'confidence': bool(confidence), 'preclean': bool(preclean), 'duration': float(duration)}
 
     if save_fn is not None:
         ms.save_current_mesh(file_name=save_fn, unify_vertices=True)
         md['filename'] = save_fn
     
-    return ms.current_mesh().vertex_matrix(), ms.current_mesh().face_matrix(), md
+    return (ms.current_mesh().vertex_matrix(), ms.current_mesh().face_matrix()), md
 
-def test_shrinkwrap(mesh, points, sigma, max_iters, step_size, search_rad, remesh_every, search_k, noise_fraction, save_folder=None):
+def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, search_k, noise_fraction, save_folder=None):
+    points = np.vstack([ds['x'], ds['y'], ds['z']]).T
+    sigma = ds['sigma']
+    
     failed_count = 0
     md = []
     for no in noise_fraction:
@@ -443,15 +444,18 @@ def test_shrinkwrap(mesh, points, sigma, max_iters, step_size, search_rad, remes
                         stop = time.time()
                         duration = stop-start
                         if not failed:
-                            md.append({'iterations': it, 'remesh_every': re, 'lambda': lam, 'search_k': search_k, 'search_rad': search_rad, 'noise': no,
-                            'ntriangles': mesh.faces.shape[0], 'duration': duration})
+                            mmd = ({'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 'search_k': int(search_k), 
+                            'search_rad': float(sr), 'noise': float(no), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
                             if save_folder is not None:
-                                wrap_fp = os.path.join(save_folder, f"_iters{it}_remesh{re}_lambda{lam:.1f}_searchk{search_k}_searchrad{sr:.1f}_noise{no:.1f}_ntriangles{mesh.faces.shape[0]}_duration{duration:.1f}_ictm".split('.')) + ".stl"
+                                wrap_fp = os.path.join(save_folder, '_'.join(f"mesh_iters{it}_remesh{re}_lambda{lam:.1f}_searchk{search_k}_searchrad{sr:.1f}_noise{no:.1f}_ntriangles{mesh.faces.shape[0]}_duration{duration:.1f}_ictm".split('.')) + ".stl")
                                 mesh.to_stl(wrap_fp)
+                                mmd['filename'] = wrap_fp
+                            md.append({'mesh': mmd})
     print(f'# failed: {failed_count}')
     return md
 
-def test_spr(points, max_iters, search_k, depth, samplespernode, pointweight, noise_fraction, save_folder=None):
+def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, noise_fraction, save_folder=None):
+    points = np.vstack([ds['x'], ds['y'], ds['z']]).T
     md = []
     for no in noise_fraction:
         for it in max_iters:
@@ -459,8 +463,9 @@ def test_spr(points, max_iters, search_k, depth, samplespernode, pointweight, no
                 for d in depth:
                     for spn in samplespernode:
                         for wt in pointweight:
-                            wrap_fp = os.path.join(save_folder, f"_searchk{k}_depth{d}_samplespernode{spn:.1f}_pointweight{wt:.1f}_iters{it}_noise{no:.1f}_spr".split('.')) + ".stl"
-                            md.append(screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt, 
-                                                    iters=it, save_fn=wrap_fp))
+                            wrap_fp = os.path.join(save_folder, "_".join(f"mesh_searchk{k}_depth{d}_samplespernode{spn:.1f}_pointweight{wt:.1f}_iters{it}_noise{no:.1f}_spr".split('.')) + ".stl")
+                            _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
+                                                     iters=it, save_fn=wrap_fp)
+                            md.append({'mesh': mmd})
     return md
     
