@@ -315,4 +315,24 @@ class RotationShape(Shape):
 
     def sdf(self, p):
         return self._s0.sdf(self._inv_r @ (p-self.centroid[:,None]))
-        
+
+class BentShape(Shape):
+    """
+    Bend a signed distance function.
+
+    Parameters
+    ----------
+    s0 : shape.Shape
+    rx: float
+        Rotation in x-dir (rad)
+    ry: float
+        Rotation in y-dir (rad)
+    rz: float
+        Rotation in z-dir (rad)
+
+    """
+    def __init__(self, s0):
+        pass
+
+    def sdf(self, p):
+        pass

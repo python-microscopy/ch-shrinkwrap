@@ -70,7 +70,7 @@ def capsule(p, a, b, r):
     b : np.array
         (3,) end of capsule
     r : float
-        Capsule thickness
+        Capsule radius
     """
     pa, ba = p - a[:,None], b - a
     h = np.clip( (pa*ba[:,None]).sum(0)/(ba*ba).sum(), 0.0, 1.0 )
@@ -131,7 +131,7 @@ def round_box(p, w, r):
     p : np.array
         (3,N) point to calculate
     w : np.array
-        (3,) width of box in x, y, z
+        (3,) halfwidth of box in x, y, z
     r : float
         Radius of rounded corners
 
