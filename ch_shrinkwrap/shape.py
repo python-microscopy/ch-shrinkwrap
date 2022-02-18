@@ -189,14 +189,16 @@ class Box(Shape):
     def sdf(self, p):
         return sdf.round_box(p-self.centroid[:,None], self._halfwidth, self._r)
 
-ThreeWayJunction = lambda h, r, centroid=[0,0,0], k=0: UnionShape(
-                                    Capsule(centroid,centroid+[0,-h,0],r),
-                                    UnionShape(
-                                        Capsule(centroid, centroid+[-h/np.sqrt(2),h/np.sqrt(2),0],r),
-                                        Capsule(centroid, centroid+[h/np.sqrt(2),h/np.sqrt(2),0],r), k
-                                    ),
-                                    k=0, centroid=centroid,
-                                )
+def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
+    centroid = np.array(centroid, dtype=float)
+    return  UnionShape(
+                Capsule(centroid,centroid+[0,-h,0],r),
+                UnionShape(
+                    Capsule(centroid, centroid+[-h/np.sqrt(2),h/np.sqrt(2),0],r),
+                    Capsule(centroid, centroid+[h/np.sqrt(2),h/np.sqrt(2),0],r), k
+                ),
+                k=0, centroid=centroid,
+            )
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
         """

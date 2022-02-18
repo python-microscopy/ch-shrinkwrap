@@ -288,14 +288,14 @@ def greedy_ext_simps(d, mesh, oriented=True):
     
     # while we're considering simplices outside of the mesh (dist > 0)
     while (simp_dist[curr_simp] > 0) and (ext_simps[curr_simp]):
-        # set this simplex to be deleted
-        simps_to_del[curr_simp] = True
-        
         # don't consider it again
         visited_simps[curr_simp] = True
         
         # it is no longer exterior
         ext_simps[curr_simp] = False
+        
+        # set this simplex to be deleted
+        simps_to_del[curr_simp] = True
         
         # its neighbors are exterior
         neighbors = adj_simps[curr_simp,:]
@@ -346,7 +346,7 @@ def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
                 j += 1
     
     # keep track of faces we want to delete
-    simps_to_del = np.zeros(d.shape[0], dtype=bool)
+    simps_to_del = np.zeros(d.shape[0], dtype=int)
     
     # keep track of visited simplices
     visited_simps = np.zeros(d.shape[0], dtype=bool)
@@ -368,7 +368,7 @@ def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
         _vs = d[curr_simp,:]
         vs = v[_vs]
         n_inside = np.sum(sdf.tetrahedron(pts, *vs)<=eps)
-        print(curr_simp, n_inside)
+        #print(curr_simp, n_inside)
         if n_inside != 0:
             # if it does, we're done here
             if np.any(ext_simps):
@@ -376,7 +376,7 @@ def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
                 curr_simp = ext_simps_lookup[np.argmax(simp_dist[ext_simps])]
             continue
         
-        simps_to_del[curr_simp] = True
+        simps_to_del[curr_simp] += 1
                 
         # its neighbors are exterior
         neighbors = adj_simps[curr_simp,:]
@@ -384,6 +384,7 @@ def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
         for neighbor in neighbors:
             if neighbor == -1:
                 break
+            simps_to_del[neighbor] += 1
             if visited_simps[neighbor]:
                 continue
             ext_simps[neighbor] = True
@@ -392,7 +393,7 @@ def greedy_empty_simps(d, mesh, pts, eps=1.0, oriented=True):
             ext_simps_lookup = np.flatnonzero(ext_simps)
             curr_simp = ext_simps_lookup[np.argmax(simp_dist[ext_simps])]
     
-    return np.flatnonzero(simps_to_del)
+    return np.flatnonzero(simps_to_del>3)
 
 def voronoi_poles(vor, point_normals):
     """

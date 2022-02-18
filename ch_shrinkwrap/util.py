@@ -36,8 +36,10 @@ def sign(x):
 
 def loc_error(shape, model=None, **kw):
     if model == 'poisson':
-        if kw['psf_width'][0] > 0:
-            l = np.vstack([np.random.poisson(kw['mean_photon_count'],10*shape[0]) for i in range(shape[1])]).T
+        l = np.vstack([np.random.poisson(kw['mean_photon_count'],10*shape[0]) for i in range(shape[1])]).T
+        if type(kw['psf_width']) == float:
+            sigma = np.vstack([kw['psf_width']/np.sqrt(l[:,i][l[:,i] > kw['mean_photon_count']][:shape[0]]) for i in range(shape[1])]).T
+        else:
             sigma = np.vstack([kw['psf_width'][i]/np.sqrt(l[:,i][l[:,i] > kw['mean_photon_count']][:shape[0]]) for i in range(shape[1])]).T
     else:
         sigma = 10.0*np.ones(shape)

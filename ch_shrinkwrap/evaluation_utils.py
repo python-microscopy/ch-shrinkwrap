@@ -258,31 +258,36 @@ def generate_smlm_pointcloud_from_shape(shape, density=1, p=0.0001, psf_width=25
                                            mean_photon_count=mean_photon_count, 
                                            **kw)
 
-    # set up bounding box of simulation to decide where to put background
-    no, scale = noise_fraction, 1.2
-    bbox = [np.min(cap_points[:,0]), np.min(cap_points[:,1]), 
-            np.min(cap_points[:,2]), np.max(cap_points[:,0]),
-            np.max(cap_points[:,1]), np.max(cap_points[:,2])]
-    bbox = [scale*x for x in bbox]
-    xl, yl, zl, xu, yu, zu = bbox
-    xn, yn, zn = xu-xl, yu-yl, zu-zl
-    ln = int(no*len(cap_points)/(1.0-no))
+    if noise_fraction > 0:
+        # set up bounding box of simulation to decide where to put background
+        no, scale = noise_fraction, 1.2
+        bbox = [np.min(cap_points[:,0]), np.min(cap_points[:,1]), 
+                np.min(cap_points[:,2]), np.max(cap_points[:,0]),
+                np.max(cap_points[:,1]), np.max(cap_points[:,2])]
+        bbox = [scale*x for x in bbox]
+        xl, yl, zl, xu, yu, zu = bbox
+        xn, yn, zn = xu-xl, yu-yl, zu-zl
+        ln = int(no*len(cap_points)/(1.0-no))
 
-    # simulate background points random uniform over the bounding box
-    noise_points = np.random.rand(ln,3)*(np.array([xn,yn,zn])[None,:]) \
-                   + (np.array([xl,yl,zl])[None,:])
-    noise_sigma = util.loc_error(noise_points.shape, model='poisson', 
-                                 psf_width=psf_width, 
-                                 mean_photon_count=mean_photon_count)
-    
-    # simulate clusters at each of the random noise points
-    noise_points, noise_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
-                                               mean_photon_count=mean_photon_count)
-    
-    # stack the regular and noise points
-    points = np.vstack([cap_points,noise_points])
-    sigma = np.vstack([cap_sigma,noise_sigma])
-    s = np.sqrt((sigma*sigma).sum(1))
+        # simulate background points random uniform over the bounding box
+        noise_points = np.random.rand(ln,3)*(np.array([xn,yn,zn])[None,:]) \
+                    + (np.array([xl,yl,zl])[None,:])
+        noise_sigma = util.loc_error(noise_points.shape, model='poisson', 
+                                    psf_width=psf_width, 
+                                    mean_photon_count=mean_photon_count)
+        
+        # simulate clusters at each of the random noise points
+        noise_points, noise_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
+                                                mean_photon_count=mean_photon_count)
+        
+        # stack the regular and noise points
+        points = np.vstack([cap_points,noise_points])
+        sigma = np.vstack([cap_sigma,noise_sigma])
+        s = np.sqrt((sigma*sigma).sum(1))
+    else:
+        points = cap_points
+        sigma = cap_sigma
+        s = np.sqrt((sigma*sigma).sum(1))
 
     # pass metadata associated with this simulation
     md = {'shape': shape.__str__(), 'density': density, 'p': p, 'psf_width': psf_width, 
@@ -413,59 +418,191 @@ def screened_poisson(points, k=10, smoothiter=0,
     
     return (ms.current_mesh().vertex_matrix(), ms.current_mesh().face_matrix()), md
 
-def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, search_k, noise_fraction, save_folder=None):
+def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, search_k, save_folder=None):
     points = np.vstack([ds['x'], ds['y'], ds['z']]).T
     sigma = ds['sigma']
     
     failed_count = 0
     md = []
-    for no in noise_fraction:
-        for it in max_iters:
-            for lam in step_size:
-                for sr in search_rad:
-                    for re in remesh_every:
+    for it in max_iters:
+        for lam in step_size:
+            for sr in search_rad:
+                for re in remesh_every:
+                    for k in search_k:
                         # Copy the mesh over
                         mesh = membrane_mesh.MembraneMesh(mesh=mesh)
 
                         # set params
                         mesh.max_iter = it
                         mesh.step_size = lam
-                        mesh.search_k = search_k
+                        mesh.search_k = k
                         mesh.search_rad = sr
                         mesh.remesh_frequency = re
+                        mesh.delaunay_remesh_frequency = 0
 
-                        start = time.time()
-                        failed = False
                         try:
+                            start = time.time()
                             mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                        except:
-                            failed_count += 1
-                            failed=True
-                        stop = time.time()
-                        duration = stop-start
-                        if not failed:
-                            mmd = ({'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 'search_k': int(search_k), 
-                            'search_rad': float(sr), 'noise': float(no), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
+                            stop = time.time()
+                            duration = stop-start
+                            mmd = ({'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 'search_k': int(k), 
+                            'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
                             if save_folder is not None:
-                                wrap_fp = os.path.join(save_folder, '_'.join(f"mesh_iters{it}_remesh{re}_lambda{lam:.1f}_searchk{search_k}_searchrad{sr:.1f}_noise{no:.1f}_ntriangles{mesh.faces.shape[0]}_duration{duration:.1f}_ictm".split('.')) + ".stl")
+                                wrap_fp = os.path.join(save_folder,'_'.join(f"sw_mesh_{time.time():.1f}".split('.'))+".stl")
                                 mesh.to_stl(wrap_fp)
                                 mmd['filename'] = wrap_fp
                             md.append({'mesh': mmd})
-    print(f'# failed: {failed_count}')
+                        except:
+                            failed_count += 1
+    print(f'{failed_count} shrinkwrapped meshes failed.')
     return md
 
-def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, noise_fraction, save_folder=None):
+def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_folder=None):
     points = np.vstack([ds['x'], ds['y'], ds['z']]).T
     md = []
-    for no in noise_fraction:
-        for it in max_iters:
-            for k in search_k:
-                for d in depth:
-                    for spn in samplespernode:
-                        for wt in pointweight:
-                            wrap_fp = os.path.join(save_folder, "_".join(f"mesh_searchk{k}_depth{d}_samplespernode{spn:.1f}_pointweight{wt:.1f}_iters{it}_noise{no:.1f}_spr".split('.')) + ".stl")
+    failed_count = 0
+    for it in max_iters:
+        for k in search_k:
+            for d in depth:
+                for spn in samplespernode:
+                    for wt in pointweight:
+                        try:
+                            wrap_fp = os.path.join(save_folder,'_'.join(f"spr_mesh_{time.time():.1f}".split('.'))+".stl")
                             _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
-                                                     iters=it, save_fn=wrap_fp)
+                                                        iters=it, save_fn=wrap_fp)
                             md.append({'mesh': mmd})
+                        except:
+                            failed_count += 1
+    print(f'{failed_count} SPR meshes failed.')
     return md
+
+def compute_mesh_metrics(yaml_file, shape, dx_min=5, p=1.0, psf_width=250.0, mean_photon_count=300.0):
+    """
+    yaml_file: fn
+        File containing list of meshes
+    shape : ch_shrinkwrap.shape.Shape
+        Theoeretical shape created from a signed distance function
+    dx_min : float
+        The target side length of a voxel. Sets sampling rate.
+    p : float
+        Monte-Carlo acceptance probability.
+    """
+    import yaml
+    import ch_shrinkwrap._membrane_mesh as membrane_mesh
+
+    d, new_d = [], []
+    with open(yaml_file) as f:
+        d = yaml.safe_load(f)
     
+    test_points, test_normals = shape.points(density=1.0/(dx_min**3), p=1.0, 
+                                           psf_width=psf_width, 
+                                           mean_photon_count=mean_photon_count, 
+                                           resample=True, noise=None, 
+                                           return_normals=True)
+    failed = 0
+    for el in d:
+        mesh_d = el.get('mesh')
+        if mesh_d is not None:
+            print(mesh_d['filename'])
+            
+            try:
+                # load mesh
+                mesh = membrane_mesh.MembraneMesh.from_stl(mesh_d['filename'])
+
+                # calculate mean squared error
+                vecs = mesh._vertices[mesh.faces]['position']
+                errors = shape.sdf(vecs.mean(1).T)
+                mse = np.nansum(errors**2)/len(errors)
+
+                # Calculate distance and angle stats
+                hd, md, ha, ma = test_points_mesh_stats(test_points, 
+                                                        test_normals, 
+                                                        mesh)
+                
+                print(mse, hd, md, ha, ma)
+
+                mesh_d['mse'] = float(mse)
+                mesh_d['hausdorff_distance'] = float(hd)
+                mesh_d['mean_distance'] = float(md)
+                mesh_d['hausdorff_angle'] = float(ha)
+                mesh_d['mean_angle'] = float(ma)
+
+                new_d.append({'mesh': mesh_d})
+            except:
+                failed += 1
+                
+    print(f"Failed to compute metrics for {failed} meshes")
+    return new_d
+
+def test_structure(yaml_file):
+    from . import shape
+    from PYME.IO.tabular import HDFSource
+    
+    import itertools
+    import yaml
+    import time
+    
+    with open('test.yaml') as f:
+        test_d = yaml.safe_load(f)
+    
+    if not os.path.exists(test_d['save_fp']):
+        os.mkdir(test_d['save_fp'])
+
+    start_time = time.strftime('%Y%d%m_%HH%M')
+
+    # Generate the theoretical shape
+    test_shape = getattr(shape, test_d['shape']['type'])(**test_d['shape']['parameters'])
+    
+    # loop over psf combinations, if present
+    for psf_width in itertools.product(test_d['system']['psf_width_x'], 
+                                       test_d['system']['psf_width_y'], 
+                                       test_d['system']['psf_width_z']):
+        # allow for testing at multiple noise levels
+        for no in test_d['point_cloud']['noise_fraction']:
+            # generate and save the points
+            points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
+            _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
+                                                               p=test_d['point_cloud']['p'], 
+                                                               psf_width=psf_width, 
+                                                               mean_photon_count=test_d['system']['mean_photon_count'], 
+                                                               noise_fraction=no, save_fn=points_fp)
+
+            # reload the generated points as a data source
+            points_ds = HDFSource(points_fp, 'Data')
+            
+            sw_md = []
+            for spn in test_d['shrinkwrapping']['samplespernode']:
+                # Generate an isosurface, where we set the initial density based on the ground truth density
+                initial_mesh, iso_md = generate_coarse_isosurface(points_ds,
+                                                                  samples_per_node=spn, 
+                                                                  threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/spn, 
+                                                                  smooth_curvature=True, 
+                                                                  repair=False, 
+                                                                  remesh=True, 
+                                                                  cull_inner_surfaces=True, 
+                                                                  save_fn=os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl"))
+                
+                # Compute shrinkwrapping isosurfaces
+                sw_md.extend(test_shrinkwrap(initial_mesh, points_ds, test_d['shrinkwrapping']['max_iters'], test_d['shrinkwrapping']['step_size'], 
+                                             test_d['shrinkwrapping']['search_rad'], test_d['shrinkwrapping']['remesh_every'], 
+                                             test_d['shrinkwrapping']['search_k'], save_folder=test_d['save_fp']))
+            
+            # Compute screened poisson reconstruction isosurfaces
+            spr_md = test_spr(points_ds, test_d['screened_poisson']['max_iters'], test_d['screened_poisson']['search_k'],
+                              test_d['screened_poisson']['depth'], test_d['screened_poisson']['samplespernode'], 
+                              test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
+            
+            # Save the results
+            yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}.yaml')
+            with open(yaml_out, 'w') as f:
+                yaml.safe_dump([{'points': points_md}, {'isosurface': iso_md}, *sw_md, *spr_md], f)
+            
+            # Load the results and compute metrics
+            res = compute_mesh_metrics(yaml_out, shape, psf_width=psf_width, mean_photon_count=test_d['system']['mean_photon_count'])
+            
+            # Save the results
+            yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
+            with open(yaml_file, 'w') as f:
+                yaml.safe_dump([{'points': points_md}, {'isosurface': iso_md}, *res], f)
+
+    return yaml_out

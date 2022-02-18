@@ -990,7 +990,8 @@ cdef class MembraneMesh(TriangleMesh):
         tri = delaunay_utils.orient_simps(d, v)
 
         # Remove simplices outside of our mesh
-        ext_inds = delaunay_utils.ext_simps(tri, self)
+        # ext_inds = delaunay_utils.ext_simps(tri, self)
+        ext_inds = delaunay_utils.greedy_ext_simps(tri, self)
         simps = delaunay_utils.del_simps(tri, ext_inds)
 
         # Remove simplices that do not contain points
@@ -999,11 +1000,12 @@ cdef class MembraneMesh(TriangleMesh):
                                           # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
                                           # TODO: account for sigma?
         #print('Guessed eps: {}'.format(eps))
-        empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
-        simps_ = delaunay_utils.del_simps(simps, empty_inds)
+        # empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
+        #empty_inds = delaunay_utils.greedy_empty_simps(simps, self, points, eps=eps)
+        #simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
-        faces = delaunay_utils.surf_from_delaunay(simps_)
+        faces = delaunay_utils.surf_from_delaunay(simps)
 
         # Make sure we pass in only the vertices used
         old_v, idxs = np.unique(faces.ravel(), return_inverse=True)
@@ -1015,7 +1017,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Delaunay remeshing has a penchant for flanges
         # self._remove_singularities()
-        self.repair()
+        # self.repair()
 
         self._initialize_curvature_vectors()
 
@@ -1225,6 +1227,13 @@ cdef class MembraneMesh(TriangleMesh):
             final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
             m = (final_length - initial_length)/max_iter
 
+        if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
+            s = 1.0/np.repeat(sigma,points.shape[1])
+        elif (len(sigma.shape) == 2) and (sigma.shape[0] == points.shape[0]) and (sigma.shape[1] == points.shape[1]):
+            s = 1.0/sigma
+        else:
+            raise ValueError(f"Sigma must be of shape ({self.points.shape[0]},) or ({self.points.shape[0]},{self.points.shape[1]}).")
+
         # initialize area values (used in termination condition)
         original_area = self.area()
         last_area, area = original_area, 0
@@ -1244,7 +1253,7 @@ cdef class MembraneMesh(TriangleMesh):
                                     search_k=self.search_k, search_rad=self.search_rad)
 
             vp = cg.search(points,lams=step_size,num_iters=rf,
-                           weights=1.0/np.repeat(sigma,points.shape[1]))
+                           weights=s)
 
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
@@ -1259,6 +1268,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Delaunay remesh (hole punch)
             if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
                 self.delaunay_remesh(points, self.delaunay_eps)
+                break
 
             # Remesh
             if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
