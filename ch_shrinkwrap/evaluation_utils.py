@@ -576,7 +576,7 @@ def test_structure(yaml_file):
                 # Generate an isosurface, where we set the initial density based on the ground truth density
                 initial_mesh, i_md = generate_coarse_isosurface(points_ds,
                                                                 samples_per_node=spn, 
-                                                                threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn), 
+                                                                threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/100,  # choose a density less than the point cloud density 
                                                                 smooth_curvature=True, 
                                                                 repair=False, 
                                                                 remesh=True, 
@@ -587,9 +587,9 @@ def test_structure(yaml_file):
                 s_md = test_shrinkwrap(initial_mesh, points_ds, test_d['shrinkwrapping']['max_iters'], test_d['shrinkwrapping']['step_size'], 
                                        test_d['shrinkwrapping']['search_rad'], test_d['shrinkwrapping']['remesh_every'], 
                                        test_d['shrinkwrapping']['search_k'], save_folder=test_d['save_fp'])
-                s_md['samplespernode'] = spn
-                i_md = {'isosurface': i_md}
-                iso_md.extend(i_md)
+                for s in s_md:
+                    s['mesh']['samplespernode'] = spn
+                iso_md.append({'isosurface': i_md})
                 sw_md.extend(s_md)
             
             # Compute screened poisson reconstruction isosurfaces
@@ -608,6 +608,6 @@ def test_structure(yaml_file):
             # Save the results
             yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
             with open(yaml_out, 'w') as f:
-                yaml.safe_dump([{'points': points_md}, {'isosurface': iso_md}, *res], f)
+                yaml.safe_dump([{'points': points_md}, iso_md, *res], f)
 
     return yaml_out
