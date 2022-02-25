@@ -608,6 +608,6 @@ def test_structure(yaml_file):
             # Save the results
             yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
             with open(yaml_out, 'w') as f:
-                yaml.safe_dump([{'points': points_md}, iso_md, *res], f)
+                yaml.safe_dump([{'points': points_md}, *iso_md, *res], f)
 
     return yaml_out
