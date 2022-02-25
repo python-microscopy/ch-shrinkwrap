@@ -576,7 +576,7 @@ def test_structure(yaml_file):
                 # Generate an isosurface, where we set the initial density based on the ground truth density
                 initial_mesh, i_md = generate_coarse_isosurface(points_ds,
                                                                 samples_per_node=spn, 
-                                                                threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/100,  # choose a density less than the point cloud density 
+                                                                threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
                                                                 smooth_curvature=True, 
                                                                 repair=False, 
                                                                 remesh=True, 
