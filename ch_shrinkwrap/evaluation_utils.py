@@ -496,7 +496,7 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0
     with open(yaml_file) as f:
         d = yaml.safe_load(f)
     
-    test_points, test_normals = test_shape.points(density=1.0/(dx_min**3), p=1.0, 
+    test_points, test_normals = test_shape.points(density=1.0/(dx_min**3), p=p, 
                                            psf_width=psf_width, 
                                            mean_photon_count=mean_photon_count, 
                                            resample=True, noise=None, 
@@ -519,7 +519,9 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0
                 # Calculate distance and angle stats
                 hd, md, ha, ma = test_points_mesh_stats(test_points, 
                                                         test_normals, 
-                                                        mesh)
+                                                        mesh,
+                                                        dx_min=dx_min,
+                                                        p=p)
                 
                 mesh_d['mse'] = float(mse)
                 mesh_d['hausdorff_distance'] = float(hd)
@@ -576,7 +578,7 @@ def test_structure(yaml_file):
                 # Generate an isosurface, where we set the initial density based on the ground truth density
                 initial_mesh, i_md = generate_coarse_isosurface(points_ds,
                                                                 samples_per_node=spn, 
-                                                                threshold_density=test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
+                                                                threshold_density=test_d['shrinkwrapping']['density'], #test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
                                                                 smooth_curvature=True, 
                                                                 repair=False, 
                                                                 remesh=True, 
