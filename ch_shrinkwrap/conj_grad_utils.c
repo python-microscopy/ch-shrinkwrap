@@ -389,7 +389,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                 // sum the distances between this vertex and its neighbors
                 // divided by original distance
                 for (j=0; j<n_dims; ++j) {
-                    p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])*w;
+                    p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])/w;
             }
         }
         }
