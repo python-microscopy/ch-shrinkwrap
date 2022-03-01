@@ -398,6 +398,40 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             
             return v_idx, w 
     
+    def _compute_weight_matrix2(self, f, w=0.95, shield_sigma=20):
+        fv = f.reshape(-1,self.dims)
+            
+        import scipy.spatial
+
+        # Create a list of face centroids for search
+        face_centers = fv[self._faces].mean(1)
+
+        # Find the closest point to each face
+        _, _points = self._tree.query(face_centers, k=1)
+        
+        #print(self._faces.shape, _faces.shape)
+
+        v_idx = np.zeros(self.points.shape, 'i4')
+        v_idx[_points,:] = self._faces[:,:]
+
+        #compute distances
+        d = np.zeros(v_idx.shape, 'f4')
+        
+        for j in range(3):
+            d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
+            d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
+        d[v_idx == 0] = 0
+
+        #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
+        
+        w = 1.0/np.maximum(d, 1e-6)
+
+        w = w/w.sum(1)[:,None]
+
+        #print(d, d/d.sum(1)[:,None], w)
+        assert(not np.any(np.isnan(w)))
+        
+        return v_idx, w 
     
     def Afunc(self, f):
         """
@@ -407,7 +441,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the vertices indicating the closest vertex to each point
         """
         if self.calc_w():
-            self.w = self._compute_weight_matrix(self.f)
+            self.w = self._compute_weight_matrix2(self.f)
             #print(self.w)
 
         if False: #USE_C:
