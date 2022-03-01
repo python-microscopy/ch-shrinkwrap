@@ -1228,9 +1228,15 @@ cdef class MembraneMesh(TriangleMesh):
             m = (final_length - initial_length)/max_iter
 
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
+            print("Note this case???")
+            print(points.shape, sigma.shape)
             s = 1.0/np.repeat(sigma,points.shape[1])
+            print(points.shape, sigma.shape)
         elif (len(sigma.shape) == 2) and (sigma.shape[0] == points.shape[0]) and (sigma.shape[1] == points.shape[1]):
-            s = 1.0/sigma
+            print('this case')
+            print(points.shape, sigma.shape)
+            s = (1.0/sigma.ravel())
+            print(points.shape, sigma.shape)
         else:
             raise ValueError(f"Sigma must be of shape ({self.points.shape[0]},) or ({self.points.shape[0]},{self.points.shape[1]}).")
 

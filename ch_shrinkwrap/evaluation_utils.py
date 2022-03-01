@@ -422,7 +422,8 @@ def screened_poisson(points, k=10, smoothiter=0,
 
 def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, search_k, save_folder=None):
     points = np.vstack([ds['x'], ds['y'], ds['z']]).T
-    sigma = ds['sigma']
+    # sigma = ds['sigma']
+    sigma = np.vstack([ds['sigma_x'],ds['sigma_y'],ds['sigma_z']]).T
     
     failed_count = 0
     md = []

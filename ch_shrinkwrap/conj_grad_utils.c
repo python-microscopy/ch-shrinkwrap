@@ -363,6 +363,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
         N = 0;
         // loop over the neighbors of vertex i
+        w = 0;
         for (k=0; k<n_n; ++k)
         {
             n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
@@ -375,14 +376,22 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                 d = (p_w[n*n_dims+j] - p_w[i*n_dims+j]); 
                 d2 += d*d;
             }
-            w = sqrtf(d2+1);
+            w += sqrtf(d2+1);
             
-            // sum the distances between this vertex and its neighbors
-            // divided by original distance
-            for (j=0; j<n_dims; ++j) {
-                p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])/w;
-            }
             N += 1;
+        }
+        if (w > 0)
+        {
+            for (k=0; k<n_n; ++k)
+            {
+                n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+                if (n == -1) break;
+                // sum the distances between this vertex and its neighbors
+                // divided by original distance
+                for (j=0; j<n_dims; ++j) {
+                    p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])*w;
+            }
+        }
         }
         // average the contribution of the neighbors?
         // for (j=0; j<n_dims; ++j) p_d[i*n_dims+j] /= N;
@@ -436,6 +445,7 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
     {
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
         N = 0;
+        w = 0;
         // loop over the neighbors of vertex i
         for (k=0; k<n_n; ++k)
         {
@@ -450,14 +460,20 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
                 d2 += d*d;
             }
             w = sqrtf(d2+1);
-            
-            // sum the distances between this vertex and its neighbors
-            // divided by original distance
-            for (j=0; j<n_dims; ++j) {
-                p_d[n*n_dims+j] += (p_f[i*n_dims+j] - p_f[n*n_dims+j])/w;
-            }
             N += 1;
         } 
+        if (w > 0) {
+            for (k=0; k<n_n; ++k)
+            {
+                n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+                if (n == -1) break;
+                // sum the distances between this vertex and its neighbors
+                // divided by original distance
+                for (j=0; j<n_dims; ++j) {
+                    p_d[n*n_dims+j] += (p_f[i*n_dims+j] - p_f[n*n_dims+j])/w;
+                }
+            }
+        }
         // average the contribution of the neighbors?
         // for (k=0; k<N; ++k)
         // {

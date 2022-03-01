@@ -338,7 +338,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
     def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
         TikhonovConjugateGradient.__init__(self)
-        self.Lfuncs, self.Lhfuncs = ["Lfunc4"], ["Lhfunc4"]
+        self.Lfuncs, self.Lhfuncs = ["Lfunc3"], ["Lhfunc3"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
         self.faces, self.face_neighbors = faces, face_neighbors
         self.points = points
