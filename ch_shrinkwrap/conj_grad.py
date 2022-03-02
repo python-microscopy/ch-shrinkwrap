@@ -435,6 +435,53 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         assert(not np.any(np.isnan(w)))
         
         return v_idx, w 
+
+    def _compute_weight_matrix3(self, f, w=0.95, shield_sigma=20):
+        """
+        For any face experiencing no pull, its nearest neighbor point pulls on it.
+        """
+
+        fv = f.reshape(-1,self.dims)
+        
+        import scipy.spatial
+
+        # Create a list of face centroids for search
+        face_centers = fv[self._faces].mean(1)
+
+        # Construct a kdtree over the face centers
+        tree = scipy.spatial.cKDTree(face_centers)
+
+        # Get k closet face centroids for each point
+        _, _faces = tree.query(self.points, k=1)
+
+         # Find faces that experienced no pull
+        _unassigned_faces = np.array(list(set(range(self._faces.shape[0]))-set(_faces))).astype('i4')
+        print(_unassigned_faces)
+
+        # Find the closest point to each unassinged face
+        _, _points = self._tree.query(face_centers[_unassigned_faces,:], k=1)
+                
+        # vertex indices (n_points x 3)
+        v_idx = np.zeros(self.points.shape, 'i4')
+        v_idx[_points,:] = self._faces[_unassigned_faces,:]
+
+        #compute distances
+        d = np.zeros(v_idx.shape, 'f4')
+        for j in range(3):
+            d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
+            d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
+        d[v_idx == 0] = 0
+
+        #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
+        
+        w = 1.0/np.maximum(d, 1e-6)
+
+        w = w/w.sum(1)[:,None]
+
+        #print(d, d/d.sum(1)[:,None], w)
+        assert(not np.any(np.isnan(w)))
+        
+        return v_idx, w 
     
     def Afunc(self, f):
         """
@@ -445,6 +492,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         """
         if self.calc_w():
             self.w = self._compute_weight_matrix(self.f)
+            self.w2 = self._compute_weight_matrix3(self.f)
             #print(self.w)
 
         if False: #USE_C:
@@ -456,9 +504,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             surface_points = np.zeros_like(self.points)
 
             v_idx, w = self.w
+            v_idx2, w2 = self.w2
 
             for i in range(3):
                 surface_points += fv[v_idx[:,i]]*w[:,i][:,None]
+                surface_points += fv[v_idx2[:,i]]*w2[:,i][:,None]
 
             assert(not np.any(np.isnan(surface_points)))
             
@@ -481,9 +531,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             v_idx, w = self.w
+            v_idx2, w2 = self.w2
             
             for i in range(3):
                 d[v_idx[:,i], :] += (w[:,i][:,None])*fv 
+                d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
 
         
         assert(not np.any(np.isnan(d)))

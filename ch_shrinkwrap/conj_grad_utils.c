@@ -379,7 +379,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
             d2 = 0;
             for (j=0; j<3; ++j)
             {
-                dd = (p_w[n*3+j] - p_w[i*3+j]); 
+                dd = (p_w[n*3+j] - p_w[i*3+j]);
                 d2 += dd*dd;
             }
 
