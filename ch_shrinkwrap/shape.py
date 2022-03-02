@@ -201,27 +201,29 @@ def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
             )
 
 def ERSim(centroid=[0,0,0]):
+    centroid = np.array([0,0,0])
     sheet_height = 100   # nm
     a, b = np.array([0,0,0]), np.array([400,-50,0])
     c, d = np.array([500,250,0]), np.array([0,217,0])
     e, f = np.array([0,-400,0]), np.array([-400,0,0])
 
-    sheet0 = RotationShape(Box(np.array([66,83,sheet_height/2]), sheet_height/2), rz=np.pi/4)
-    sheet1 = Box(np.array([100,100,sheet_height//2]), 1, centroid=np.array([0,133,0]))
-    sheet2 = RotationShape(Box(np.array([33,33,sheet_height/2]), sheet_height/2), rz=7*np.pi/3, centroid=c)
+    sheet0 = RotationShape(Box(np.array([66,83,sheet_height/4]), sheet_height/4), rz=np.pi/4)
+    sheet1 = Box(np.array([50,50,sheet_height//4]), 1, centroid=np.array([0,133,0]))
+    sheet2 = RotationShape(Box(np.array([33,33,sheet_height/4]), sheet_height/4), rz=7*np.pi/3, centroid=c)
     cap0 = Capsule(a,b,sheet_height//2)
     cap1 = Capsule(b,c,sheet_height//2)
     cap2 = Capsule(c,d,sheet_height//2)
     cap3 = Capsule(a,e,sheet_height//2)
     cap4 = Capsule(a,f,sheet_height//2)
-    return UnionShape(UnionShape(UnionShape(
+    smooth = sheet_height//4
+    struct = UnionShape(UnionShape(UnionShape(
                         UnionShape(sheet0,
                                 UnionShape(cap0,
                                             UnionShape(cap1,
-                                                        UnionShape(sheet2,cap2,k=sheet_height),
-                                                        k=sheet_height),k=sheet_height), 
-                                k=sheet_height), 
-                        sheet1, k=sheet_height),cap3,k=sheet_height),cap4,k=sheet_height)
+                                                        UnionShape(sheet2,cap2,k=smooth),
+                                                        k=sheet_height),k=smooth), 
+                                k=smooth), 
+                        sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
                         
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
