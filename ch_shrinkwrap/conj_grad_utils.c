@@ -330,7 +330,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
     float *p_w;
     float *p_d;
     float *d;  // distance to neighbor lengths
-    float dd, d2, w, ddot, sum_theta;
+    float dd, d2, w, ddot, sum_theta, ang;
 
     if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
     if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
@@ -382,6 +382,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                 dd = (p_w[n*3+j] - p_w[i*3+j]); 
                 d2 += dd*dd;
             }
+
             w += d2; // area
 
             if (d2 > 0) 
@@ -400,6 +401,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
             // now do another pass and calculate the angle between each of the neighbors
             // in the unmodified surface
             sum_theta = 0;
+            //printf("summing over the neighbors\n");
             for (k=0; k<N; ++k)
             {
                 n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
@@ -415,8 +417,11 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                     ddot += (p_w[n*3+j] - p_w[i*3+j])*(p_w[n2*3+j] - p_w[i*3+j]);
                 }
                 ddot /= d[k]*d[k2]; // divide the dot product by the vector lengths
-                sum_theta += acosf(ddot);
+                ang = acosf(ddot);
+                //printf("%.2f ", ang);
+                sum_theta += ang;
             }
+            //printf("\n");
 
             // sum the contributions of the mean and gaussian curvature
             for (k=0; k<N; ++k)
@@ -427,8 +432,9 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                 // divided by the summed areas of the neighbors
                 // add in Gaussian curvature in chunks of 1/N, negative sign assuming 
                 // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
+                // printf("%.2f, %.2f, %d, %.2f \n", sum_theta, 2*PI-sum_theta, N, w);
                 for (j=0; j<3; ++j) {
-                    p_d[i*3+j] += (p_f[n*3+j] - p_f[i*3+j])/w - (2*PI-sum_theta)/(N*w);
+                    p_d[i*3+j] += (p_f[n*3+j] - p_f[i*3+j])/sqrtf(w) + (2*PI-sum_theta)/(N*sqrtf(w));
                 }
             }
         }
@@ -505,6 +511,7 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
                 dd = (p_w[i*3+j] - p_w[n*3+j]); 
                 d2 += dd*dd;
             }
+            
             w += d2; // area
 
             if (d2 > 0) 
@@ -550,7 +557,7 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
                 // add in Gaussian curvature in chunks of 1/N, negative sign assuming 
                 // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
                 for (j=0; j<3; ++j) {
-                    p_d[n*3+j] += (p_f[i*3+j] - p_f[n*3+j])/w - (2*PI-sum_theta)/(N*w);
+                    p_d[n*3+j] += (p_f[i*3+j] - p_f[n*3+j])/sqrtf(w) + (2*PI-sum_theta)/(N*sqrtf(w));
                 }
             }
         }
