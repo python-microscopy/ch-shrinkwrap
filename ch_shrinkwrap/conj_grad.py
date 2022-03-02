@@ -430,6 +430,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         w = 1.0/np.maximum(d, 1e-6)
 
         w = w/w.sum(1)[:,None]
+        w[v_idx[:,0] == 0,:] = 0
 
         #print(d, d/d.sum(1)[:,None], w)
         assert(not np.any(np.isnan(w)))
@@ -470,13 +471,14 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         for j in range(3):
             d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
             d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
-        d[v_idx == 0] = 0
+        d[v_idx[:,0] == 0,:] = 0
 
         #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
         
         w = 1.0/np.maximum(d, 1e-6)
 
         w = w/w.sum(1)[:,None]
+        w[v_idx[:,0] == 0,:] = 0
 
         #print(d, d/d.sum(1)[:,None], w)
         assert(not np.any(np.isnan(w)))
@@ -492,7 +494,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         """
         if self.calc_w():
             self.w = self._compute_weight_matrix(self.f)
-            #self.w2 = self._compute_weight_matrix3(self.f)
+            self.w2 = self._compute_weight_matrix3(self.f)
             # self.w = self._compute_weight_matrix2(self.f)
             #print(self.w)
 
@@ -505,11 +507,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             surface_points = np.zeros_like(self.points)
 
             v_idx, w = self.w
-            #v_idx2, w2 = self.w2
+            v_idx2, w2 = self.w2
 
             for i in range(3):
                 surface_points += fv[v_idx[:,i]]*w[:,i][:,None]
-                #surface_points += fv[v_idx2[:,i]]*w2[:,i][:,None]
+                surface_points += fv[v_idx2[:,i]]*w2[:,i][:,None]
 
             assert(not np.any(np.isnan(surface_points)))
             
@@ -532,11 +534,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             v_idx, w = self.w
-            #v_idx2, w2 = self.w2
+            v_idx2, w2 = self.w2
             
             for i in range(3):
                 d[v_idx[:,i], :] += (w[:,i][:,None])*fv 
-                #d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
+                d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
 
         
         assert(not np.any(np.isnan(d)))
