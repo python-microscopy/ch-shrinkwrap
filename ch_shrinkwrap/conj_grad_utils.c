@@ -5,6 +5,8 @@
 
 #include "conj_grad_utils.h"
 
+#define PI 3.141592653589793
+
 static PyObject *c_shrinkwrap_a_func(PyObject *self, PyObject *args)
 {
     PyObject *v_f = 0, *v_n = 0, *v_w = 0, *v_d = 0;
@@ -321,15 +323,14 @@ static PyObject *c_shrinkwrap_lh_func(PyObject *self, PyObject *args)
 static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
 {
     PyObject *v_f = 0, *v_n = 0, *v_w = 0, *v_d = 0;
-    int n_dims, n_points, n_verts, n_n, i, j, k, N;
-    int32_t n;
+    int n_dims, n_points, n_verts, n_n, i, j, k, k2, N;
+    int32_t n, n2;
     float *p_f;
     // float *p_n;
     float *p_w;
     float *p_d;
-    float d;
-    float d2;
-    float w;
+    float *d;  // distance to neighbor lengths
+    float dd, d2, w, ddot, sum_theta;
 
     if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
     if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
@@ -353,49 +354,89 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
         return NULL;
     } 
 
-
     p_f = (float *)PyArray_GETPTR1(v_f, 0);
     p_d = (float *)PyArray_GETPTR1(v_d, 0);
     p_w = (float *)PyArray_GETPTR1(v_w, 0);  // original f
 
+    // allocate d to store vector lengths of point to neighbors
+    // calloc creates an array of zeros
+    d = (float *)calloc(n_n, sizeof(float));
+
     for (i=0; i<n_verts; ++i)
     {
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+        
+        // calculate and store the edge lengths for each neighbor 
+        w = 0; // running total of edge lengths squared (area)
         N = 0;
-        // loop over the neighbors of vertex i
-        w = 0;
         for (k=0; k<n_n; ++k)
         {
             n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
             if (n == -1) break;
 
-            // find the distance between the original set of points
+            // find the distance between this vertex and its neighbors
+            // in the unmodified surface
             d2 = 0;
-            for (j=0; j<n_dims; ++j)
+            for (j=0; j<3; ++j)
             {
-                d = (p_w[n*n_dims+j] - p_w[i*n_dims+j]); 
-                d2 += d*d;
+                dd = (p_w[n*3+j] - p_w[i*3+j]); 
+                d2 += dd*dd;
             }
-            w += sqrtf(d2+1);
-            
+            w += d2; // area
+
+            if (d2 > 0) 
+            {
+                d[k] = sqrtf(d2); // vector length
+            } 
+            else 
+            {
+                d[k] = 0;
+            }
             N += 1;
         }
+
         if (w > 0)
         {
-            for (k=0; k<n_n; ++k)
+            // now do another pass and calculate the angle between each of the neighbors
+            // in the unmodified surface
+            sum_theta = 0;
+            for (k=0; k<N; ++k)
             {
                 n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
-                if (n == -1) break;
+        
+                // find the next neighbor
+                k2 = k+1;
+                if (k2 == N) k2 = 0; // wrap
+                n2 = *((int32_t *)PyArray_GETPTR2(v_n, i, k2));
+
+                // compute the angle between each of the neighbors and keep a running sum
+                ddot = 0;
+                for (j=0; j<3; ++j) {
+                    ddot += (p_w[n*3+j] - p_w[i*3+j])*(p_w[n2*3+j] - p_w[i*3+j]);
+                }
+                ddot /= d[k]*d[k2]; // divide the dot product by the vector lengths
+                sum_theta += acosf(ddot);
+            }
+
+            // sum the contributions of the mean and gaussian curvature
+            for (k=0; k<N; ++k)
+            {
+                n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+
                 // sum the distances between this vertex and its neighbors
-                // divided by original distance
-                for (j=0; j<n_dims; ++j) {
-                    p_d[i*n_dims+j] += (p_f[n*n_dims+j] - p_f[i*n_dims+j])/w;
+                // divided by the summed areas of the neighbors
+                // add in Gaussian curvature in chunks of 1/N, negative sign assuming 
+                // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
+                for (j=0; j<3; ++j) {
+                    p_d[i*3+j] += (p_f[n*3+j] - p_f[i*3+j])/w - (2*PI-sum_theta)/(N*w);
+                }
             }
         }
-        }
         // average the contribution of the neighbors?
-        // for (j=0; j<n_dims; ++j) p_d[i*n_dims+j] /= N;
+        // for (j=0; j<3; ++j) p_d[i*3+j] /= N;
     }
+    
+    free(d);
 
     Py_INCREF(Py_None);
     return Py_None;
@@ -404,15 +445,14 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
 static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
 {
     PyObject *v_f = 0, *v_n = 0, *v_w = 0, *v_d = 0;
-    int n_dims, n_points, n_verts, n_n, i, j, k, N;
-    int32_t n;
+    int n_dims, n_points, n_verts, n_n, i, j, k, k2, N;
+    int32_t n, n2;
     float *p_f;
     // float *p_n;
     float *p_w;
     float *p_d;
-    float d;
-    float d2;
-    float w;
+    float *d;  // distance to neighbor lengths
+    float dd, d2, w, ddot, sum_theta;
 
     if (!PyArg_ParseTuple(args, "OOOOiiii", &v_f, &v_n, &v_w, &v_d, &n_dims, &n_points, &n_verts, &n_n)) return NULL;
     if (!PyArray_Check(v_f) || !PyArray_ISCONTIGUOUS(v_f))
@@ -441,36 +481,76 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
     p_d = (float *)PyArray_GETPTR1(v_d, 0);
     p_w = (float *)PyArray_GETPTR1(v_w, 0);  // original f
 
+    // allocate d to store vector lengths of point to neighbors
+    // calloc creates an array of zeros
+    d = (float *)calloc(n_n, sizeof(float));
+
     for (i=0; i<n_verts; ++i)
     {
         if ((*((int32_t *)PyArray_GETPTR2(v_n, i, 0))) == -1) continue;
+
+        // calculate and store the edge lengths for each neighbor 
+        w = 0; // running total of edge lengths squared (area)
         N = 0;
-        w = 0;
-        // loop over the neighbors of vertex i
         for (k=0; k<n_n; ++k)
         {
             n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
             if (n == -1) break;
 
-            // find the distance between the original set of points
+            // find the distance between this vertex and its neighbors
+            // in the unmodified surface
             d2 = 0;
-            for (j=0; j<n_dims; ++j)
+            for (j=0; j<3; ++j)
             {
-                d = (p_w[i*n_dims+j] - p_w[n*n_dims+j]);
-                d2 += d*d;
+                dd = (p_w[i*3+j] - p_w[n*3+j]); 
+                d2 += dd*dd;
             }
-            w = sqrtf(d2+1);
+            w += d2; // area
+
+            if (d2 > 0) 
+            {
+                d[k] = sqrtf(d2); // vector length
+            } 
+            else 
+            {
+                d[k] = 0;
+            }
             N += 1;
-        } 
+        }
+
         if (w > 0) {
-            for (k=0; k<n_n; ++k)
+            // now do another pass and calculate the angle between each of the neighbors
+            // in the unmodified surface
+            sum_theta = 0;
+            for (k=0; k<N; ++k)
             {
                 n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
-                if (n == -1) break;
+        
+                // find the next neighbor
+                k2 = k+1;
+                if (k2 == N) k2 = 0; // wrap
+                n2 = *((int32_t *)PyArray_GETPTR2(v_n, i, k2));
+
+                // compute the angle between each of the neighbors and keep a running sum
+                ddot = 0;
+                for (j=0; j<3; ++j) {
+                    ddot += (p_w[i*3+j] - p_w[n*3+j])*(p_w[i*3+j] - p_w[n2*3+j]);
+                }
+                ddot /= d[k]*d[k2]; // divide the dot product by the vector lengths
+                sum_theta += acosf(ddot);
+            }
+
+            // sum the contributions of the mean and gaussian curvature
+            for (k=0; k<N; ++k)
+            {
+                n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
+
                 // sum the distances between this vertex and its neighbors
-                // divided by original distance
-                for (j=0; j<n_dims; ++j) {
-                    p_d[n*n_dims+j] += (p_f[i*n_dims+j] - p_f[n*n_dims+j])/w;
+                // divided by the summed areas of the neighbors
+                // add in Gaussian curvature in chunks of 1/N, negative sign assuming 
+                // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
+                for (j=0; j<3; ++j) {
+                    p_d[n*3+j] += (p_f[i*3+j] - p_f[n*3+j])/w - (2*PI-sum_theta)/(N*w);
                 }
             }
         }
@@ -478,9 +558,11 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
         // for (k=0; k<N; ++k)
         // {
         //     n = *((int32_t *)PyArray_GETPTR2(v_n, i, k));
-        //     for (j=0; j<n_dims; ++j) p_d[n*n_dims+j] /= N;
+        //     for (j=0; j<3; ++j) p_d[n*3+j] /= N;
         // }
     }
+
+    free(d);
 
     Py_INCREF(Py_None);
     return Py_None;

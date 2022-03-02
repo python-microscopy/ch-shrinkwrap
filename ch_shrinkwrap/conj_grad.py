@@ -348,6 +348,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         
     def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
         """
+        Each point pulls on its nearest face.
+
         find which vertices are tied to which points.
 
         To start with, make each point act on it's nearest face (TODO - nearest N face and smoothing?)
@@ -399,6 +401,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             return v_idx, w 
     
     def _compute_weight_matrix2(self, f, w=0.95, shield_sigma=20):
+        """Each face pulls toward its nearest point"""
         fv = f.reshape(-1,self.dims)
             
         import scipy.spatial
@@ -441,7 +444,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the vertices indicating the closest vertex to each point
         """
         if self.calc_w():
-            self.w = self._compute_weight_matrix2(self.f)
+            self.w = self._compute_weight_matrix(self.f)
             #print(self.w)
 
         if False: #USE_C:
