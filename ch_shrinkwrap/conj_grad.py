@@ -491,9 +491,9 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the vertices indicating the closest vertex to each point
         """
         if self.calc_w():
-            #self.w = self._compute_weight_matrix(self.f)
+            self.w = self._compute_weight_matrix(self.f)
             #self.w2 = self._compute_weight_matrix3(self.f)
-            self.w = self._compute_weight_matrix2(self.f)
+            # self.w = self._compute_weight_matrix2(self.f)
             #print(self.w)
 
         if False: #USE_C:

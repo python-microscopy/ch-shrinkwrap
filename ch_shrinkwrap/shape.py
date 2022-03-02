@@ -224,6 +224,7 @@ def ERSim(centroid=[0,0,0]):
                                                         k=sheet_height),k=smooth), 
                                 k=smooth), 
                         sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
+    return struct
                         
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
