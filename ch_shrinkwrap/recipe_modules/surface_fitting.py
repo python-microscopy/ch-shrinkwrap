@@ -24,9 +24,9 @@ class ShrinkwrapMembrane(ModuleBase):
     remesh_frequency = Int(5)
     delaunay_remesh_frequency = Int(50)
     min_hole_radius = Float(100)
-    sigma_x = CStr('sigma')
-    sigma_y = CStr('sigma')
-    sigma_z = CStr('sigma')
+    sigma_x = CStr('sigma_x')
+    sigma_y = CStr('sigma_y')
+    sigma_z = CStr('sigma_z')
     method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):

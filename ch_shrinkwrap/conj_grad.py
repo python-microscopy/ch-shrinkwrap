@@ -256,6 +256,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     _search_rad = 100
     N, M = None, None
     dims, shape = None, None
+    d = None
     
     def prep(self):
         pass
@@ -345,6 +346,120 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         self.search_k = search_k
         self.search_rad = search_rad
         self._prev_loopcount = -1
+
+    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
+        """Custom search to add weighting to res
+        """
+
+        self._prev_loopcount = -1
+
+        if not np.isscalar(weights):
+            self.mask = weights > 0
+            weights = weights / weights.mean()
+        else:
+            self.mask = np.isfinite(data.ravel())
+
+        # guess a starting estimate for the object
+        # NOTE: start_guess must return a unique object (e.g. a copy() of data)
+        self.fs = self.start_guess(data)
+
+        # create a flattened view of our result
+        self.f = self.fs.ravel()
+
+        # Assume defaults are 0 for each regularization term if we don't pass any explicitly
+        if defaults is None:
+            defaults = np.vstack([self.default_guess(0) for x in self.Lfuncs]).T
+
+        #make things 1 dimensional
+        data = data.ravel()
+        self.res = 0*data
+
+        #number of search directions
+        n_smooth = len(self.Lfuncs)
+        n_search = n_smooth+1  # inital number of search directions is search along Afunc + Lfuncs
+        s_size = n_search+1    # eventually we'll search along fnew - self.f
+
+        # construct pairs to compare for search metric
+        a = np.arange(n_search)
+        search_pairs = []
+        for i in a:
+            for j in a[1:]:
+                if i == j:
+                    continue
+                search_pairs.append((i,j))
+        n_pairs = len(search_pairs)
+
+        # listify lams if only looking along 2 directions
+        # (one regularization term)
+        if type(lams) is float:
+            lams = [lams]
+
+        # directions for regularized parameters
+        prefs = np.zeros((np.size(self.f), n_smooth), 'f')
+
+        #initial search directions
+        S = np.zeros((np.size(self.f), s_size), 'f')
+
+        # replace any empty lambdas with zeros
+        if len(lams) < len(self.Lfuncs):
+            print(f"not enough lambdas, defaulting {len(self.Lfuncs)-len(lams)} of them to 0")
+            tmp = lams
+            lams = [0]*len(self.Lfuncs)
+            lams[:len(tmp)] = tmp
+
+        self.loopcount = 0
+
+        while (self.loopcount  < num_iters) and (not self._stop_cond()):
+            self.loopcount += 1
+            
+            # residuals
+            self.res[:] = (weights*(data - self.Afunc(self.f)))
+
+            # weight the residuals based on distance
+            # /8 = 2 * 2^2 for weighting within 2*sigma of the point
+            w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
+            # w = 0.5-np.arctan(self.d.ravel()-3.0/weights)/np.pi
+            print("WEIGHTING")
+            print(w)
+            self.res *= w
+
+            #print ('res:', self.res.reshape(-1, self.dims))
+
+            # search directions
+            S[:,0] = self.Ahfunc(self.res)
+            for i in range(n_smooth):
+                prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[:,i]) # residuals
+                S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
+            
+            # check to see if the search directions are orthogonal
+            # this can be used as a measure of convergence and a stopping criteria
+            test = 1.0
+            for pair in search_pairs:
+                test -= ((1.0/n_pairs) * abs((S[:,pair[0]]*S[:,pair[1]]).sum()
+                        / (np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]]))))
+
+            #print & log some statistics
+            print(('Test Statistic %f' % (test,)))
+            self.tests.append(test)
+            self.ress.append(np.linalg.norm(self.res))
+            self.prefs.append(np.linalg.norm(prefs,axis=0))
+
+            #minimise along search directions to find new estimate
+            fnew, self.cpred, self.wpreds = self.subsearch(self.f, self.res[self.mask], defaults, self.Afunc, self.Lfuncs, lams, S[:, 0:n_search])
+
+            #positivity constraint (not part of original algorithm & could be ommitted)
+            if pos:
+                fnew = (fnew*(fnew > 0))
+
+            #add last step to search directions, as per classical conj. gradient
+            if last_step:
+                S[:,(s_size-1)] = (fnew - self.f)
+                n_search = s_size
+
+            #set the current estimate to out new estimate
+            self.f[:] = fnew
+
+        return np.real(self.fs)
         
     def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
         """
@@ -484,6 +599,47 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         assert(not np.any(np.isnan(w)))
         
         return v_idx, w 
+
+    def _compute_weight_matrix4(self, f, w=0.95, shield_sigma=20):
+        """
+        Each point pulls on its nearest face, but also weighted by distance.
+        """
+        fv = f.reshape(-1,self.dims)
+        
+        import scipy.spatial
+
+        # Create a list of face centroids for search
+        face_centers = fv[self._faces].mean(1)
+
+        # Construct a kdtree over the face centers
+        tree = scipy.spatial.cKDTree(face_centers)
+
+        # Get k closet face centroids for each point
+        _, _faces = tree.query(self.points, k=1)
+        
+        #print(self._faces.shape, _faces.shape)
+        
+        # vertex indices (n_points x 3)
+        v_idx = self._faces[_faces, :]
+
+        #compute distances
+        d = np.zeros(v_idx.shape, 'f4')
+        
+        for j in range(3):
+            d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
+            d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
+
+        #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
+        self.d = np.maximum(d, 1e-6)  # distances
+
+        w = 1.0/self.d
+
+        w = w/w.sum(1)[:,None]
+
+        #print(d, d/d.sum(1)[:,None], w)
+        assert(not np.any(np.isnan(w)))
+        
+        return v_idx, w 
     
     def Afunc(self, f):
         """
@@ -493,9 +649,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         d is the weighted sum of all of the vertices indicating the closest vertex to each point
         """
         if self.calc_w():
-            #self.w = self._compute_weight_matrix(self.f)
-            #self.w2 = self._compute_weight_matrix3(self.f)
-            self.w = self._compute_weight_matrix2(self.f)
+            # self.w = self._compute_weight_matrix(self.f)
+            # self.w2 = self._compute_weight_matrix3(self.f)
+            # self.w = self._compute_weight_matrix2(self.f)
+            self.w = self._compute_weight_matrix4(self.f)
             #print(self.w)
 
         if False: #USE_C:
@@ -761,11 +918,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         assert(not np.any(np.isnan(d)))
         return d
 
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
-        self._prev_loopcount = -1
-        return TikhonovConjugateGradient.search(self, data, lams, defaults=defaults, 
-                                                num_iters=num_iters, weights=weights, 
-                                                pos=pos, last_step=last_step)
+    # def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
+    #     self._prev_loopcount = -1
+    #     return TikhonovConjugateGradient.search(self, data, lams, defaults=defaults, 
+    #                                             num_iters=num_iters, weights=weights, 
+    #                                             pos=pos, last_step=last_step)
         
     def start_guess(self, data):
         # since we want to solve ||Af-0|| as part of the
