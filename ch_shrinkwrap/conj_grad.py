@@ -417,8 +417,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
             # weight the residuals based on distance
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
-            w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
-            # w = 0.5-np.arctan(self.d.ravel()-3.0/weights)/np.pi
+            # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
+            w = 0.5-np.arctan(self.d.ravel()-3.0/weights)/np.pi
             print("WEIGHTING")
             print(w)
             self.res *= w
@@ -630,9 +630,11 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
 
         #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
-        self.d = np.maximum(d, 1e-6)  # distances
+        dd = np.maximum(d, 1e-6)  # distances
+        dmean = np.mean(d,axis=1)
+        self.d = np.vstack([dmean, dmean, dmean]).T
 
-        w = 1.0/self.d
+        w = 1.0/dd
 
         w = w/w.sum(1)[:,None]
 
