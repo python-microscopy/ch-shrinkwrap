@@ -225,7 +225,9 @@ def ERSim(centroid=[0,0,0]):
                                 k=smooth), 
                         sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
     return struct
-                        
+
+TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
+          
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
         """
