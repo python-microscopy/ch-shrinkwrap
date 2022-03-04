@@ -35,7 +35,7 @@ class Shape:
         """ Signed distance function """
         raise NotImplementedError('Implemented in a derived class')
         
-    def __noise(self, model='poisson', **kw):
+    def __noise(self, model='exponential', **kw):
         """
         Noise model for 
         """
@@ -43,7 +43,8 @@ class Shape:
         self._sigma = util.loc_error(self._points.shape, model, **kw)
         return self._sigma*np.random.randn(*self._sigma.shape)
     
-    def points(self, density=1, p=0.1, resample=False, noise='poisson', psf_width=250.0, mean_photon_count=300.0, min_photon_count=100.0, return_normals=False):
+    def points(self, density=1, p=0.1, resample=False, noise='exponential', psf_width=280.0, mean_photon_count=600.0, 
+               bg_photon_count=20.0, return_normals=False):
         """
         Monte-Carlo sampling of uniform points on the Shape surface.
         
@@ -60,9 +61,11 @@ class Shape:
         """
         if resample or (self._points is None) or (self._density != density):
             self._density = density
-            self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
+            self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, 
+                                           dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
             if noise:
-                self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count, min_photon_count=min_photon_count)
+                self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count, 
+                                             bg_photon_count=bg_photon_count)
             if return_normals:
                 self._normals = sdf.sdf_normals(self._points.T, self.sdf).T
 

@@ -10,6 +10,7 @@ http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.190.6244.
 
 """
 
+from matplotlib.pyplot import sci
 from . import _membrane_mesh as membrane_mesh
 from . import util
 
@@ -203,28 +204,40 @@ def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
 
     return hausdorff, mean
 
-def test_points_mesh_stats(points, normals, mesh, dx_min=5, p=1.0):
+def test_points_mesh_stats(points, normals, mesh, dx_min=5, p=1.0, hausdorff=False):
     # Generate a set of test points from this mesh
     mesh_points, mesh_normals = points_from_mesh(mesh, 
                                                  dx_min=dx_min, 
                                                  p=p, return_normals=True)
     
-    # Compute ordered points between this mesh and test_points
-    ox, oa, mx, ma = construct_ordered_pairs(points, mesh_points, 
-                                             normals, mesh_normals, 
-                                             dx_max=dx_min)
-    
-    # print(test_points.shape[0], mesh_points.shape[0], ox.shape[0], mx.shape[0])
+    if hausdorff:
+        # Compute ordered points between this mesh and test_points
+        ox, oa, mx, ma = construct_ordered_pairs(points, mesh_points, 
+                                                normals, mesh_normals, 
+                                                dx_max=dx_min)
+        
+        # print(test_points.shape[0], mesh_points.shape[0], ox.shape[0], mx.shape[0])
 
-    # Compute hausdorff and mean distance (nm) and smoothness (rad)
-    hd, md = mean_and_hausdorff_distance_from_ordered_pairs(points, mesh_points, ox, oa, mx, ma)
-    ha, aa = mean_and_hausdorff_smoothness_from_ordered_pairs(normals, mesh_normals, ox, oa, mx, ma)
-    
-    return hd, md, ha, aa
+        # Compute hausdorff and mean distance (nm) and smoothness (rad)
+        hd, md = mean_and_hausdorff_distance_from_ordered_pairs(points, mesh_points, ox, oa, mx, ma)
+        ha, aa = mean_and_hausdorff_smoothness_from_ordered_pairs(normals, mesh_normals, ox, oa, mx, ma)
+        
+        return hd, md, ha, aa
+    else:
+        test_tree = scipy.spatial.cKDTree(points)
+        mesh_tree = scipy.spatial.cKDTree(mesh_points)
+
+        test_err, _ = test_tree.query(mesh_points, k=1)
+        mesh_err, _ = mesh_tree.query(points, k=1)
+
+        test_mse = np.nansum(test_err**2)/len(test_err)
+        mesh_mse = np.nansum(mesh_err**2)/len(mesh_err)
+
+        return test_mse, mesh_mse
 
 
 def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_width=250.0, 
-                                        mean_photon_count=300,
+                                        mean_photon_count=300, bg_photon_count=20.0,
                                         noise_fraction=0.1, save_fn=None, **kw):
     """
     Generate an SMLM point cloud from a Shape object. 
@@ -249,6 +262,7 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
     # simulate the points
     cap_points = test_shape.points(density=density, p=p, psf_width=psf_width, 
                             mean_photon_count=mean_photon_count, 
+                            bg_photon_count=bg_photon_count,
                             resample=True)
     # find the precision of each simulated point
     cap_sigma = test_shape._sigma
@@ -256,6 +270,7 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
     # simualte clusters at each of the points
     cap_points, cap_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
                                            mean_photon_count=mean_photon_count, 
+                                           bg_photon_count=bg_photon_count,
                                            **kw)
 
     if noise_fraction > 0:
@@ -272,13 +287,15 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         # simulate background points random uniform over the bounding box
         noise_points = np.random.rand(ln,3)*(np.array([xn,yn,zn])[None,:]) \
                     + (np.array([xl,yl,zl])[None,:])
-        noise_sigma = util.loc_error(noise_points.shape, model='poisson', 
+        noise_sigma = util.loc_error(noise_points.shape, model='exponential', 
                                     psf_width=psf_width, 
-                                    mean_photon_count=mean_photon_count)
+                                    mean_photon_count=mean_photon_count,
+                                    bg_photon_count=bg_photon_count)
         
         # simulate clusters at each of the random noise points
         noise_points, noise_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
-                                                mean_photon_count=mean_photon_count)
+                                                mean_photon_count=mean_photon_count,
+                                                bg_photon_count=bg_photon_count)
         
         # stack the regular and noise points
         points = np.vstack([cap_points,noise_points])
@@ -291,7 +308,8 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
 
     # pass metadata associated with this simulation
     md = {'shape': test_shape.__str__(), 'density': density, 'p': p, 'psf_width': psf_width, 
-          'mean_photon_count': mean_photon_count, 'noise_fraction': noise_fraction}
+          'mean_photon_count': mean_photon_count, 'bg_photon_count': bg_photon_count,
+          'noise_fraction': noise_fraction}
     
     if save_fn is not None:
         import os
@@ -308,7 +326,8 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         
     return np.vstack([points.T,s]).T, md
 
-def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, max_points_per_cluster=10, max_points=None):
+def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_photon_count=20.0,
+                   max_points_per_cluster=10, max_points=None):
     # simulate clusters of points around each noise point
     noise_points = np.vstack([np.random.normal(points, sigma) for i in range(max_points_per_cluster)])
     
@@ -318,9 +337,10 @@ def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, max_
     noise_points = noise_points[np.random.choice(np.arange(noise_points.shape[0]), size=sz, replace=False)]
     
     # Generate new sigma for each of these points
-    noise_sigma = util.loc_error(noise_points.shape, model='poisson', 
+    noise_sigma = util.loc_error(noise_points.shape, model='exponential', 
                                  psf_width=psf_width, 
-                                 mean_photon_count=mean_photon_count)
+                                 mean_photon_count=mean_photon_count,
+                                 bg_photon_count=bg_photon_count)
     
     return noise_points, noise_sigma
 
@@ -479,7 +499,8 @@ def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_f
     print(f'{failed_count} SPR meshes failed.')
     return md
 
-def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0, mean_photon_count=300.0):
+def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0, 
+                         mean_photon_count=300.0, bg_photon_count=20.0):
     """
     yaml_file: fn
         File containing list of meshes
@@ -500,6 +521,7 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0
     test_points, test_normals = test_shape.points(density=1.0/(dx_min**3), p=p, 
                                            psf_width=psf_width, 
                                            mean_photon_count=mean_photon_count, 
+                                           bg_photon_count=bg_photon_count,
                                            resample=True, noise=None, 
                                            return_normals=True)
     failed = 0
@@ -513,22 +535,29 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0
                 mesh = membrane_mesh.MembraneMesh.from_stl(mesh_d['filename'])
 
                 # calculate mean squared error
-                vecs = mesh._vertices[mesh.faces]['position']
-                errors = test_shape.sdf(vecs.mean(1).T)
-                mse = np.nansum(errors**2)/len(errors)
+                # vecs = mesh._vertices[mesh.faces]['position']
+                # errors = test_shape.sdf(vecs.mean(1).T)
+                # mse = np.nansum(errors**2)/len(errors)
 
                 # Calculate distance and angle stats
-                hd, md, ha, ma = test_points_mesh_stats(test_points, 
-                                                        test_normals, 
-                                                        mesh,
-                                                        dx_min=dx_min,
-                                                        p=p)
+                # hd, md, ha, ma = test_points_mesh_stats(test_points, 
+                #                                         test_normals, 
+                #                                         mesh,
+                #                                         dx_min=dx_min,
+                #                                         p=p)
+                test_mse, mesh_mse = test_points_mesh_stats(test_points, 
+                                                            test_normals, 
+                                                            mesh,
+                                                            dx_min=dx_min,
+                                                            p=p)
                 
-                mesh_d['mse'] = float(mse)
-                mesh_d['hausdorff_distance'] = float(hd)
-                mesh_d['mean_distance'] = float(md)
-                mesh_d['hausdorff_angle'] = float(ha)
-                mesh_d['mean_angle'] = float(ma)
+                # mesh_d['mse'] = float(mse)
+                # mesh_d['hausdorff_distance'] = float(hd)
+                # mesh_d['mean_distance'] = float(md)
+                # mesh_d['hausdorff_angle'] = float(ha)
+                # mesh_d['mean_angle'] = float(ma)
+                mesh_d['test_mse'] = float(test_mse)
+                mesh_d['mesh_mse'] = float(mesh_mse)
 
                 new_d.append({'mesh': mesh_d})
             except:
@@ -567,7 +596,8 @@ def test_structure(yaml_file):
             _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
                                                                p=test_d['point_cloud']['p'], 
                                                                psf_width=psf_width, 
-                                                               mean_photon_count=test_d['system']['mean_photon_count'], 
+                                                               mean_photon_count=test_d['system']['mean_photon_count'],
+                                                               bg_photon_count=test_d['system']['bg_photon_count'], 
                                                                noise_fraction=no, save_fn=points_fp)
 
             # reload the generated points as a data source
@@ -606,7 +636,9 @@ def test_structure(yaml_file):
                 yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
             
             # Load the results and compute metrics
-            res = compute_mesh_metrics(yaml_out, test_shape, psf_width=psf_width, mean_photon_count=test_d['system']['mean_photon_count'])
+            res = compute_mesh_metrics(yaml_out, test_shape, psf_width=psf_width,
+                                       mean_photon_count=test_d['system']['mean_photon_count'],
+                                       bg_photon_count=test_d['system']['bg_photon_count'])
             
             # Save the results
             yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
