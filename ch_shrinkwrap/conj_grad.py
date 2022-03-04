@@ -418,10 +418,12 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             # weight the residuals based on distance
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
-            # w = 0.5-np.arctan(self.d.ravel()-6.0/weights)/np.pi
+            #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
+            w = 1.0/(self.d.ravel()*weights/4.0+1)
+            # w = 1.0/np.log((2*self.d.ravel()/weights)**2+np.exp(1))
             # print("WEIGHTING")
             # print(w)
-            # self.res *= w
+            self.res *= w
 
             #print ('res:', self.res.reshape(-1, self.dims))
 
@@ -615,7 +617,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         tree = scipy.spatial.cKDTree(face_centers)
 
         # Get k closet face centroids for each point
-        _, _faces = tree.query(self.points, k=1)
+        dmean, _faces = tree.query(self.points, k=1)
+        self.d = np.vstack([dmean, dmean, dmean]).T
         
         #print(self._faces.shape, _faces.shape)
         
@@ -630,50 +633,10 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
 
         #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
-        dd = np.maximum(d, 1e-6)  # distances
-        dmean = np.mean(d,axis=1)
-        self.d = np.vstack([dmean, dmean, dmean]).T
 
-        w = 1.0/dd
-
-        w = w/w.sum(1)[:,None]
-
-        #print(d, d/d.sum(1)[:,None], w)
-        assert(not np.any(np.isnan(w)))
-        
-        return v_idx, w 
-
-    def _compute_weight_matrix5(self, f, w=0.95, shield_sigma=20):
-        """Each face pulls toward its k nearest points"""
-        fv = f.reshape(-1,self.dims)
-            
-        import scipy.spatial
-
-        # Create a list of face centroids for search
-        face_centers = fv[self._faces].mean(1)
-
-        # Find the closest point to each face
-        _, _points = self._tree.query(face_centers, k=1)
-        
-        #print(self._faces.shape, _faces.shape)
-
-        v_idx = np.zeros(self.points.shape, 'i4')
-        v_idx[_points,:] = self._faces[:,:]
-
-        #compute distances
-        d = np.zeros(v_idx.shape, 'f4')
-        
-        for j in range(3):
-            d_ij = (fv[v_idx[:,j]] - self.points) # vector distance
-            d[:, j] = np.sqrt(np.sum(d_ij *d_ij, 1)) # scalar distance
-        d[v_idx == 0] = 0
-
-        #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
-        
         w = 1.0/np.maximum(d, 1e-6)
 
         w = w/w.sum(1)[:,None]
-        w[v_idx[:,0] == 0,:] = 0
 
         #print(d, d/d.sum(1)[:,None], w)
         assert(not np.any(np.isnan(w)))
@@ -690,8 +653,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         if self.calc_w():
             # self.w = self._compute_weight_matrix(self.f)
             # self.w2 = self._compute_weight_matrix3(self.f)
-            self.w = self._compute_weight_matrix2(self.f)
-            # self.w = self._compute_weight_matrix4(self.f)
+            # self.w = self._compute_weight_matrix2(self.f)
+            self.w = self._compute_weight_matrix4(self.f)
             #print(self.w)
 
         if False: #USE_C:

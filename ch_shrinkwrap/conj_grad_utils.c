@@ -434,7 +434,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
                 // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
                 // printf("%.2f, %.2f, %d, %.2f \n", sum_theta, 2*PI-sum_theta, N, w);
                 for (j=0; j<3; ++j) {
-                    p_d[i*3+j] += (p_f[n*3+j] - p_f[i*3+j])/sqrtf(w); // - (2*PI-sum_theta)/(N*sqrtf(w));
+                    p_d[i*3+j] += (p_f[n*3+j] - p_f[i*3+j])/sqrtf(w) - (2*PI-sum_theta)/(N*sqrtf(w));
                 }
             }
         }
@@ -557,7 +557,7 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
                 // add in Gaussian curvature in chunks of 1/N, negative sign assuming 
                 // kappa_mean = -kappa_gauss (not unreasonable, but should be revisited)
                 for (j=0; j<3; ++j) {
-                    p_d[n*3+j] += (p_f[i*3+j] - p_f[n*3+j])/sqrtf(w); // - (2*PI-sum_theta)/(N*sqrtf(w));
+                    p_d[n*3+j] += (p_f[i*3+j] - p_f[n*3+j])/sqrtf(w) - (2*PI-sum_theta)/(N*sqrtf(w));
                 }
             }
         }
