@@ -36,14 +36,20 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
         Monte-Carlo acceptance probability.
     """
 
+
+    # Create a list of face centroids for search
+    
+    face_centers = mesh._vertices['position'][mesh.faces].mean(1)
+    tree = scipy.spatial.cKDTree(face_centers, compact_nodes=False)
     def mesh_sdf(pts):
-        return distance_to_mesh(pts.T, mesh)
+        return distance_to_mesh(pts.T, mesh, smooth=False, tree=tree)
     
     xl, yl, zl, xu, yu, zu = mesh.bbox
     diag = math.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
     centre = ((xl+xu)/2, (yl+yu)/2, (zl+zu)/2)
 
-    d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=dx_min, p=p)
+    # OK to leave this at 5 since mesh edge lengths never drop below this
+    d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=5, p=p)
 
     if return_normals:
         # TODO: This repeats a fair bit of distance_to_mesh
@@ -204,12 +210,21 @@ def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
 
     return hausdorff, mean
 
-def test_points_mesh_stats(points, normals, mesh, dx_min=5, p=1.0, hausdorff=False):
+def test_points_mesh_stats(points, normals, mesh, dx_min=1, p=1.0, hausdorff=True):
     # Generate a set of test points from this mesh
     mesh_points, mesh_normals = points_from_mesh(mesh, 
                                                  dx_min=dx_min, 
                                                  p=p, return_normals=True)
     
+    test_tree = scipy.spatial.cKDTree(points)
+    mesh_tree = scipy.spatial.cKDTree(mesh_points)
+
+    test_err, _ = test_tree.query(mesh_points, k=1)
+    mesh_err, _ = mesh_tree.query(points, k=1)
+
+    test_mse = np.nansum(test_err**2)/len(test_err)
+    mesh_mse = np.nansum(mesh_err**2)/len(mesh_err)
+
     if hausdorff:
         # Compute ordered points between this mesh and test_points
         ox, oa, mx, ma = construct_ordered_pairs(points, mesh_points, 
@@ -221,17 +236,9 @@ def test_points_mesh_stats(points, normals, mesh, dx_min=5, p=1.0, hausdorff=Fal
         # Compute hausdorff and mean distance (nm) and smoothness (rad)
         hd, md = mean_and_hausdorff_distance_from_ordered_pairs(points, mesh_points, ox, oa, mx, ma)
         ha, aa = mean_and_hausdorff_smoothness_from_ordered_pairs(normals, mesh_normals, ox, oa, mx, ma)
-        
-        return hd, md, ha, aa
+
+        return test_mse, mesh_mse, hd, md, ha, aa
     else:
-        test_tree = scipy.spatial.cKDTree(points)
-        mesh_tree = scipy.spatial.cKDTree(mesh_points)
-
-        test_err, _ = test_tree.query(mesh_points, k=1)
-        mesh_err, _ = mesh_tree.query(points, k=1)
-
-        test_mse = np.nansum(test_err**2)/len(test_err)
-        mesh_mse = np.nansum(mesh_err**2)/len(mesh_err)
 
         return test_mse, mesh_mse
 
@@ -499,7 +506,7 @@ def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_f
     print(f'{failed_count} SPR meshes failed.')
     return md
 
-def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0, 
+def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0, 
                          mean_photon_count=300.0, bg_photon_count=20.0):
     """
     yaml_file: fn
@@ -545,17 +552,17 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=5, p=1.0, psf_width=250.0
                 #                                         mesh,
                 #                                         dx_min=dx_min,
                 #                                         p=p)
-                test_mse, mesh_mse = test_points_mesh_stats(test_points, 
+                test_mse, mesh_mse, hd, md, ha, ma = test_points_mesh_stats(test_points, 
                                                             test_normals, 
                                                             mesh,
                                                             dx_min=dx_min,
                                                             p=p)
                 
                 # mesh_d['mse'] = float(mse)
-                # mesh_d['hausdorff_distance'] = float(hd)
-                # mesh_d['mean_distance'] = float(md)
-                # mesh_d['hausdorff_angle'] = float(ha)
-                # mesh_d['mean_angle'] = float(ma)
+                mesh_d['hausdorff_distance'] = float(hd)
+                mesh_d['mean_distance'] = float(md)
+                mesh_d['hausdorff_angle'] = float(ha)
+                mesh_d['mean_angle'] = float(ma)
                 mesh_d['test_mse'] = float(test_mse)
                 mesh_d['mesh_mse'] = float(mesh_mse)
 

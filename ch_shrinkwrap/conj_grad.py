@@ -419,7 +419,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
-            w = 1.0/(self.d.ravel()*weights/4.0+1)
+            w = 1.0/(self.d.ravel()*weights/2.0+1)
+            # w = np.exp(-(self.d.ravel()*weights/2)**2)
             # w = 1.0/np.log((2*self.d.ravel()/weights)**2+np.exp(1))
             # print("WEIGHTING")
             # print(w)
