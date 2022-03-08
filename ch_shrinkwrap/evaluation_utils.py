@@ -581,7 +581,7 @@ def test_structure(yaml_file):
     import yaml
     import time
     
-    with open('test.yaml') as f:
+    with open(yaml_file) as f:
         test_d = yaml.safe_load(f)
     
     if not os.path.exists(test_d['save_fp']):
