@@ -337,7 +337,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def search_rad(self, search_rad):
         self._search_rad = max(search_rad, 1.0)
 
-    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100):
+    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None):
         TikhonovConjugateGradient.__init__(self)
         self.Lfuncs, self.Lhfuncs = ["Lfunc3"], ["Lhfunc3"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
@@ -346,7 +346,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         self.search_k = search_k
         self.search_rad = search_rad
         self._prev_loopcount = -1
-
+        
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
         """Custom search to add weighting to res
         """
@@ -464,7 +464,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
 
         return np.real(self.fs)
         
-    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=20):
+    def _compute_weight_matrix(self, f, w=0.95, shield_sigma=10):
         """
         Each point pulls on its nearest face.
 
