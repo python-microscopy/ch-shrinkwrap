@@ -596,60 +596,65 @@ def test_structure(yaml_file):
                                        test_d['system']['psf_width_z']):
         # allow for testing at multiple noise levels
         for no in test_d['point_cloud']['noise_fraction']:
-            start_time = time.strftime('%Y%d%m_%HH%M')
+            # test at multiple mean photon counts (multiple localization precisions)
+            for mpc in test_d['system']['mean_photon_count']:
+                # test at multiple densities via adjustment in Monte-Carlo sampling
+                # enumerate to allow changing shrinkwrapping density with generated density
+                for i, pp in enumerate(test_d['point_cloud']['p']):
+                    start_time = time.strftime('%Y%d%m_%HH%M')
 
-            # generate and save the points
-            points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
-            _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
-                                                               p=test_d['point_cloud']['p'], 
-                                                               psf_width=psf_width, 
-                                                               mean_photon_count=test_d['system']['mean_photon_count'],
-                                                               bg_photon_count=test_d['system']['bg_photon_count'], 
-                                                               noise_fraction=no, save_fn=points_fp)
+                    # generate and save the points
+                    points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
+                    _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
+                                                                    p=pp, 
+                                                                    psf_width=psf_width, 
+                                                                    mean_photon_count=mpc,
+                                                                    bg_photon_count=test_d['system']['bg_photon_count'], 
+                                                                    noise_fraction=no, save_fn=points_fp)
 
-            # reload the generated points as a data source
-            points_ds = HDFSource(points_fp, 'Data')
-            
-            sw_md = []
-            iso_md = []
-            for spn in test_d['shrinkwrapping']['samplespernode']:
-                # Generate an isosurface, where we set the initial density based on the ground truth density
-                initial_mesh, i_md = generate_coarse_isosurface(points_ds,
-                                                                samples_per_node=spn, 
-                                                                threshold_density=test_d['shrinkwrapping']['density'], #test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
-                                                                smooth_curvature=True, 
-                                                                repair=False, 
-                                                                remesh=True, 
-                                                                keep_largest=True, 
-                                                                save_fn=os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl"))
-                
-                # Compute shrinkwrapping isosurfaces
-                s_md = test_shrinkwrap(initial_mesh, points_ds, test_d['shrinkwrapping']['max_iters'], test_d['shrinkwrapping']['step_size'], 
-                                       test_d['shrinkwrapping']['search_rad'], test_d['shrinkwrapping']['remesh_every'], 
-                                       test_d['shrinkwrapping']['search_k'], save_folder=test_d['save_fp'])
-                for s in s_md:
-                    s['mesh']['samplespernode'] = spn
-                iso_md.append({'isosurface': i_md})
-                sw_md.extend(s_md)
-            
-            # Compute screened poisson reconstruction isosurfaces
-            spr_md = test_spr(points_ds, test_d['screened_poisson']['max_iters'], test_d['screened_poisson']['search_k'],
-                              test_d['screened_poisson']['depth'], test_d['screened_poisson']['samplespernode'], 
-                              test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
-            
-            # Save the results
-            yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}.yaml')
-            with open(yaml_out, 'w') as f:
-                yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
-            
-            # Load the results and compute metrics
-            res = compute_mesh_metrics(yaml_out, test_shape, psf_width=psf_width,
-                                       mean_photon_count=test_d['system']['mean_photon_count'],
-                                       bg_photon_count=test_d['system']['bg_photon_count'])
-            
-            # Save the results
-            yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
-            with open(yaml_out, 'w') as f:
-                yaml.safe_dump([{'points': points_md}, *iso_md, *res], f)
+                    # reload the generated points as a data source
+                    points_ds = HDFSource(points_fp, 'Data')
+                    
+                    sw_md = []
+                    iso_md = []
+                    for spn in test_d['shrinkwrapping']['samplespernode']:
+                        # Generate an isosurface, where we set the initial density based on the ground truth density
+                        initial_mesh, i_md = generate_coarse_isosurface(points_ds,
+                                                                        samples_per_node=spn, 
+                                                                        threshold_density=test_d['shrinkwrapping']['density'][i], #test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
+                                                                        smooth_curvature=True, 
+                                                                        repair=False, 
+                                                                        remesh=True, 
+                                                                        keep_largest=True, 
+                                                                        save_fn=os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl"))
+                        
+                        # Compute shrinkwrapping isosurfaces
+                        s_md = test_shrinkwrap(initial_mesh, points_ds, test_d['shrinkwrapping']['max_iters'], test_d['shrinkwrapping']['step_size'], 
+                                            test_d['shrinkwrapping']['search_rad'], test_d['shrinkwrapping']['remesh_every'], 
+                                            test_d['shrinkwrapping']['search_k'], save_folder=test_d['save_fp'])
+                        for s in s_md:
+                            s['mesh']['samplespernode'] = spn
+                        iso_md.append({'isosurface': i_md})
+                        sw_md.extend(s_md)
+                    
+                    # Compute screened poisson reconstruction isosurfaces
+                    spr_md = test_spr(points_ds, test_d['screened_poisson']['max_iters'], test_d['screened_poisson']['search_k'],
+                                    test_d['screened_poisson']['depth'], test_d['screened_poisson']['samplespernode'], 
+                                    test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
+                    
+                    # Save the results
+                    yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}.yaml')
+                    with open(yaml_out, 'w') as f:
+                        yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
+                    
+                    # Load the results and compute metrics
+                    res = compute_mesh_metrics(yaml_out, test_shape, psf_width=psf_width,
+                                            mean_photon_count=mpc,
+                                            bg_photon_count=test_d['system']['bg_photon_count'])
+                    
+                    # Save the results
+                    yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
+                    with open(yaml_out, 'w') as f:
+                        yaml.safe_dump([{'points': points_md}, *iso_md, *res], f)
 
     return yaml_out
