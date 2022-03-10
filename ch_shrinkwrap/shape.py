@@ -35,7 +35,7 @@ class Shape:
         """ Signed distance function """
         raise NotImplementedError('Implemented in a derived class')
         
-    def __noise(self, model='poisson', **kw):
+    def __noise(self, model='exponential', **kw):
         """
         Noise model for 
         """
@@ -43,26 +43,29 @@ class Shape:
         self._sigma = util.loc_error(self._points.shape, model, **kw)
         return self._sigma*np.random.randn(*self._sigma.shape)
     
-    def points(self, density=1, p=0.1, resample=False, noise='poisson', psf_width=250.0, mean_photon_count=300.0, return_normals=False):
+    def points(self, density=1, p=0.1, resample=False, noise='exponential', psf_width=280.0, mean_photon_count=600.0, 
+               bg_photon_count=20.0, return_normals=False):
         """
         Monte-Carlo sampling of uniform points on the Shape surface.
         
         Parameters
         ----------
-            density : float
-                Fluorophores per nm.
-            p : float
-                Likelihood that a fluorophore is detected.
-            noise : str
-                Noise model
-            resample : bool
-                Redo point sampling at each function call.
+        density : float
+            Fluorophores per nm.
+        p : float
+            Likelihood that a fluorophore is detected.
+        noise : str
+            Noise model
+        resample : bool
+            Redo point sampling at each function call.
         """
         if resample or (self._points is None) or (self._density != density):
             self._density = density
-            self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
+            self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, 
+                                           dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
             if noise:
-                self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count)
+                self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count, 
+                                             bg_photon_count=bg_photon_count)
             if return_normals:
                 self._normals = sdf.sdf_normals(self._points.T, self.sdf).T
 
@@ -91,7 +94,7 @@ class Sphere(Shape):
         return (4.0/3.0)*np.pi*self._radius*self._radius*self._radius
 
     def sdf(self, p):
-        return sdf.sphere(p, self._radius)
+        return sdf.sphere(p-self.centroid[:,None], self._radius)
 
 class Torus(Shape):
     def __init__(self, radius=2, r=0.05, **kwargs):
@@ -108,7 +111,7 @@ class Torus(Shape):
         return 2*np.pi*np.pi*self._radius*self._r*self._r
 
     def sdf(self, p):
-        return sdf.torus(p, self._radius, self._r)
+        return sdf.torus(p-self.centroid[:,None], self._radius, self._r)
 
 class Tetrahedron(Shape):
     def __init__(self, v0, v1, v2, v3, **kwargs):
@@ -171,14 +174,63 @@ class Capsule(Shape):
     def sdf(self, p):
         return sdf.capsule(p, self._start, self._end, self._r)
 
-ThreeWayJunction = lambda h, r, centroid=[0,0,0], k=0: UnionShape(
-                                    Capsule(centroid,centroid+[0,-h,0],r),
-                                    UnionShape(
-                                        Capsule(centroid, centroid+[-h/np.sqrt(2),h/np.sqrt(2),0],r),
-                                        Capsule(centroid, centroid+[h/np.sqrt(2),h/np.sqrt(2),0],r), k
-                                    ),
-                                    k=0, centroid=centroid,
-                                )
+class Box(Shape):
+    def __init__(self, halfwidth, r=0, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r = r
+        self._halfwidth = halfwidth
+        self._radius = np.max(halfwidth)
+
+    @property
+    def volume(self):
+        return self._halfwidth*self._halfwidth*self._halfwidth
+    
+    @property
+    def surface_area(self):
+        return 2.0*np.sum(self._halfwidth**2)
+
+    def sdf(self, p):
+        return sdf.round_box(p-self.centroid[:,None], self._halfwidth, self._r)
+
+def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
+    centroid = np.array(centroid, dtype=float)
+    return  UnionShape(
+                Capsule(centroid,centroid+[0,-h,0],r),
+                UnionShape(
+                    Capsule(centroid, centroid+[-h/np.sqrt(2),h/np.sqrt(2),0],r),
+                    Capsule(centroid, centroid+[h/np.sqrt(2),h/np.sqrt(2),0],r), k
+                ),
+                k=0, centroid=centroid,
+            )
+
+def ERSim(centroid=[0,0,0]):
+    centroid = np.array([0,0,0])
+    sheet_height = 100   # nm
+    a, b = np.array([0,0,0]), np.array([400,-50,0])
+    c, d = np.array([500,250,0]), np.array([0,217,0])
+    e, f = np.array([0,-400,0]), np.array([-400,0,0])
+
+    sheet0 = RotationShape(Box(np.array([66,83,sheet_height/4]), sheet_height/4), rz=np.pi/4)
+    sheet1 = Box(np.array([50,50,sheet_height//4]), 1, centroid=np.array([0,133,0]))
+    sheet2 = RotationShape(Box(np.array([33,33,sheet_height/4]), sheet_height/4), rz=7*np.pi/3, centroid=c)
+    cap0 = Capsule(a,b,sheet_height//2)
+    cap1 = Capsule(b,c,sheet_height//2)
+    cap2 = Capsule(c,d,sheet_height//2)
+    cap3 = Capsule(a,e,sheet_height//2)
+    cap4 = Capsule(a,f,sheet_height//2)
+    smooth = sheet_height//4
+    struct = UnionShape(UnionShape(UnionShape(
+                        UnionShape(sheet0,
+                                UnionShape(cap0,
+                                            UnionShape(cap1,
+                                                        UnionShape(sheet2,cap2,k=smooth),
+                                                        k=sheet_height),k=smooth), 
+                                k=smooth), 
+                        sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
+    return struct
+
+TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
+          
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
         """
@@ -186,17 +238,17 @@ class UnionShape(Shape):
 
         Parameters
         ----------
-            s0 : ch_shrinkwrap.shape.Shape
-            s1 : ch_shrinkwrap.shape.Shape
-            k : float
-                Smoothing parameter
+        s0 : shape.Shape
+        s1 : shape.Shape
+        k : float
+            Smoothing parameter
         """
         Shape.__init__(self, **kwargs)
         
         self._s0 = s0
         self._s1 = s1
         self._k = k
-        self._radius = max(self._s0._radius, self._s1._radius)
+        self._radius = self._s0._radius + self._s1._radius
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -214,16 +266,17 @@ class DifferenceShape(Shape):
 
         Parameters
         ----------
-            s0 : ch_shrinkwrap.shape.Shape
-            s1 : ch_shrinkwrap.shape.Shape
-            k : float
-                Smoothing parameter
+        s0 : shape.Shape
+        s1 : shape.Shape
+        k : float
+            Smoothing parameter
         """
         Shape.__init__(self, **kwargs)
         
         self._s0 = s0
         self._s1 = s1
         self._k = k
+        self._radius = max(self._s0._radius, self._s1._radius)
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -241,16 +294,17 @@ class IntersectionShape(Shape):
 
         Parameters
         ----------
-            s0 : ch_shrinkwrap.shape.Shape
-            s1 : ch_shrinkwrap.shape.Shape
-            k : float
-                Smoothing parameter
+        s0 : shape.Shape
+        s1 : shape.Shape
+        k : float
+            Smoothing parameter
         """
-        super(IntersectionShape, self).__init__(**kwargs)
+        Shape.__init__(**kwargs)
         
         self._s0 = s0
         self._s1 = s1
         self._k = k
+        self._radius = min(self._s0._radius, self._s1._radius)
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -260,4 +314,59 @@ class IntersectionShape(Shape):
             h = np.maximum(self._k-np.abs(d0-d1),0.0)
             return res + h*h*0.25/self._k
         return res
-        
+
+class RotationShape(Shape):
+    def __init__(self, s0, rx=0.0, ry=0.0, rz=0.0, **kwargs):
+        """
+        Rotate a signed distance function.
+
+        Parameters
+        ----------
+        s0 : shape.Shape
+        rx: float
+            Rotation in x-dir (rad)
+        ry: float
+            Rotation in y-dir (rad)
+        rz: float
+            Rotation in z-dir (rad)
+
+        """
+        Shape.__init__(self, **kwargs)
+
+        self._s0 = s0
+
+        sinx, cosx = np.sin(rx), np.cos(rx)
+        siny, cosy = np.sin(ry), np.cos(ry)
+        sinz, cosz = np.sin(rz), np.cos(rz)
+
+        _rx = np.array([[1,0,0,],[0,cosx,-sinx],[0,sinx,cosx]])
+        _ry = np.array([[cosy,0,siny],[0,1,0],[-siny,0,cosy]])
+        _rz = np.array([[cosz,-sinz,0],[sinz,cosz,0],[0,0,1]])
+
+        self._inv_r = np.linalg.inv(_rz @ (_ry @ _rx))
+
+        self._radius = self._s0._radius
+
+    def sdf(self, p):
+        return self._s0.sdf(self._inv_r @ (p-self.centroid[:,None]))
+
+class BentShape(Shape):
+    """
+    Bend a signed distance function.
+
+    Parameters
+    ----------
+    s0 : shape.Shape
+    rx: float
+        Rotation in x-dir (rad)
+    ry: float
+        Rotation in y-dir (rad)
+    rz: float
+        Rotation in z-dir (rad)
+
+    """
+    def __init__(self, s0):
+        pass
+
+    def sdf(self, p):
+        pass

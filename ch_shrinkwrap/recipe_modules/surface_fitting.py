@@ -14,17 +14,19 @@ class ShrinkwrapMembrane(ModuleBase):
 
     max_iters = Int(100)
     step_size = Float(10.0)
-    attraction_weight = Float(1)
-    curvature_weight = Float(1)
+    #attraction_weight = Float(1)
+    #curvature_weight = Float(1)
     search_rad = Float(100.0)
     search_k = Int(20)
-    kc = Float(0.514)
-    kg = Float(-0.514)
-    skip_prob = Float(0.0)
+    #kc = Float(0.514)
+    #kg = Float(-0.514)
+    #skip_prob = Float(0.0)
     remesh_frequency = Int(5)
     delaunay_remesh_frequency = Int(50)
     min_hole_radius = Float(100)
-    sigma = CStr('sigma')
+    sigma_x = CStr('sigma_x')
+    sigma_y = CStr('sigma_y')
+    sigma_z = CStr('sigma_z')
     method = Enum(DESCENT_METHODS)
 
     def execute(self, namespace):
@@ -33,16 +35,16 @@ class ShrinkwrapMembrane(ModuleBase):
 
         mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
                                           search_k=self.search_k,
-                                          kc=self.kc,
-                                          kg=self.kg,
+                                          #kc=self.kc,
+                                          #kg=self.kg,
                                           max_iter=self.max_iters,
                                           step_size=self.step_size,
-                                          skip_prob=self.skip_prob,
+                                          #skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
                                           delaunay_remesh_frequency=self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
-                                          a=self.attraction_weight,
-                                          c=self.curvature_weight,
+                                          #a=self.attraction_weight,
+                                          #c=self.curvature_weight,
                                           search_rad=self.search_rad)
 
         namespace[self.output] = mesh
@@ -50,11 +52,17 @@ class ShrinkwrapMembrane(ModuleBase):
         pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
                                               namespace[self.points]['y'],
                                               namespace[self.points]['z']]).T)
+
         try:
-            sigma = namespace[self.points][self.sigma]
-        except(KeyError):
-            print(f"{self.sigma} not found in data source, defaulting to 10 nm precision.")
-            sigma = 10*np.ones_like(namespace[self.points]['x'])
+            sigma = np.vstack([namespace[self.points][self.sigma_x],
+                               namespace[self.points][self.sigma_y],
+                               namespace[self.points][self.sigma_z]]).T
+        except:
+            try:
+                sigma = namespace[self.points][self.sigma_x]
+            except(KeyError):
+                print(f"{self.sigma_x} not found in data source, defaulting to 10 nm precision.")
+                sigma = 10*np.ones_like(namespace[self.points]['x'])
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])

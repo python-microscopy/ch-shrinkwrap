@@ -12,6 +12,8 @@ static PyObject *c_shrinkwrap_ah_func(PyObject *self, PyObject *args);
 static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args);
 static PyObject *c_shrinkwrap_l_func(PyObject *self, PyObject *args);
 static PyObject *c_shrinkwrap_lh_func(PyObject *self, PyObject *args);
+static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args);
+static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args);
 
 #ifdef __cplusplus
 }
