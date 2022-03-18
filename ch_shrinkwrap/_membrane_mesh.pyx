@@ -1259,7 +1259,7 @@ cdef class MembraneMesh(TriangleMesh):
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
-            vp = cg.search(points,lams=step_size,num_iters=rf,
+            vp = cg.search(points,lams=step_size*self.kc/2.0,num_iters=rf,
                            weights=s)
 
             k = (self._vertices['halfedge'] != -1)
