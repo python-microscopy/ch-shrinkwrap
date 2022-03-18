@@ -22,8 +22,8 @@ class ShrinkwrapMembrane(ModuleBase):
     #kg = Float(-0.514)
     #skip_prob = Float(0.0)
     remesh_frequency = Int(5)
-    delaunay_remesh_frequency = Int(0)
-    min_hole_radius = Float(100.0)
+    # delaunay_remesh_frequency = Int(0)
+    # min_hole_radius = Float(100.0)
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
@@ -41,8 +41,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           step_size=self.curvature_weight,
                                           #skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
-                                          delaunay_remesh_frequency=self.delaunay_remesh_frequency,
-                                          delaunay_eps=self.min_hole_radius)
+                                          delaunay_remesh_frequency=0, # self.delaunay_remesh_frequency,
+                                          delaunay_eps=100.0) # self.min_hole_radius)
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
                                         #   search_rad=self.search_rad)
