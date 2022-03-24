@@ -68,6 +68,91 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
 
     return d.T
 
+def points_from_mesh2(mesh, dx_min=1, p=0.1, return_normals=False):
+    """
+    Generate random uniform sampling of points on a mesh.
+
+    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
+        Mesh representation of an object.
+    dx_min : float
+        The target side length of a voxel. Sets maximum sampling rate.
+    p : float
+        Monte-Carlo acceptance probability.
+    """
+
+
+    # Create a list of face centroids for search
+    
+    # face_centers = mesh._vertices['position'][mesh.faces].mean(1)
+    # tree = scipy.spatial.cKDTree(face_centers, compact_nodes=False)
+    # def mesh_sdf(pts):
+    #     return distance_to_mesh(pts.T, mesh, smooth=False, tree=tree)
+    
+    # xl, yl, zl, xu, yu, zu = mesh.bbox
+    # diag = math.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
+    # centre = ((xl+xu)/2, (yl+yu)/2, (zl+zu)/2)
+
+    # # OK to leave this at 5 since mesh edge lengths never drop below this
+    # d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=5, p=p)
+
+    tris = mesh._vertices['position'][mesh.faces]  # (N_faces, (v0,v1,v2), (x,y,z))
+    #norms = mesh._faces['normal'][mesh._faces['halfedge'] != -1]  # (N_faces, (x,y,z))
+    norms = np.cross((tris[:,2,:]-tris[:,1,:]),(tris[:,0,:]-tris[:,1,:]))  # (N_faces, (x,y,z))
+    nn = np.linalg.norm(norms,axis=1)
+    norms = norms/nn[:,None]
+
+    v0 = tris[:,1,:]-tris[:,0,:]     # (N_faces, (x,y,z))
+    e0n = np.linalg.norm(v0,axis=1)  # (N_faces,)
+    e0 = v0/e0n[:,None]              # (N_faces, (x,y,z))
+    e1 = np.cross(norms,e0,axis=1)   # (N_faces, (x,y,z))
+
+    v1 = (tris[:,2,:]-tris[:,1,:])   # (N_faces, (x,y,z))
+    v2 = (tris[:,0,:]-tris[:,2,:])   # (N_faces, (x,y,z))
+
+    x0 = (v0*e0).sum(1)              # (N_faces,)
+    y0 = (v0*e1).sum(1)
+    x1 = (v1*e0).sum(1) 
+    y1 = (v1*e1).sum(1) 
+    x2 = (v2*e0).sum(1) 
+    y2 = (v2*e1).sum(1)
+
+    x0x1x2 = np.vstack([x0,x1,x2]).T  # (N_faces, 3)
+    y0y1y2 = np.vstack([y0,y1,y2]).T
+    xl = np.min(x0x1x2, axis=1)       # (N_faces,)
+    xu = np.max(x0x1x2, axis=1)
+    yl = np.min(y0y1y2, axis=1)
+    yu = np.max(y0y1y2, axis=1)
+
+    d = []
+    for i in range(tris.shape[0]):
+        x = np.arange(xl[i], xu[i], dx_min)
+        y = np.arange(yl[i], yu[i], dx_min)
+        X, Y = np.meshgrid(x,y)
+
+        X_mask = (Y < y1[i]/x1[i]*X) & (Y < y2[i]/x2[i]*X)
+
+        pos = X[X_mask].ravel()[:,None]*e0[i,None,:] + Y[X_mask].ravel()[:,None]*e1[i,None,:] + tris[i,2,:]
+        d.append(pos)
+
+    d = np.vstack(d)
+
+    if return_normals:
+        # TODO: This repeats a fair bit of distance_to_mesh
+
+        # Create a list of face centroids for search
+        face_centers = mesh._vertices['position'][mesh.faces].mean(1)
+
+        # Construct a kdtree over the face centers
+        tree = scipy.spatial.cKDTree(face_centers)
+
+        _, _faces = tree.query(d.T, k=1)
+
+        normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
+
+        return d, normals
+
+    return d
+
 def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=True):
     """
     Find pairs between point sets omega (o) and m s.t.
