@@ -24,7 +24,7 @@ import scipy.spatial
 import numpy as np
 import pymeshlab as ml
 
-def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
+def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
     """
     Generate random uniform sampling of points on a mesh.
 
@@ -49,7 +49,7 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
     centre = ((xl+xu)/2, (yl+yu)/2, (zl+zu)/2)
 
     # OK to leave this at 5 since mesh edge lengths never drop below this
-    d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=5, p=p)
+    d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=dx_min, p=p)
 
     if return_normals:
         # TODO: This repeats a fair bit of distance_to_mesh
@@ -68,9 +68,9 @@ def points_from_mesh(mesh, dx_min=1, p=0.1, return_normals=False):
 
     return d.T
 
-def points_from_mesh2(mesh, dx_min=1, p=0.1, return_normals=False):
+def points_from_mesh2(mesh, dx_min=5, p=1.0, return_normals=False):
     """
-    Generate random uniform sampling of points on a mesh.
+    Generate uniform sampling of points on a mesh.
 
     mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
         Mesh representation of an object.
@@ -101,6 +101,7 @@ def points_from_mesh2(mesh, dx_min=1, p=0.1, return_normals=False):
     x2 = (tris[:,2,:]*e0).sum(1) 
     y2 = (tris[:,2,:]*e1).sum(1)
 
+    # Compute bounds of grid for each triangle
     x0x1x2 = np.vstack([x0,x1,x2]).T  # (N_faces, 3)
     y0y1y2 = np.vstack([y0,y1,y2]).T
     xl = np.min(x0x1x2, axis=1)       # (N_faces,)
@@ -108,23 +109,33 @@ def points_from_mesh2(mesh, dx_min=1, p=0.1, return_normals=False):
     yl = np.min(y0y1y2, axis=1)
     yu = np.max(y0y1y2, axis=1)
 
+    # Compute slopes of lines for each triangle
+    m0 = (y1-y0)/(x1-x0)
+    m1 = (y2-y1)/(x2-x1)
+    m2 = (y0-y2)/(x0-x2)
+    s1 = np.sign(m1)
+    s2 = np.sign(m2)
+
     d = []
+    # for each triangle...
     for i in range(tris.shape[0]):
+        # create a grid of points for this triangle
         x = np.arange(xl[i]-x0[i]-dx_min/2, xu[i]-x0[i], dx_min)  # normalize coordinates to vertex 0
         y = np.arange(yl[i]-y0[i]-dx_min/2, yu[i]-y0[i], dx_min)
         X, Y = np.meshgrid(x,y)
 
-        m0 = (y1[i]-y0[i])/(x1[i]-x0[i])
-        m1 = (y2[i]-y0[i])/(x2[i]-x0[i])
-        m2 = abs((y2[i]-y0[i])-(y1[i]-y0[i]))/abs((x1[i]-x0[i])-(x2[i]-x0[i]))
-        b2 = m2*(x1[i]-x0[i])
-        X_mask = (Y > (np.sign(m0)*m0*X)) & (Y < (np.sign(m1)*m1*X)) & (Y < (b2-m2*X))
-        # X_mask = (Y < y1[i]/x1[i]*X) & (Y < y2[i]/x2[i]*X)
+        # Mask points inside the triangle by thresholding on everything above the edge from 0 to 1 (e0)
+        # and everything inside the lines going from x1 to x2 and x2 to x0 (consistent winding)
+        X_mask = (Y > X*m0[i]) & (s1[i]*Y > s1[i]*(y1[i]-y0[i] + (X-x1[i]+x0[i])*m1[i])) & (s2[i]*Y < s2[i]*(y2[i]-y0[i] + (X-x2[i]+x0[i])*m2[i]))
 
+        # return the masked points
         pos = X[X_mask].ravel()[:,None]*e0[i,None,:] + Y[X_mask].ravel()[:,None]*e1[i,None,:] + tris[i,0,:]
+
         d.append(pos)
 
     d = np.vstack(d)
+
+    subsamp = np.random.choice(np.arange(d.shape[0]), size=int(p*d.shape[0]), replace=False)
 
     if return_normals:
         # TODO: This repeats a fair bit of distance_to_mesh
@@ -139,9 +150,101 @@ def points_from_mesh2(mesh, dx_min=1, p=0.1, return_normals=False):
 
         normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
 
-        return d, normals
+        return d[subsamp], normals[subsamp]
 
-    return d
+    return d[subsamp]
+
+def sign(x0, y0, x1, y1, x2, y2):
+    return (x0-x2)*(y1-y2)-(x1-x2)*(y0-y2)
+
+def points_from_mesh3(mesh, dx_min=1, p=0.1, return_normals=False):
+    """
+    Generate uniform sampling of points on a mesh.
+
+    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
+        Mesh representation of an object.
+    dx_min : float
+        The target side length of a voxel. Sets maximum sampling rate.
+    p : float
+        Monte-Carlo acceptance probability.
+    """
+
+    # find triangles and normals
+    tris = mesh._vertices['position'][mesh.faces]  # (N_faces, (v0,v1,v2), (x,y,z))
+    #norms = mesh._faces['normal'][mesh._faces['halfedge'] != -1]  # (N_faces, (x,y,z))
+    norms = np.cross((tris[:,2,:]-tris[:,1,:]),(tris[:,0,:]-tris[:,1,:]))  # (N_faces, (x,y,z))
+    nn = np.linalg.norm(norms,axis=1)
+    norms = norms/nn[:,None]
+
+    # construct orthogonal vectors to form basis of triangle plane
+    v0 = tris[:,1,:]-tris[:,0,:]     # (N_faces, (x,y,z))
+    e0n = np.linalg.norm(v0,axis=1)  # (N_faces,)
+    e0 = v0/e0n[:,None]              # (N_faces, (x,y,z))
+    e1 = np.cross(norms,e0,axis=1)   # (N_faces, (x,y,z))
+
+    # Decompose triangle positions into multiples of e0 and e1
+    x0 = (tris[:,0,:]*e0).sum(1)              # (N_faces,)
+    y0 = (tris[:,0,:]*e1).sum(1)
+    x1 = (tris[:,1,:]*e0).sum(1) 
+    y1 = (tris[:,1,:]*e1).sum(1) 
+    x2 = (tris[:,2,:]*e0).sum(1) 
+    y2 = (tris[:,2,:]*e1).sum(1)
+
+    # Compute sensible grid bounds
+    x0x1x2 = np.vstack([x0,x1,x2]).T  # (N_faces, 3)
+    y0y1y2 = np.vstack([y0,y1,y2]).T
+    xl = np.min(x0x1x2, axis=1)       # (N_faces,)
+    xu = np.max(x0x1x2, axis=1)
+    yl = np.min(y0y1y2, axis=1)
+    yu = np.max(y0y1y2, axis=1)
+
+    # For each triangle, find the grid points that fall inside the triangle
+    d = []
+    for i in range(tris.shape[0]):
+        x = np.arange(xl[i]-x0[i]-dx_min/2, xu[i]-x0[i], dx_min)  # normalize coordinates to vertex 0
+        y = np.arange(yl[i]-y0[i]-dx_min/2, yu[i]-y0[i], dx_min)
+        X, Y = np.meshgrid(x,y)
+
+        x0n = x0[i]-x0[i]
+        y0n = y0[i]-y0[i]
+        x1n = x1[i]-x0[i]
+        y1n = y1[i]-y0[i]
+        x2n = x2[i]-x0[i]
+        y2n = y2[i]-y0[i]
+
+        # https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
+        d1 = sign(X, Y, x0n, y0n, x1n, y1n)
+        d2 = sign(X, Y, x1n, y1n, x2n, y2n)
+        d3 = sign(X, Y, x2n, y2n, x0n, y0n)
+
+        has_neg = (d1 < 0) | (d2 < 0) | (d3 < 0)
+        has_pos = (d1 > 0) | (d2 > 0) | (d3 > 0)
+
+        X_mask = ~(has_neg & has_pos)
+
+        pos = X[X_mask].ravel()[:,None]*e0[i,None,:] + Y[X_mask].ravel()[:,None]*e1[i,None,:] + tris[i,0,:]
+        d.append(pos)
+
+    d = np.vstack(d)
+
+    subsamp = np.random.choice(np.arange(d.shape[0]), size=int(p*d.shape[0]), replace=False)
+
+    if return_normals:
+        # TODO: This repeats a fair bit of distance_to_mesh
+
+        # Create a list of face centroids for search
+        face_centers = mesh._vertices['position'][mesh.faces].mean(1)
+
+        # Construct a kdtree over the face centers
+        tree = scipy.spatial.cKDTree(face_centers)
+
+        _, _faces = tree.query(d.T, k=1)
+
+        normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
+
+        return d[subsamp], normals[subsamp]
+
+    return d[subsamp]
     
 def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=True):
     """
