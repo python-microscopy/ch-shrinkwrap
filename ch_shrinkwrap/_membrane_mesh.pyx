@@ -4,6 +4,8 @@ import scipy.spatial
 import cython
 import math
 
+from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
+
 from PYME.experimental._triangle_mesh cimport TriangleMesh
 from PYME.experimental._triangle_mesh import TriangleMesh
 from PYME.experimental._triangle_mesh import VERTEX_DTYPE
@@ -18,6 +20,7 @@ DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
 COS110 = -0.34202014332
+PI = 3.1415927
 
 MAX_VERTEX_COUNT = 2**31
 
@@ -331,7 +334,8 @@ cdef class MembraneMesh(TriangleMesh):
         # self._E = None
         self._initialize_curvature_vectors()
 
-    cpdef int skeleton_edge_split(self, np.int32_t _curr, bint live_update=1):
+    cdef int skeleton_edge_split(self, np.int32_t _curr, np.int32_t * new_edges, np.int32_t * new_vertices, np.int32_t * new_faces, int n_edge_idx, int n_vertex_idx, int n_face_idx,  
+                            bint live_update=1, bint upsample=0):
         """
         Split triangles evenly along an edge specified by halfedge index _curr.
 
@@ -343,6 +347,10 @@ cdef class MembraneMesh(TriangleMesh):
                 Update associated faces and vertices after split. Set to False
                 to handle this externally (useful if operating on multiple, 
                 disjoint edges).
+            upsample: bool
+                Are we doing loop subdivision? If so, keep track of all edges
+                incident on both a new vertex and an old verex that do not
+                split an existing edge.
         """
         cdef halfedge_t *curr_edge
         cdef halfedge_t *twin_edge
@@ -354,6 +362,9 @@ cdef class MembraneMesh(TriangleMesh):
         cdef np.float32_t[VECTORSIZE] _vertex
 
         if _curr == -1:
+            return 0
+
+        if self._chalfedges[_curr].locally_manifold == 0:
             return 0
         
         curr_edge = &self._chalfedges[_curr]
@@ -370,18 +381,20 @@ cdef class MembraneMesh(TriangleMesh):
         x1y = self._cvertices[v1].position1
         x1z = self._cvertices[v1].position2
 
+        _vertex_idx = new_vertices[n_vertex_idx]
+
         # FROM HERE
-        # project the _next vertex perpendicularly onto the edge
-        n0x = x1x - x0x
-        n0y = x1y - x0y
-        n0z = x1z - x0z
-        n1x = self._cvertices[self._chalfedges[_next].vertex].position0 - x0x
-        n1y = self._cvertices[self._chalfedges[_next].vertex].position1 - x0y
-        n1z = self._cvertices[self._chalfedges[_next].vertex].position2 - x0z
 
         # displacement along the x1-x0 direction
         #print(curr_edge.length)
         if curr_edge.length > 1e-6:
+            # project the _next vertex perpendicularly onto the edge
+            n0x = x1x - x0x
+            n0y = x1y - x0y
+            n0z = x1z - x0z
+            n1x = self._cvertices[self._chalfedges[_next].vertex].position0 - x0x
+            n1y = self._cvertices[self._chalfedges[_next].vertex].position1 - x0y
+            n1z = self._cvertices[self._chalfedges[_next].vertex].position2 - x0z
             ndot = ((n0x*n1x)+(n0y*n1y)+(n0z*n1z))/(curr_edge.length*curr_edge.length)
         else:
             ndot = 0.5
@@ -392,7 +405,10 @@ cdef class MembraneMesh(TriangleMesh):
 
         # TO HERE
 
-        _vertex_idx = self._new_vertex(_vertex)
+        self._cvertices[_vertex_idx].position0 = _vertex[0]
+        self._cvertices[_vertex_idx].position1 = _vertex[1]
+        self._cvertices[_vertex_idx].position2 = _vertex[2]
+        #_vertex_idx = self._new_vertex(_vertex)
 
         _twin = curr_edge.twin
         interior = (_twin != -1)  # Are we on a boundary?
@@ -406,33 +422,43 @@ cdef class MembraneMesh(TriangleMesh):
         self._cfaces[curr_edge.face].halfedge = _curr
         if interior:
             self._cfaces[twin_edge.face].halfedge = _twin
-            _face_1_idx = self._new_face(_twin_prev)
+            _face_1_idx = new_faces[n_face_idx] #self._new_face(_twin_prev)
+            n_face_idx += 1
+            self._cfaces[_face_1_idx].halfedge = _twin_prev
             self._chalfedges[_twin_prev].face = _face_1_idx
-        _face_2_idx = self._new_face(_next)
+        
+        _face_2_idx = new_faces[n_face_idx]
+        n_face_idx += 1 #self._new_face(_next)
+        self._cfaces[_face_2_idx].halfedge = _next
         self._chalfedges[_next].face = _face_2_idx
 
         # Insert the new faces
-        _he_0_idx = self._insert_new_edge(self._chalfedges[_next].vertex, prev=_curr, next=_prev, face=self._chalfedges[_curr].face)
-        if interior:
-            _he_1_idx = self._insert_new_edge(_vertex_idx, prev=_twin_next, next=_twin, face=self._chalfedges[_twin].face)
+        _he_0_idx = new_edges[n_edge_idx]
+        n_edge_idx += 1
+        _he_4_idx = new_edges[n_edge_idx]
+        n_edge_idx += 1
+        _he_5_idx = new_edges[n_edge_idx]
+        n_edge_idx += 1
         
-            _he_2_idx = self._insert_new_edge(self._chalfedges[_twin_next].vertex, next=_twin_prev, face=_face_1_idx)
-            _he_3_idx = self._insert_new_edge(_vertex_idx, prev=_twin_prev, next=_he_2_idx, face=_face_1_idx)
-            self._chalfedges[_he_2_idx].prev = _he_3_idx
-
-        _he_4_idx = self._insert_new_edge(self._chalfedges[_curr].vertex, next=_next, face=_face_2_idx, twin=-1)
-        _he_5_idx = self._insert_new_edge(_vertex_idx, prev=_next, next=_he_4_idx, face=_face_2_idx)
-        self._chalfedges[_he_4_idx].prev = _he_5_idx
-
-        self._chalfedges[_he_0_idx].twin = _he_5_idx
-        self._chalfedges[_he_5_idx].twin = _he_0_idx
-
         if interior:
-            self._chalfedges[_he_1_idx].twin = _he_2_idx
-            self._chalfedges[_he_2_idx].twin = _he_1_idx
+            _he_1_idx = new_edges[n_edge_idx]
+            n_edge_idx += 1
+            _he_2_idx = new_edges[n_edge_idx]
+            n_edge_idx += 1
+            _he_3_idx = new_edges[n_edge_idx]
+            n_edge_idx += 1
 
-            self._chalfedges[_he_3_idx].twin = _he_4_idx
-            self._chalfedges[_he_4_idx].twin = _he_3_idx
+            self._populate_edge(_he_1_idx, _vertex_idx, prev=_twin_next, next=_twin, face=self._chalfedges[_twin].face, twin=_he_2_idx)
+            self._populate_edge(_he_2_idx, self._chalfedges[_twin_next].vertex, prev= _he_3_idx, next=_twin_prev, face=_face_1_idx, twin=_he_1_idx)
+            self._populate_edge(_he_3_idx,_vertex_idx, prev=_twin_prev, next=_he_2_idx, face=_face_1_idx, twin=_he_4_idx)
+        else:
+            _he_1_idx = -1
+            _he_2_idx = -1
+            _he_3_idx = -1
+        
+        self._populate_edge(_he_0_idx, self._chalfedges[_next].vertex, prev=_curr, next=_prev, face=self._chalfedges[_curr].face, twin=_he_5_idx)
+        self._populate_edge(_he_4_idx, self._chalfedges[_curr].vertex, prev=_he_5_idx, next=_next, face=_face_2_idx, twin=_he_3_idx)
+        self._populate_edge(_he_5_idx, _vertex_idx, prev=_next, next=_he_4_idx, face=_face_2_idx, twin=_he_0_idx)
 
         # Update _prev, next
         self._chalfedges[_prev].prev = _he_0_idx
@@ -453,11 +479,25 @@ cdef class MembraneMesh(TriangleMesh):
         # Update halfedges
         if interior:
             self._cvertices[self._chalfedges[_he_2_idx].vertex].halfedge = _he_1_idx
+        
         self._cvertices[self._chalfedges[_prev].vertex].halfedge = _curr
         self._cvertices[self._chalfedges[_he_4_idx].vertex].halfedge = _next
         self._cvertices[_vertex_idx].halfedge = _he_4_idx
         self._cvertices[self._chalfedges[_he_0_idx].vertex].halfedge = _he_5_idx
 
+        if upsample:
+            # Make sure these edges emanate from the new vertex stored at _vertex_idx
+            if interior:
+                self._loop_subdivision_flip_edges.extend([_he_2_idx])
+            
+            self._loop_subdivision_flip_edges.extend([_he_0_idx])
+            self._loop_subdivision_new_vertices.extend([_vertex_idx])
+        
+        #print(_he_0_idx, _he_1_idx, _he_2_idx, _he_3_idx, _he_4_idx, _he_5_idx)
+        #print(_vertex_idx)
+        #print(_face_1_idx, _face_2_idx)
+
+        #print('update')
         if live_update:
             if interior:
                 #self._update_face_normals([self._chalfedges[_he_0_idx].face, self._chalfedges[_he_1_idx].face, self._chalfedges[_he_2_idx].face, self._chalfedges[_he_4_idx].face])
@@ -468,11 +508,17 @@ cdef class MembraneMesh(TriangleMesh):
                 update_face_normal(self._chalfedges[_he_2_idx].face, self._chalfedges, self._cvertices, self._cfaces)
                 update_face_normal(self._chalfedges[_he_4_idx].face, self._chalfedges, self._cvertices, self._cfaces)
                 
+                #print('vertex_neighbours')
                 update_single_vertex_neighbours(self._chalfedges[_curr].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                #print('n1')
                 update_single_vertex_neighbours(self._chalfedges[_twin].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                #print('n2')
                 update_single_vertex_neighbours(self._chalfedges[_he_0_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                #print('n3')
                 update_single_vertex_neighbours(self._chalfedges[_he_2_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                #print('n')
                 update_single_vertex_neighbours(self._chalfedges[_he_4_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
+                #print('vertex_neighbours done')
             
             else:
                 #self._update_face_normals([self._chalfedges[_he_0_idx].face, self._chalfedges[_he_4_idx].face])
@@ -486,14 +532,11 @@ cdef class MembraneMesh(TriangleMesh):
                 update_single_vertex_neighbours(self._chalfedges[_he_0_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
                 update_single_vertex_neighbours(self._chalfedges[_he_4_idx].vertex, self._chalfedges, self._cvertices, self._cfaces)
             
-            
-            self._faces_by_vertex = None
-            self._H = None
-            self._K = None
+            self._clear_flags()
         
         return 1
 
-    cdef int skeleton_split_edges(self):
+    cdef int skeleton_split_edges(self, float max_triangle_angle=1.9198622):
         cdef int split_count = 0
         cdef int i
         cdef int n_halfedges = self._halfedges.shape[0]
@@ -503,13 +546,22 @@ cdef class MembraneMesh(TriangleMesh):
         cdef float *v3
         cdef float *v4
         cdef float *v5
-        cdef float t0d
-        cdef float t1d
-        cdef float t0l
-        cdef float t1l
+        cdef float t0d, t1d, t0l, t1l
+        cdef float ct0d, ct1d
+        cdef int n_edge_idx, n_face_idx, n_vertex_idx
+
+        cdef int* edges_to_split = <int*>PyMem_Malloc(n_halfedges*sizeof(int))
+        if not edges_to_split:
+            raise MemoryError()
+        cdef int* twin_split = <int*>PyMem_Malloc(n_halfedges*sizeof(int))
+        if not twin_split:
+            raise MemoryError()
+
+        for i in range(n_halfedges):
+            twin_split[i] = 0
         
         for i in range(n_halfedges):
-            if (self._chalfedges[i].vertex != -1):
+            if (not twin_split[i]) and (self._chalfedges[i].vertex != -1):
                 v0 = &self._cvertices[self._chalfedges[i].vertex].position0
                 v1 = &self._cvertices[self._chalfedges[self._chalfedges[i].next].vertex].position0
                 v2 = &self._cvertices[self._chalfedges[self._chalfedges[i].prev].vertex].position0
@@ -538,21 +590,57 @@ cdef class MembraneMesh(TriangleMesh):
                 else:
                     t1d = 0
 
-                if (t0d < COS110) and (t0d < t1d):
+                t0d = np.clip(t0d, -1, 1)
+                t1d = np.clip(t1d, -1, 1)
+
+                ct0d = np.arccos(t0d)
+                ct1d = np.arccos(t1d)
+
+                if (ct1d < max_triangle_angle) or (ct0d < max_triangle_angle):
+                    continue
+
+                if (ct0d > ct1d):
                     #print(f"Splitting {i}")
-                    self.skeleton_edge_split(i)
+                    if self._chalfedges[i].twin != -1:
+                        twin_split[self._chalfedges[i].twin] = 1
+                    edges_to_split[split_count] = i
                     split_count += 1
-                elif (t1d < COS110) and (t1d < t0d):
+                elif (ct1d > ct0d):
                     #print(f"Splitting {self._chalfedges[i].twin}")
-                    self.skeleton_edge_split(self._chalfedges[i].twin)
+                    twin_split[i] = 1
+                    edges_to_split[split_count] = self._chalfedges[i].twin
                     split_count += 1
+        
+        n_edges = self.new_edges(int(split_count*6))
+        n_edge_idx = 0
+        n_faces = self.new_faces(int(split_count*2))
+        n_face_idx = 0
+        n_vertices = self.new_vertices(int(split_count))
+        n_vertex_idx = 0
+        #print(self._halfedges[n_edges])
+
+        for i in range(split_count):
+            e = edges_to_split[i]
+            #print(i, e, n_edge_idx, n_edges)
+            self.skeleton_edge_split(e, 
+                                <np.int32_t *> np.PyArray_DATA(n_edges), 
+                                <np.int32_t *> np.PyArray_DATA(n_vertices), 
+                                <np.int32_t *> np.PyArray_DATA(n_faces), 
+                                n_edge_idx, n_vertex_idx, n_face_idx)
+            #self.edge_split(e)
+            n_edge_idx += 6
+            n_face_idx += 2
+            n_vertex_idx += 1
+
+        PyMem_Free(edges_to_split)
+        PyMem_Free(twin_split)
                 
         print('Split count: %d' % (split_count))
         return split_count
 
-    cdef int skeleton_remesh(self, float target_edge_length=-1):
+    cdef int skeleton_remesh(self, float target_edge_length=-1, float max_triangle_angle=1.9198622):
         cdef int k, i, ct
-        cdef float collapse_threshold, xl, xu, yl, yu, zl, zu, diag
+        cdef float collapse_threshold, xl, xu, yl, yu, zl, zu, diag  #, split_threshold
 
         cdef int n_halfedges = self._halfedges.shape[0]
         cdef int n_vertices = self._vertices.shape[0]
@@ -564,11 +652,16 @@ cdef class MembraneMesh(TriangleMesh):
             collapse_threshold = 0.002*diag
         else:
             collapse_threshold = target_edge_length
+
+        #split_threshold = 1.66*collapse_threshold
         
         print(f"Target edge length: {collapse_threshold}")
         ct = self.collapse_edges(collapse_threshold)
 
-        ct = self.skeleton_split_edges()
+        # self._update_vertex_locally_manifold()
+
+        ct = self.skeleton_split_edges(max_triangle_angle=max_triangle_angle)
+        # ct = self.split_edges(split_threshold)
 
         # Let's double-check the mesh manifoldness
         self._manifold = None
@@ -1213,8 +1306,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r and dr:
             # Make sure we stop for both
-            from math import gcd
-            rf = gcd(self.remesh_frequency, self.delaunay_remesh_frequency)
+            rf = math.gcd(self.remesh_frequency, self.delaunay_remesh_frequency)
         elif r:
             rf = self.remesh_frequency
         elif dr:
@@ -1224,11 +1316,15 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r:
             initial_length = self._mean_edge_length
-            final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
+            if kwargs.get('minimum_edge_length') == -1:
+                final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
+            else:
+                final_length = kwargs.get('minimum_edge_length')
             m = (final_length - initial_length)/max_iter
 
+
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
-            print("Note this case???")
+            print("Not this case???")
             print(points.shape, sigma.shape)
             s = 1.0/np.repeat(sigma,points.shape[1])
             print(points.shape, sigma.shape)
@@ -1298,22 +1394,20 @@ cdef class MembraneMesh(TriangleMesh):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad
 
         self.remesh_frequency = 1
-
-        r = (self.remesh_frequency != 0) and (self.remesh_frequency < max_iter)
-
-        if r:
-            rf = self.remesh_frequency
-        else:
-            rf = max_iter
+        rf = 1  # manually set remesh frequency to 1
 
         # initialize area values (used in termination condition)
         original_area = self.area()
         last_area, area = original_area, 0
+        area_variation_factor = kwargs.get('area_variation_factor')
+        max_triangle_angle = PI*kwargs.get('max_triangle_angle')/180.0
 
         # initialize skeleton, construct Voronoi diagram once
         n = self._halfedges['vertex'][self._vertices['neighbors']]
         n[self._vertices['neighbors'] == -1] = -1
         cg = SkeletonConjGrad(self._vertices['position'], self._vertices['normal'], n, mesh=self)
+        
+        # Loop over iterations
         for j in range(max_iter//rf):
             k = (self._vertices['halfedge'] != -1)
             print(f"{k.sum()} vertices")
@@ -1322,7 +1416,7 @@ cdef class MembraneMesh(TriangleMesh):
             n[self._vertices['neighbors'] == -1] = -1
 
             # Update positions
-            cg.neighbors, cg.vertex_normals, cg.vertices = n, self._vertices['normal'], self._vertices['position']
+            cg.vertex_neighbors, cg.vertex_normals, cg.vertices = n, self._vertices['normal'], self._vertices['position']
 
             vp = cg.search(np.zeros_like(self._vertices['position']),lams=lam,num_iters=rf)
 
@@ -1335,17 +1429,20 @@ cdef class MembraneMesh(TriangleMesh):
             self.face_normals
             self.vertex_neighbors
 
+            # Remesh
+            if ((((j+1)*rf) % self.remesh_frequency) == 0):
+                # print(f"Max angle: {max_triangle_angle}")
+                #self.skeleton_remesh(target_edge_length=target_edge_length,
+                #                      max_triangle_angle=max_triangle_angle)
+                self.remesh(target_edge_length=target_edge_length)
+
             # Check if area ratio is met
             area = self.area()
             area_ratio = math.fabs(last_area-area)/original_area
             print(f"Area ratio is {area_ratio:.4f}")
-            if area_ratio < 0.0001:
+            if area_ratio < area_variation_factor:
                 break
             last_area = area
-
-            # Remesh
-            if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
-                self.skeleton_remesh(target_edge_length=target_edge_length)
         
     def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None, **kwargs):
 
