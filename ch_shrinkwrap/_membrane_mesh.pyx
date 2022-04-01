@@ -1316,7 +1316,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r:
             initial_length = self._mean_edge_length
-            if kwargs.get('minimum_edge_length') == -1:
+            if kwargs.get('minimum_edge_length') < 0:
                 final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
             else:
                 final_length = kwargs.get('minimum_edge_length')
