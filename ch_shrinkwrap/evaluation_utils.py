@@ -110,9 +110,15 @@ def points_from_mesh2(mesh, dx_min=5, p=1.0, return_normals=False):
     yu = np.max(y0y1y2, axis=1)
 
     # Compute slopes of lines for each triangle
-    m0 = (y1-y0)/(x1-x0)
-    m1 = (y2-y1)/(x2-x1)
-    m2 = (y0-y2)/(x0-x2)
+    x1x0 = x1-x0
+    x2x1 = x2-x1
+    x0x2 = x0-x2
+    m0 = (y1-y0)/x1x0
+    m0[x1x0 == 0] = 0
+    m1 = (y2-y1)/x2x1
+    m1[x2x1 == 0] = 0
+    m2 = (y0-y2)/x0x2
+    m2[x0x2 == 0] = 0
     s1 = np.sign(m1)
     s2 = np.sign(m2)
 
@@ -146,7 +152,7 @@ def points_from_mesh2(mesh, dx_min=5, p=1.0, return_normals=False):
         # Construct a kdtree over the face centers
         tree = scipy.spatial.cKDTree(face_centers)
 
-        _, _faces = tree.query(d.T, k=1)
+        _, _faces = tree.query(d, k=1)
 
         normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
 
@@ -390,31 +396,56 @@ def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
 
 def test_points_mesh_stats(points, normals, mesh, dx_min=1, p=1.0, hausdorff=True):
     # Generate a set of test points from this mesh
-    mesh_points, mesh_normals = points_from_mesh(mesh, 
-                                                 dx_min=dx_min, 
-                                                 p=p, return_normals=True)
+    #start = time.time()
+    mesh_points, mesh_normals = points_from_mesh2(mesh, 
+                                                  dx_min=dx_min, 
+                                                  p=p, return_normals=True)
+    #stop = time.time()
+    #print(f'Mesh point generation in {stop-start} s.')
     
+    #start = time.time()
     test_tree = scipy.spatial.cKDTree(points)
+    #stop = time.time()
+    #print(f'Points kdtree {stop-start} s.')
+    #start = time.time()
     mesh_tree = scipy.spatial.cKDTree(mesh_points)
-
+    #stop = time.time()
+    #print(f'Mesh kdtree {stop-start} s.')
+    #start = time.time()
+    
     test_err, _ = test_tree.query(mesh_points, k=1)
+    #stop = time.time()
+    #print(f'Mesh query {stop-start} s.')
+    #start = time.time()
     mesh_err, _ = mesh_tree.query(points, k=1)
+    #stop = time.time()
+    #print(f'Points query {stop-start} s.')    
 
     test_mse = np.nansum(test_err**2)/len(test_err)
     mesh_mse = np.nansum(mesh_err**2)/len(mesh_err)
 
     if hausdorff:
+        #start = time.time()
         # Compute ordered points between this mesh and test_points
         ox, oa, mx, ma = construct_ordered_pairs(points, mesh_points, 
                                                 normals, mesh_normals, 
                                                 dx_max=dx_min)
+        #stop = time.time()
+        #print(f'Ordered [aors] {stop-start} s.')
+        #start = time.time()
         
         # print(test_points.shape[0], mesh_points.shape[0], ox.shape[0], mx.shape[0])
 
         # Compute hausdorff and mean distance (nm) and smoothness (rad)
         hd, md = mean_and_hausdorff_distance_from_ordered_pairs(points, mesh_points, ox, oa, mx, ma)
+        #stop = time.time()
+        #print(f'HdMd {stop-start} s.')
+        #start = time.time()
+    
         ha, aa = mean_and_hausdorff_smoothness_from_ordered_pairs(normals, mesh_normals, ox, oa, mx, ma)
-
+        #stop = time.time()
+        #print(f'HaAa {stop-start} s.')
+    
         return test_mse, mesh_mse, hd, md, ha, aa
     else:
 
@@ -730,17 +761,17 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0
                 #                                         mesh,
                 #                                         dx_min=dx_min,
                 #                                         p=p)
-                test_mse, mesh_mse, hd, md, ha, ma = test_points_mesh_stats(test_points, 
+                test_mse, mesh_mse = test_points_mesh_stats(test_points, 
                                                             test_normals, 
                                                             mesh,
                                                             dx_min=dx_min,
-                                                            p=p)
+                                                            p=p, hausdorff=False)
                 
                 # mesh_d['mse'] = float(mse)
-                mesh_d['hausdorff_distance'] = float(hd)
-                mesh_d['mean_distance'] = float(md)
-                mesh_d['hausdorff_angle'] = float(ha)
-                mesh_d['mean_angle'] = float(ma)
+                # mesh_d['hausdorff_distance'] = float(hd)
+                # mesh_d['mean_distance'] = float(md)
+                # mesh_d['hausdorff_angle'] = float(ha)
+                # mesh_d['mean_angle'] = float(ma)
                 mesh_d['test_mse'] = float(test_mse)
                 mesh_d['mesh_mse'] = float(mesh_mse)
 
