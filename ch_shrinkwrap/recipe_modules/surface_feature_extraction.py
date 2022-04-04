@@ -13,16 +13,17 @@ class SkeletonizeMembrane(ModuleBase):
 
     Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
     "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
-    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    (August 2012): 1735-44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
     """
     input = Input('surf')
-    ouput = Output('skeleton')
+    output = Output('skeleton')
 
-    max_iters = Int(10)
-    velocity_weight = Float(0.1)
-    medial_axis_weight = Float(0.2)
-    collapse_threshold = Float(-1.0)
+    max_iters = Int(500)
+    velocity_weight = Float(20.0)
+    medial_axis_weight = Float(40.0)
     mesoskeleton = Bool(False)
+    area_variation_factor = Float(0.0001)
+    max_triangle_angle = Float(110.0)
 
     def execute(self, namespace):
         import numpy as np
@@ -31,22 +32,24 @@ class SkeletonizeMembrane(ModuleBase):
         mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
                                           max_iter=self.max_iters)
 
-        pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
-                                              namespace[self.points]['y'],
-                                              namespace[self.points]['z']]).T)
-        try:
-            sigma = namespace[self.points]['sigma']
-        except(KeyError):
-            sigma = 10*np.ones_like(namespace[self.points]['x'])
+        # pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
+        #                                       namespace[self.points]['y'],
+        #                                       namespace[self.points]['z']]).T)
+        # try:
+        #     sigma = namespace[self.points]['sigma']
+        # except(KeyError):
+        #     sigma = 10*np.ones_like(namespace[self.points]['x'])
+
+        pts, sigma = None, None
 
         # Upsample to create better Voronoi poles
         l = 0.95*np.mean(mesh._halfedges['length'][mesh._halfedges['length'] != -1])
         mesh.remesh(target_edge_length=l)
 
         # Shrinkwrap membrane surface subject to curvature, velocity, and medial axis forces
-        if self.max_iters > 0:
-            mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, 
-                            self.medial_axis_weight], target_edge_length=self.collapse_threshold)
+        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, 
+                       self.medial_axis_weight], area_variation_factor=self.area_variation_factor,
+                       max_triangle_angle=self.max_triangle_angle)
 
         if not self.mesoskeleton:
             # collapse_count = 1

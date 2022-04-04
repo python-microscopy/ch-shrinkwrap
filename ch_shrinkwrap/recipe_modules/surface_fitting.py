@@ -28,6 +28,7 @@ class ShrinkwrapMembrane(ModuleBase):
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
     # method = Enum(DESCENT_METHODS)
+    minimum_edge_length = Float(-1.0)
 
     def execute(self, namespace):
         import numpy as np
@@ -66,6 +67,6 @@ class ShrinkwrapMembrane(ModuleBase):
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
-        mesh.shrink_wrap(pts, sigma, method='conjugate_gradient')
+        mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
         # mProfile.profileOff()
         # mProfile.report()

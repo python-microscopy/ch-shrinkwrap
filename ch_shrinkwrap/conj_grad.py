@@ -77,7 +77,7 @@ class TikhonovConjugateGradient(object):
         pos : bool
             Flag to turn positivity constraints on/off, False default
         """
-
+        
         if not np.isscalar(weights):
             self.mask = weights > 0
             weights = weights / weights.mean()
@@ -956,7 +956,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
 
     Tagliasacchi, Andrea, Ibraheem Alhashim, Matt Olson, and Hao Zhang. 
     "Mean Curvature Skeletons." Computer Graphics Forum 31, no. 5 
-    (August 2012): 1735–44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
+    (August 2012): 1735-44. https://doi.org/10.1111/j.1467-8659.2012.03178.x.
     """
     _vertices = None
     _vertex_neighbors = None
@@ -973,7 +973,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         self.dims = vertices.shape[1]
         self.shape = vertices.shape  # hack
         self._on_deck_vertices = vertices.copy().ravel()
-        self._prev_vertices = vertices.copy().ravel()+0.01*self._vertex_normals.ravel()
+        self._prev_vertices = vertices.copy().ravel()+0.001*self._vertex_normals.ravel()
         
     @property
     def vertex_normals(self):
@@ -992,41 +992,55 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         self._vertex_neighbors = neighbors
         self.N = self._vertex_neighbors.shape[1]
         
-    def Afunc(self, f):
-        """
-        Minimize distance between a vertex and the centroid of its neighbors.
-        """
-        # note that f is raveled, by default in C order so 
-        # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
-        d = np.zeros_like(f)
-        for i in range(self.M):
-            if self.vertex_neighbors[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in range(self.dims):
-                nn = self.vertex_neighbors[i,:]
-                N = (nn!=-1).sum()
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
-        return d
+    # def Afunc(self, f):
+    #     """
+    #     Minimize distance between a vertex and the centroid of its neighbors.
+    #     """
+    #     # note that f is raveled, by default in C order so 
+    #     # f = [v0x, v0y, v0z, v1x, v1y, v1z, ...] where ij is vertex i, dimension j
+    #     d = np.zeros_like(f)
+    #     for i in range(self.M):
+    #         if self.vertex_neighbors[i,0] == -1:
+    #             # cheat to find self._vertices['halfedge'] == -1
+    #             continue
+    #         for j in range(self.dims):
+    #             nn = self.vertex_neighbors[i,:]
+    #             N = (nn!=-1).sum()
+    #             for n in nn:
+    #                 if n == -1:
+    #                     break
+    #                 d[i*self.dims+j] += (f[n*self.dims+j] - f[i*self.dims+j])/N
+    #     return d
     
-    def Ahfunc(self, f):
-        # Now we are transposed, so we want to add the neighbors to d in column order
-        # should be symmetric, unless we change the weighting
+    # def Ahfunc(self, f):
+    #     # Now we are transposed, so we want to add the neighbors to d in column order
+    #     # should be symmetric, unless we change the weighting
+    #     d = np.zeros_like(f)
+    #     for i in range(self.M):
+    #         if self.vertex_neighbors[i,0] == -1:
+    #             # cheat to find self._vertices['halfedge'] == -1
+    #             continue
+    #         for j in range(self.dims):
+    #             nn = self.vertex_neighbors[i,:]
+    #             N = (nn!=-1).sum()
+    #             for n in nn:
+    #                 if n == -1:
+    #                     break
+    #                 d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+    #     return d
+
+    def Afunc(self, f):
         d = np.zeros_like(f)
-        for i in range(self.M):
-            if self.vertex_neighbors[i,0] == -1:
-                # cheat to find self._vertices['halfedge'] == -1
-                continue
-            for j in range(self.dims):
-                nn = self.vertex_neighbors[i,:]
-                N = (nn!=-1).sum()
-                for n in nn:
-                    if n == -1:
-                        break
-                    d[n*self.dims+j] += (f[i*self.dims+j] - f[n*self.dims+j])/N
+        conj_grad_utils.c_shrinkwrap_lw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, 0, self.M, self.N)
+        
+        assert(not np.any(np.isnan(d)))
+        return d
+
+    def Ahfunc(self, f):
+        d = np.zeros_like(f)
+        conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, 0, self.M, self.N)
+        
+        assert(not np.any(np.isnan(d)))
         return d
     
     def Lfunc(self, f):
@@ -1038,13 +1052,16 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
             self._on_deck_vertices = self.f.copy()
         idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = (f - self._prev_vertices)
+        # val = (f - self.f)
         val[idxs] = 0
+        assert(not np.any(np.isnan(val)))
         return val
     
     def Lhfunc(self, f):
         idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = f
         val[idxs] = 0
+        assert(not np.any(np.isnan(f)))
         return f
     
     def Mfunc(self, f):
@@ -1059,12 +1076,13 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # as they are from -1 halfedge vertices, but they will throw an error
         # as such, replace them with something "valid"
         idxs = (self.vertex_neighbors[:,0]==-1) | (nearest_pole == self._neg_vor_poles.shape[0])
-        nearest_pole[idxs] = 0
+        # nearest_pole[idxs] = 0
 
         #print(nearest_pole)
         #print(self._neg_vor_poles[nearest_pole,:])
-        val = (self._neg_vor_poles[nearest_pole,:]-fr)
+        val = (fr-self._neg_vor_poles[nearest_pole,:])
         val[idxs,:] = 0
+        assert(not np.any(np.isnan(val)))
         return val.ravel()
     
     def Mhfunc(self, f):
@@ -1073,6 +1091,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
         val = f
         val[idxs] = 0
+        assert(not np.any(np.isnan(f)))
         return f
     
     def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):

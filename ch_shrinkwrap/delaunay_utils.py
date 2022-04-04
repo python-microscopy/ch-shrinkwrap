@@ -455,7 +455,7 @@ def clean_neg_voronoi_poles(mesh, np):
     # should lie on the medial axis of the mesh.
 
     from PYME.experimental.isosurface import distance_to_mesh
-    d = distance_to_mesh(np, mesh)
+    d = distance_to_mesh(np, mesh, smooth=False)
     return np[d < 0.0,:]
 
 CORNER_ANGLE = 3*np.pi/2
