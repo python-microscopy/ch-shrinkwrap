@@ -47,7 +47,7 @@ class SkeletonizeMembrane(ModuleBase):
         mesh.remesh(target_edge_length=l)
 
         # Shrinkwrap membrane surface subject to curvature, velocity, and medial axis forces
-        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, 
+        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[#self.velocity_weight, 
                        self.medial_axis_weight], area_variation_factor=self.area_variation_factor,
                        max_triangle_angle=self.max_triangle_angle)
 

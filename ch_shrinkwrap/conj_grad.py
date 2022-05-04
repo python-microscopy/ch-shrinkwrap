@@ -1058,10 +1058,10 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         return val
     
     def Lhfunc(self, f):
-        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
-        val = f
-        val[idxs] = 0
-        assert(not np.any(np.isnan(f)))
+        # idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
+        # val = f
+        # val[idxs] = 0
+        # assert(not np.any(np.isnan(f)))
         return f
     
     def Mfunc(self, f):
@@ -1088,16 +1088,16 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
     def Mhfunc(self, f):
         # fr = f.reshape(self.shape)
         # _, nearest_pole = self._neg_vor_poles_tree.query(fr,1)
-        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
-        val = f
-        val[idxs] = 0
-        assert(not np.any(np.isnan(f)))
+        # idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
+        # val = f
+        # val[idxs] = 0
+        # assert(not np.any(np.isnan(f)))
         return f
     
     def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
-        self.Lfuncs = ["Lfunc", "Mfunc"]
-        self.Lhfuncs = ["Lhfunc", "Mhfunc"]
+        self.Lfuncs = ["Mfunc"]
+        self.Lhfuncs = ["Mhfunc"]
         self.vertex_neighbors, self.vertex_normals, self.vertices = neighbors, vertex_normals, vertices
         self._prev_loopcount = 1
         self._vor = scipy.spatial.Voronoi(self._vertices)
@@ -1108,7 +1108,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
             self._neg_vor_poles = clean_neg_voronoi_poles(kwargs.get('mesh'),self._neg_vor_poles)
         self._neg_vor_poles_tree = scipy.spatial.cKDTree(self._neg_vor_poles)
 
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=False):
+    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
         self._prev_loopcount = 1
         return TikhonovConjugateGradient.search(self, data, lams, defaults=defaults, 
                                                 num_iters=num_iters, weights=weights, 
