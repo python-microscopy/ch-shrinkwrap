@@ -58,7 +58,7 @@ float fnorm3f(const float *pos)
  *
  *  @param x double scalar
  *  @param y double scalar
- *  @return double division of x and y
+ *  @return double division x/y
  */
 double safe_divide(double x, double y)
 {
@@ -71,7 +71,7 @@ double safe_divide(double x, double y)
  *
  *  @param x float scalar
  *  @param y float scalar
- *  @return float division of x and y
+ *  @return float division x/y
  */
 float ffsafe_dividef(float x, float y)
 {
@@ -85,7 +85,7 @@ float ffsafe_dividef(float x, float y)
  *
  *  @param a double vector
  *  @param b double scalar
- *  @param c double vector b/a
+ *  @param c double vector a/b
  *  @return Void
  */
 void scalar_divide3(const double *a, const double b, double *c)
@@ -100,7 +100,7 @@ void scalar_divide3(const double *a, const double b, double *c)
  *
  *  @param a float vector
  *  @param b float scalar
- *  @param c float vector b/a
+ *  @param c float vector a/b
  *  @return Void
  */
 void ffscalar_divide3f(const float *a, const float b, float *c)
@@ -115,7 +115,7 @@ void ffscalar_divide3f(const float *a, const float b, float *c)
  *
  *  @param a double vector
  *  @param b double scalar
- *  @param c double vector b*a
+ *  @param c double vector a*b
  *  @param length int length of vector a
  *  @return Void
  */
@@ -131,7 +131,7 @@ void scalar_mult(const double *a, const double b, double *c, const int length)
  *
  *  @param a float vector
  *  @param b float scalar
- *  @param c double vector b*a
+ *  @param c double vector a*b
  *  @param length int length of vector a
  *  @return Void
  */
@@ -205,14 +205,15 @@ void transpose(const double *a, double *at, int m, int n)
 
 /** @brief Construct an orthogonal projection matrix
  *
- *  For a unit-normalized vector v, I-v*v.T is the projection
+ *  For a unit-normalized vector v, I-coef*v*v.T is the projection
  *  matrix for the plane orthogonal to v
  * 
  *  @param v PRECISION unit-normalized vector
  *  @param m double orthogonal projection matrix
+ *  @param coef coefficient in front of outer product
  *  @return Void
  */
-void orthogonal_projection_matrix3(const PRECISION *v, double *m)
+void orthogonal_projection_matrix3(const PRECISION *v, double *m, double coef)
 {
     PRECISION xy, xz, yz;
     double v0, v1, v2;
@@ -221,19 +222,19 @@ void orthogonal_projection_matrix3(const PRECISION *v, double *m)
     v1 = (double)(v[1]);
     v2 = (double)(v[2]);
 
-    xy = -1.0*v0*v1;
-    xz = -1.0*v0*v2;
-    yz = -1.0*v1*v2;
+    xy = -1.0*coef*v0*v1;
+    xz = -1.0*coef*v0*v2;
+    yz = -1.0*coef*v1*v2;
 
-    m[0] = 1.0-v0*v0;
+    m[0] = 1.0-coef*v0*v0;
     m[1] = xy;
     m[2] = xz;
     m[3] = xy;
-    m[4] = 1.0-v1*v1;
+    m[4] = 1.0-coef*v1*v1;
     m[5] = yz;
     m[6] = xz;
     m[7] = yz;
-    m[8] = 1.0-v2*v2;
+    m[8] = 1.0-coef*v2*v2;
 }
 
 /** @brief Apply a 3x3 projection matrix to a 3-vector
@@ -299,7 +300,7 @@ void ffsubtract3d(const float *a, const float *b, double *c)
  * 
  *  @param a float vector
  *  @param b float vector
- *  @param c double a-b
+ *  @param c float a-b
  *  @return Void
  */
 void ffsubtract3f(const float *a, const float *b, float *c)
@@ -307,6 +308,34 @@ void ffsubtract3f(const float *a, const float *b, float *c)
     int i;
     for (i=0;i<3;++i)
         c[i] = (a[i])-(b[i]);
+}
+
+/** @brief Elementwise addition of two vectors
+ * 
+ *  @param a float vector
+ *  @param b float vector
+ *  @param c float a+b
+ *  @return Void
+ */
+void ffadd3f(const float *a, const float *b, float *c)
+{
+    int i;
+    for (i=0;i<3;++i)
+        c[i] = (a[i])+(b[i]);
+}
+
+/** @brief Elementwise addition of two vectors
+ * 
+ *  @param a float vector
+ *  @param b float vector
+ *  @param c double a+b
+ *  @return Void
+ */
+void ffadd3d(const float *a, const float *b, double *c)
+{
+    int i;
+    for (i=0;i<3;++i)
+        c[i] = (a[i])+(b[i]);
 }
 
 /** @brief dot product of two vectors of equivalent length
@@ -570,6 +599,58 @@ static void c_point_attraction_grad(points_t *attraction,
     free(pt_weight_matrix);
     free(pt_weights);
 }
+
+static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
+                                                double *l1, double *l2, 
+                                                double *v1, double *v2) 
+{
+    PRECISION e1[3];
+    PRECISION Nvi_sub_e1[3];
+    PRECISION Nvi_add_e1[3]; 
+    PRECISION Wvi[3];
+    PRECISION Nvi_sub_e1_norm, Nvi_add_e1_norm;
+    double Qvi[VECTORSIZE*VECTORSIZE];
+    double theta, cos_theta, sin_theta, t;
+
+    // first coordinate vector
+    e1[0] = 1; e1[1] = 0; e1[2] = 0;
+    
+    ffsubtract3f(e1, Nvi, Nvi_sub_e1);
+    ffadd3f(e1, Nvi, Nvi_add_e1);
+    Nvi_sub_e1_norm = fnorm3f(Nvi_sub_e1);
+    Nvi_add_e1_norm = fnorm3f(Nvi_add_e1);
+
+    if (Nvi_sub_e1_norm > Nvi_add_e1_norm)
+        ffscalar_divide3f(Nvi_sub_e1, Nvi_sub_e1_norm, Wvi);
+    else
+        ffscalar_divide3f(Nvi_add_e1, Nvi_add_e1_norm, Wvi);
+
+    // construct a Householder matrix
+    orthogonal_projection_matrix3(Wvi, Qvi, 2.0);
+
+    // the last two columns of Qvi are an orthonormal
+    // basis of the tangent space, but not the eigenvectors
+
+    // compute the Givens rotation of Qvi.T*Mvi*Qvi
+    theta = safe_divide((Mvi[8]-Mvi[4]),(2.0*Mvi[5]));
+    // the eigenvalues are on the diagonal
+    t = SIGN(theta)/(fabs(theta)+sqrt(theta*theta+1));
+    *l1 = Mvi[4] - t*Mvi[5];
+    *l2 = Mvi[4] + t*Mvi[5];
+
+    // the eigenvectors now are 
+    cos_theta = cos(theta);
+    sin_theta = sin(theta);
+    v1[0] = cos_theta*Qvi[1]-sin_theta*Qvi[2];
+    v1[1] = cos_theta*Qvi[4]-sin_theta*Qvi[5];
+    v1[2] = cos_theta*Qvi[7]-sin_theta*Qvi[8];
+
+    v2[0] = sin_theta*Qvi[1]+cos_theta*Qvi[2];
+    v2[1] = sin_theta*Qvi[4]+cos_theta*Qvi[5];
+    v2[2] = sin_theta*Qvi[7]+cos_theta*Qvi[8];
+
+}
+
 
 /** @brief find eigenvalues/vectors of 3x3 curvature tensor using closed-form solution
  *
@@ -848,11 +929,12 @@ static void c_curvature_grad(void *vertices_,
                 vj_centroid[jj] += vj[jj];
             ffsubtract3d(vj,vi,dv); // nm
             dv_norm = norm3(dv);  // nm
-            if (dv_norm < jitter_width)
-                jitter_width = dv_norm;
+    
             // radial weighting
             if (dv_norm > EPSILON)
                 r_sum += 1.0/dv_norm;  // 1/nm
+                if (dv_norm < jitter_width)
+                    jitter_width = dv_norm;
 
             ++j;
             neighbor = (curr_vertex->neighbors)[j];
@@ -883,7 +965,7 @@ static void c_curvature_grad(void *vertices_,
         fdsubtract3d(vi,NvidN,viNvidN);
 
         // projection matrix
-        orthogonal_projection_matrix3(Nvi, p);  // unitless
+        orthogonal_projection_matrix3(Nvi, p, 1.0);  // unitless
 
         // zero out Mvi
         for (j=0;j<(VECTORSIZE*VECTORSIZE);++j)
@@ -973,7 +1055,8 @@ static void c_curvature_grad(void *vertices_,
         // dareas = dareas - areas;  // calculate local difference in area after shifting dN
 
         // Interlude: calculate curvature tensor
-        compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
+        // compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
+        compute_curvature_tensor_eig_givens(Mvi, Nvi, &l1, &l2, v1, v2);
 
         if isnan(l1) {
             // weird tensor
