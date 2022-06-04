@@ -121,6 +121,8 @@ cdef extern from "membrane_mesh_utils.c":
                          int n_vertices,
                          float *k_0,
                          float *k_1,
+                         float *e_0,
+                         float *e_1,
                          float *H,
                          float *K,
                          float *dH,
@@ -151,11 +153,15 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public object _pE
     cdef object _k_0
     cdef object _k_1
+    cdef object _e_0
+    cdef object _e_1
     cdef object _dH
     cdef object _dK
     cdef object _dE_neighbors
     cdef float * _ck_0
     cdef float * _ck_1
+    cdef float * _ce_0
+    cdef float * _ce_1
     cdef float * _cH
     cdef float * _cK
     cdef float * _cE
@@ -255,6 +261,18 @@ cdef class MembraneMesh(TriangleMesh):
         return self._k_1
 
     @property
+    def eigenvector_principal0(self):
+        if not np.any(self._e_0):
+            self._populate_curvature_grad()
+        return self._e_0
+
+    @property
+    def eigenvector_principal1(self):
+        if not np.any(self._e_1):
+            self._populate_curvature_grad()
+        return self._e_1
+
+    @property
     def curvature_mean(self):
         if not np.any(self._H):
             self._populate_curvature_grad()
@@ -284,6 +302,8 @@ cdef class MembraneMesh(TriangleMesh):
         self._E = np.zeros(sz, dtype=np.float32)
         self._k_0 = np.zeros(sz, dtype=np.float32)
         self._k_1 = np.zeros(sz, dtype=np.float32)
+        self._e_0 = np.zeros((sz, 3), dtype=np.float32)
+        self._e_1 = np.zeros((sz, 3), dtype=np.float32)
         self._pE = np.zeros(sz, dtype=np.float32)
         self._dH = np.zeros(sz, dtype=np.float32)
         self._dK = np.zeros(sz, dtype=np.float32)
@@ -291,6 +311,10 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._set_ck_0(self._k_0)
         self._set_ck_1(self._k_1)
+        _flat_e_0 = self._e_0.ravel()
+        self._set_ce_0(_flat_e_0)
+        _flat_e_1 = self._e_1.ravel()
+        self._set_ce_1(_flat_e_1)
         self._set_cH(self._H)
         self._set_cK(self._K)
         self._set_cE(self._E)
@@ -304,6 +328,12 @@ cdef class MembraneMesh(TriangleMesh):
 
     def _set_ck_1(self, float[:] vec):
         self._ck_1 = &vec[0]
+
+    def _set_ce_0(self, float[:] vec):
+        self._ce_0 = &vec[0]
+
+    def _set_ce_1(self, float[:] vec):
+        self._ce_1 = &vec[0]
 
     def _set_cH(self, float[:] vec):
         self._cH = &vec[0]
@@ -1057,6 +1087,8 @@ cdef class MembraneMesh(TriangleMesh):
                         self._vertices.shape[0],
                         &(self._ck_0[0]),
                         &(self._ck_1[0]),
+                        &(self._ce_0[0]),
+                        &(self._ce_1[0]),
                         &(self._cH[0]),
                         &(self._cK[0]),
                         &(self._cdH[0]),

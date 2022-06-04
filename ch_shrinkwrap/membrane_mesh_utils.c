@@ -771,6 +771,8 @@ static void c_curvature_grad(void *vertices_,
                              int n_vertices,
                              PRECISION *k_0,
                              PRECISION *k_1,
+                             PRECISION *e_0,
+                             PRECISION *e_1,
                              PRECISION *H,
                              PRECISION *K,
                              PRECISION *dH,
@@ -984,6 +986,14 @@ static void c_curvature_grad(void *vertices_,
             k_0[i] = 3.0*l1 - l2;
             k_1[i] = 3.0*l2 - l1;
         }
+
+        // store eigenvectors
+        e_0[VECTORSIZE*i] = v1[0]; 
+        e_0[VECTORSIZE*i+1] = v1[1];
+        e_0[VECTORSIZE*i+2] = v1[2];
+        e_1[VECTORSIZE*i] = v2[0]; 
+        e_1[VECTORSIZE*i+1] = v2[1];
+        e_1[VECTORSIZE*i+2] = v2[2];
 
         // mean and gaussian curvatures
         H[i] = (PRECISION)(0.5*(k_0[i]+k_1[i]));  // 1/nm
