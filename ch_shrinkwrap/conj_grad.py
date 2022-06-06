@@ -961,6 +961,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
     _vertices = None
     _vertex_neighbors = None
     _prev_vertices = None
+    _on_deck_vertices = None
         
     @property
     def vertices(self):
@@ -972,8 +973,29 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         self.M = vertices.shape[0]
         self.dims = vertices.shape[1]
         self.shape = vertices.shape  # hack
+        # keep track of the previous vertices even if we reset them
+        # assumes we are passing vetices after a remesh
+        # history = (self._prev_vertices is not None) or (self._on_deck_vertices is not None)
+        # # resized = (self._on_deck_vertices.shape != self.M*self.dims) or (self._prev_vertices.shape != self.M*self.dims)
+        # if history:
+        #     # vertices resized since last time. note this only works for compact=False
+        #     # (see _triangle_mesh.pyx)
+        #     tmp_on_deck_vertices = self._on_deck_vertices.copy()
+        #     tmp_prev_vertices = self._prev_vertices.copy()
+
         self._on_deck_vertices = vertices.copy().ravel()
-        self._prev_vertices = vertices.copy().ravel()+0.001*self._vertex_normals.ravel()
+        self._prev_vertices = vertices.copy().ravel()+1e-6*self._vertex_normals.ravel()
+
+        # if history:
+        #     on_deck_idxs = np.flatnonzero((tmp_on_deck_vertices != -1) & (self._on_deck_vertices[:len(tmp_on_deck_vertices)] != -1))
+        #     print(self._on_deck_vertices[on_deck_idxs[:5]])
+        #     print(tmp_on_deck_vertices[on_deck_idxs[:5]])
+        #     self._on_deck_vertices[on_deck_idxs] = tmp_on_deck_vertices[on_deck_idxs]
+        #     prev_idxs = np.flatnonzero((tmp_prev_vertices != -1) & (self._prev_vertices[:len(tmp_prev_vertices)] != -1))
+        #     self._prev_vertices[prev_idxs] = tmp_prev_vertices[prev_idxs]
+        #     # invalid_mask = np.repeat(self._vertex_neighbors[:,0] == -1, self.dims)
+        #     # self._on_deck_vertices[invalid_mask] = -1
+        #     # self._prev_vertices[invalid_mask] = -1
         
     @property
     def vertex_normals(self):
@@ -1031,14 +1053,20 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
 
     def Afunc(self, f):
         d = np.zeros_like(f)
-        conj_grad_utils.c_shrinkwrap_lw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, 0, self.M, self.N)
+        conj_grad_utils.c_shrinkwrap_lw_func(np.ascontiguousarray(f), 
+                                             self.vertex_neighbors, 
+                                             self.f, d, self.dims, 
+                                             0, self.M, self.N)
         
         assert(not np.any(np.isnan(d)))
         return d
 
     def Ahfunc(self, f):
         d = np.zeros_like(f)
-        conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, 0, self.M, self.N)
+        conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), 
+                                              self.vertex_neighbors, 
+                                              self.f, d, self.dims, 
+                                              0, self.M, self.N)
         
         assert(not np.any(np.isnan(d)))
         return d
@@ -1058,10 +1086,10 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         return val
     
     def Lhfunc(self, f):
-        # idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
-        # val = f
-        # val[idxs] = 0
-        # assert(not np.any(np.isnan(f)))
+        idxs = np.repeat(self.vertex_neighbors[:,0]==-1,3)
+        val = f
+        val[idxs] = 0
+        assert(not np.any(np.isnan(f)))
         return f
     
     def Mfunc(self, f):
@@ -1096,8 +1124,8 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
     
     def __init__(self, vertices, vertex_normals, neighbors, *args, **kwargs):
         TikhonovConjugateGradient.__init__(self, *args, **kwargs)
-        self.Lfuncs = ["Mfunc"]
-        self.Lhfuncs = ["Mhfunc"]
+        self.Lfuncs = ["Lfunc", "Mfunc"]
+        self.Lhfuncs = ["Lhfunc", "Mhfunc"]
         self.vertex_neighbors, self.vertex_normals, self.vertices = neighbors, vertex_normals, vertices
         self._prev_loopcount = 1
         self._vor = scipy.spatial.Voronoi(self._vertices)
@@ -1108,7 +1136,7 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
             self._neg_vor_poles = clean_neg_voronoi_poles(kwargs.get('mesh'),self._neg_vor_poles)
         self._neg_vor_poles_tree = scipy.spatial.cKDTree(self._neg_vor_poles)
 
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
+    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=False):
         self._prev_loopcount = 1
         return TikhonovConjugateGradient.search(self, data, lams, defaults=defaults, 
                                                 num_iters=num_iters, weights=weights, 
@@ -1121,14 +1149,14 @@ class SkeletonConjGrad(TikhonovConjugateGradient):
         # f value
         return self.vertices.copy()
 
-    def _stop_cond(self):
-        # Stop if last three test statistcs are within eps of one another
-        # (and monotonically decreasing)
-        if len(self.tests) < 3:
-            return False
-        eps = 1e-6
-        a, b, c = self.tests[-3:]
-        return ((c < b) and (b < a) and (a < eps))
+    # def _stop_cond(self):
+    #     # Stop if last three test statistcs are within eps of one another
+    #     # (and monotonically decreasing)
+    #     if len(self.tests) < 3:
+    #         return False
+    #     eps = 1e-6
+    #     a, b, c = self.tests[-3:]
+    #     return ((c < b) and (b < a) and (a < eps))
     
     def _updated_loopcount(self):
         if self._prev_loopcount < self.loopcount:

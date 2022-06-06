@@ -47,23 +47,24 @@ class SkeletonizeMembrane(ModuleBase):
         mesh.remesh(target_edge_length=l)
 
         # Shrinkwrap membrane surface subject to curvature, velocity, and medial axis forces
-        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[#self.velocity_weight, 
+        mesh.shrink_wrap(pts, sigma, method='skeleton', lam=[self.velocity_weight, 
                        self.medial_axis_weight], area_variation_factor=self.area_variation_factor,
                        max_triangle_angle=self.max_triangle_angle)
 
         if not self.mesoskeleton:
-            # collapse_count = 1
-            # while (collapse_count > 0):
-            #     collapse_count = 0
-            #     for i in range(mesh._vertices.shape[0]):
-            #         if mesh._vertices['halfedge'][i] == -1:
-            #             continue
-            #         # collapse the shortest edge on this vertex
-            #         n = mesh._vertices['neighbors'][i]
-            #         l = mesh._halfedges['length'][n[n!=-1]]
-            #         j = np.argmin(l)
-            #         collapse_ret = mesh.edge_collapse(n[j])
-            #         collapse_count += collapse_ret
+            collapse_count = 1
+            while (collapse_count > 0):
+                print(collapse_count)
+                collapse_count = 0
+                for i in range(mesh._vertices.shape[0]):
+                    if mesh._vertices['halfedge'][i] == -1:
+                        continue
+                    # collapse the shortest edge on this vertex
+                    n = mesh._vertices['neighbors'][i]
+                    l = mesh._halfedges['length'][n[n!=-1]]
+                    j = np.argmin(l)
+                    collapse_ret = mesh.skeleton_edge_collapse(n[j])
+                    collapse_count += collapse_ret
 
             # At this point we should be left with a set of edges defining the skeleton
             namespace[self.output] = mesh

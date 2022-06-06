@@ -1730,7 +1730,7 @@ cdef class MembraneMesh(TriangleMesh):
             #     break
             last_area = area
 
-    def opt_skeleton(self, points, sigma, max_iter=10, lam=[0], target_edge_length=-1, **kwargs):
+    def opt_skeleton(self, points, sigma, max_iter=10, lam=[0,0], target_edge_length=-1, **kwargs):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad
 
         self.remesh_frequency = 1
