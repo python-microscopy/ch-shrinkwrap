@@ -45,3 +45,24 @@ def loc_error(shape, model=None, **kw):
         sigma = 10.0*np.ones(shape)
 
     return sigma
+
+def point_inside_triangle(pt, tri):
+    """
+    Checks if a ((x,y,z),) point is in an ((v0,v1,v2), (x, y, z)) triangle
+    using barycentric coordinates.
+    """
+    v0 = tri[2,:]-tri[0,:]
+    v1 = tri[1,:]-tri[0,:]
+    v2 = pt-tri[0,:]
+    
+    dot00 = (v0*v0).sum()
+    dot01 = (v0*v1).sum()
+    dot02 = (v0*v2).sum()
+    dot11 = (v1*v1).sum()
+    dot12 = (v1*v2).sum()
+    
+    inv_denom = 1 / (dot00*dot11 - dot01*dot01)
+    u = (dot11 * dot02 - dot01*dot12) * inv_denom
+    v = (dot00 * dot12 - dot01*dot02) * inv_denom
+    
+    return (u >= 0) and (v >= 0) and (u + v < 1)
