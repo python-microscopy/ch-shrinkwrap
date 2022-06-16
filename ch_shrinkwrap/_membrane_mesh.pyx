@@ -232,14 +232,14 @@ cdef class MembraneMesh(TriangleMesh):
 
     @property
     def E(self):
-        if self._E is None:
+        if not np.any(self._E):
             self._populate_curvature_grad()
             self._E[np.isnan(self._E)] = 0
         return self._E
 
     @property
     def pE(self):
-        if self._pE is None:
+        if not np.any(self._pE):
             self._populate_curvature_grad()
             self._pE[np.isnan(self._pE)] = 0
         return self._pE
@@ -289,6 +289,7 @@ cdef class MembraneMesh(TriangleMesh):
             self.curvature_grad_c()
         else:
             self.curvature_grad()
+        
         if self.smooth_curvature:    
             self._H = self.smooth_per_vertex_data(self._H)
             self._K = self.smooth_per_vertex_data(self._K)
