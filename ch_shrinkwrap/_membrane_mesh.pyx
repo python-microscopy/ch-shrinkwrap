@@ -173,6 +173,8 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public float search_rad
     cdef public float skip_prob
     cdef object _tree
+    cdef public object cg
+
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         TriangleMesh.__init__(self, vertices, faces, mesh, **kwargs)
 
@@ -206,7 +208,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
         
-        self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1']) #, 'puncture_candidates'])
+        self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc']) #, 'puncture_candidates'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -1681,7 +1683,11 @@ cdef class MembraneMesh(TriangleMesh):
         original_area = self.area()
         last_area, area = original_area, 0
 
-        for j in range(max_iter//rf):
+        self.cg = None
+
+        j = 0
+
+        while j < max_iter:
             n = self._halfedges['vertex'][self._vertices['neighbors']]
             n_idxs = self._vertices['neighbors'] == -1
             n[n_idxs] = -1
@@ -1692,12 +1698,15 @@ cdef class MembraneMesh(TriangleMesh):
             v1 = self._halfedges['vertex'][faces]
             v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
             faces_by_vertex = np.vstack([v0, v1, v2]).T
-            cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
-            vp = cg.search(points,lams=step_size*self.kc/2.0,num_iters=rf,
+            n_it = min(max_iter - j, rf)
+            vp = self.cg.search(points,lams=step_size*self.kc/2.0,num_iters=n_it,
                            weights=s)
+
+            j += n_it
 
             k = (self._vertices['halfedge'] != -1)
             self._vertices['position'][k] = vp[k]
@@ -1710,17 +1719,18 @@ cdef class MembraneMesh(TriangleMesh):
             self.vertex_neighbors
 
             # Delaunay remesh (hole punch)
-            if dr and ((((j+1)*rf) % self.delaunay_remesh_frequency) == 0):
+            if dr and ((j % self.delaunay_remesh_frequency) == 0):
                 self.delaunay_remesh(points, self.delaunay_eps)
                 break
 
             # Remesh
-            if r and ((((j+1)*rf) % self.remesh_frequency) == 0):
-                target_length = initial_length + m*(j+1)*rf
+            if r and ((j % self.remesh_frequency) == 0):
+                target_length = initial_length + m*(j+1)
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
-                                                                                str(self._mean_edge_length)))
+                                                                                str(self._mean_edge_length)))             
+                self.cg = None
 
             # Terminate if area change is minimal
             area = self.area()
@@ -1730,6 +1740,29 @@ cdef class MembraneMesh(TriangleMesh):
             #     print(f"CONVERGED in {j*rf}!!!")
             #     break
             last_area = area
+
+    # make some metrics from the optimiser accessible for visualisation
+    @property
+    def _S0(self):
+        """ Search direction to minimise data misfit"""
+        return self.cg.Ahfunc(self.cg.res).reshape(self.vertices.shape)
+
+    @property
+    def point_dis(self):
+        s0 = self._S0
+        return np.sqrt((s0*s0).sum(1))
+
+    @property
+    def rms_point_sc(self):
+        """ Search direction to minimise data misfit"""
+        rn = np.sqrt((self.cg.res*self.cg.res).reshape(self.cg.points.shape).sum(1))[:,None]*np.ones(3)[None,:].ravel()
+        rme = self.cg.Ahfunc(rn).reshape(self.vertices.shape)
+        return np.sqrt((rme*rme).sum(1))
+
+    #@property
+    #def _S1(self):
+    #    """ Search direction to minimise regularisation term (curvature)""""
+    #    raise NotImplementedError('this should mirror S1 in subseearch')
 
     def opt_skeleton(self, points, sigma, max_iter=10, lam=[0], target_edge_length=-1, **kwargs):
         from ch_shrinkwrap.conj_grad import SkeletonConjGrad

@@ -101,6 +101,8 @@ cdef class TikhonovConjugateGradient(object):
         self.f = self.fs.ravel()
 
         # Assume defaults are 0 for each regularization term if we don't pass any explicitly
+        # TODO (DB) - I can't see a rationale for having more than one default solution - it
+        # really doesn't make sense ... remove extra defaults? 
         if defaults is None:
             defaults = np.vstack([self.default_guess(0) for x in self.Lfuncs]).T
 
