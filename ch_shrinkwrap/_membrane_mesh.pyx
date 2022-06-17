@@ -1749,12 +1749,24 @@ cdef class MembraneMesh(TriangleMesh):
 
     @property
     def point_dis(self):
+        """
+        As we can't plot the vectorial search direction, this is the magnitude of it
+
+        TODO - make the naming better
+        """
         s0 = self._S0
         return np.sqrt((s0*s0).sum(1))
 
     @property
     def rms_point_sc(self):
-        """ Search direction to minimise data misfit"""
+        """
+        An attempt at characterising the how much point-error lies beneath a given vertex, and avoiding
+        situations where points pulling in opposite direction cancel by taking their magnitudes first.
+
+        In practice seems to do a better job of measuring Ahfunc (ie how strongly a given vertex is
+        constrained by the membrane). Suspect we need to do this without some of the normalisations we
+        currently have.
+        """
         rn = np.sqrt((self.cg.res*self.cg.res).reshape(self.cg.points.shape).sum(1))[:,None]*np.ones(3)[None,:].ravel()
         rme = self.cg.Ahfunc(rn).reshape(self.vertices.shape)
         return np.sqrt((rme*rme).sum(1))
