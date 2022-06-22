@@ -1809,6 +1809,17 @@ cdef class MembraneMesh(TriangleMesh):
             used_components[i] = True
 
     def cut_and_punch(self, pts, eps=10.0):
+        """
+        Create holes in the mesh if there are opposing faces with no points (pts) within eps of 
+        the prism formed between them.
+
+        Parameters
+        ----------
+        pts : np.array
+            (N, 3) array of point locations
+        eps : float
+            Distance to closest point
+        """
         # Find all mesh faces that have no points within eps of their face center
         hc = self.hole_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
 
@@ -2092,8 +2103,9 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Delaunay remesh (hole punch)
             if dr and ((j % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points, self.delaunay_eps)
-                break
+                # self.delaunay_remesh(points, self.delaunay_eps)
+                self.cut_and_punch(points, self.delaunay_eps)
+                # break
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
