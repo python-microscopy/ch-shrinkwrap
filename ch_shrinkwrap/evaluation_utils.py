@@ -29,6 +29,7 @@ import numpy as np
 import itertools
 import yaml
 import time
+from functools import partial
 
 def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
     """
@@ -685,20 +686,20 @@ def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, se
                         mesh.remesh_frequency = re
                         mesh.delaunay_remesh_frequency = 0
 
-                        try:
-                            start = time.time()
-                            mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                            stop = time.time()
-                            duration = stop-start
-                            mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
-                            'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
-                            if save_folder is not None:
-                                wrap_fp = os.path.join(save_folder,'_'.join(f"sw_mesh_{time.time():.1f}".split('.'))+".stl")
-                                mesh.to_stl(wrap_fp)
-                                mmd['filename'] = wrap_fp
-                            md.append({'mesh': mmd})
-                        except:
-                            failed_count += 1
+                        # try:
+                        start = time.time()
+                        mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
+                        stop = time.time()
+                        duration = stop-start
+                        mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
+                        'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
+                        if save_folder is not None:
+                            wrap_fp = os.path.join(save_folder,'_'.join(f"sw_mesh_{time.time():.1f}".split('.'))+".stl")
+                            mesh.to_stl(wrap_fp)
+                            mmd['filename'] = wrap_fp
+                        md.append({'mesh': mmd})
+                        # except:
+                        #     failed_count += 1
     print(f'{failed_count} shrinkwrapped meshes failed.')
     return md
 
@@ -899,19 +900,15 @@ def test_structure(yaml_file, multiprocessing=False):
                 for td, pp in zip(threshold_densities, point_densities):
                     params.append((pp, td, psf_width, mpc, no))
 
-    # Hack to get around passing a copy of test_d and test_shape in a tuple every time
-    def evaluate_structure2(pp, td, psf_width, mpc, no):
-        return evaluate_structure(test_d, test_shape, test_shape, pp, td, psf_width, mpc, no)
-
     if multiprocessing:
         import multiprocessing as mp
 
-        pool = mp.Pool()
-        pool.starmap(evaluate_structure2, params)
+        with mp.Pool() as pool:
+            pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
 
     else:
         for p in params:
-            yaml_out = evaluate_structure2(*p)
+            yaml_out = partial(evaluate_structure, test_d, test_shape)(*p)
 
     return yaml_out
 
