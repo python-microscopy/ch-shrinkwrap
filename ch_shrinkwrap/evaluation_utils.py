@@ -538,7 +538,8 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         import os
         _, ext = os.path.splitext(save_fn)
         if ext == '.txt':
-            np.savetxt(save_fn, np.vstack([points.T,s]).T, header="x y z sigma")
+            ds = np.vstack([points.T,s]).T
+            np.savetxt(save_fn, ds, header="x y z sigma")
         elif ext == '.hdf':
             from PYME.IO.tabular import ColumnSource
             ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], sigma_z=sigma[:,2])
@@ -547,7 +548,7 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
             raise UserWarning('File type unrecognized. File was not saved.')
         md['filename'] = save_fn
         
-    return np.vstack([points.T,s]).T, md
+    return ds, md
 
 def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_photon_count=20.0,
                    max_points_per_cluster=10, max_points=None):
@@ -810,14 +811,14 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
     no : float
         Fraction of localizations which are noise
     """
-    start_time = time.strftime('%Y%d%m_%HH%M')
+    # start_time = time.strftime('%Y%d%m_%HH%M')
 
     # generate and save the points
     points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
     while os.path.exists(points_fp):
         points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
         time.sleep(0.1)
-    _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
+    points_ds, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
                                                     p=pp, 
                                                     psf_width=psf_width, 
                                                     mean_photon_count=mpc,
@@ -825,12 +826,16 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                                                     noise_fraction=no, save_fn=points_fp)
 
     # reload the generated points as a data source
-    points_ds = HDFSource(points_fp, 'Data')
+    # points_ds = HDFSource(points_fp, 'Data')
     
     sw_md = []
     iso_md = []
     for spn in test_d['shrinkwrapping']['samplespernode']:
         # Generate an isosurface, where we set the initial density based on the ground truth density
+        iso_save_fp = os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl")
+        while os.path.exists(iso_save_fp):
+            iso_save_fp = os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl")
+            time.sleep(0.1)
         initial_mesh, i_md = generate_coarse_isosurface(points_ds,
                                                         samples_per_node=spn, 
                                                         threshold_density=td,  # test_d['shrinkwrapping']['density'][i], #test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
@@ -838,7 +843,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                                                         repair=False, 
                                                         remesh=True, 
                                                         keep_largest=True, 
-                                                        save_fn=os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl"))
+                                                        save_fn=iso_save_fp)
         
         # Compute shrinkwrapping isosurfaces
         s_md = test_shrinkwrap(initial_mesh, points_ds, test_d['shrinkwrapping']['max_iters'], test_d['shrinkwrapping']['step_size'], 
@@ -855,7 +860,11 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                     test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
     
     # Save the results
-    yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}.yaml')
+    start_time = time.time()
+    yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'.yaml')
+    while os.path.exists(yaml_out):
+        yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'.yaml')
+        time.sleep(0.1)
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
     
@@ -865,7 +874,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                             bg_photon_count=test_d['system']['bg_photon_count'])
     
     # Save the results
-    yaml_out = os.path.join(test_d['save_fp'], f'run_{start_time}_metrics.yaml')
+    yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'_metrics.yaml')
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *res], f)
 
@@ -913,7 +922,6 @@ def test_structure(yaml_file, multiprocessing=False):
 
     else:
         for p in params:
-            print(p)
             yaml_out = partial(evaluate_structure, test_d, test_shape)(*p)
 
         return yaml_out
