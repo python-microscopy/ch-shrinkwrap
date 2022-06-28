@@ -814,6 +814,9 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
 
     # generate and save the points
     points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
+    while os.path.exists(points_fp):
+        points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
+        time.sleep(0.1)
     _, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
                                                     p=pp, 
                                                     psf_width=psf_width, 
@@ -906,11 +909,14 @@ def test_structure(yaml_file, multiprocessing=False):
         with mp.Pool() as pool:
             pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
 
+        return ""
+
     else:
         for p in params:
+            print(p)
             yaml_out = partial(evaluate_structure, test_d, test_shape)(*p)
 
-    return yaml_out
+        return yaml_out
 
 if __name__ == '__main__':
     import argparse
