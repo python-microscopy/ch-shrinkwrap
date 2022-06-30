@@ -2046,7 +2046,13 @@ cdef class MembraneMesh(TriangleMesh):
                 final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
             else:
                 final_length = kwargs.get('minimum_edge_length')
-            m = (final_length - initial_length)/max_iter
+            
+            # We want face area, rather than edge length to decrease linearly as iterations proceed
+            # this means we should be linear in edge length squared
+            init_length_2 = initial_length*initial_length
+            final_length_2 = final_length*final_length
+
+            m = (final_length_2 - initial_length_2)/max_iter
 
 
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
@@ -2109,7 +2115,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
-                target_length = initial_length + m*(j+1)
+                target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
