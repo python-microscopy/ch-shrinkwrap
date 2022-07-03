@@ -2049,7 +2049,7 @@ cdef class MembraneMesh(TriangleMesh):
             
             # We want face area, rather than edge length to decrease linearly as iterations proceed
             # this means we should be linear in edge length squared
-            init_length_2 = initial_length*initial_length
+            initial_length_2 = initial_length*initial_length
             final_length_2 = final_length*final_length
 
             m = (final_length_2 - initial_length_2)/max_iter
