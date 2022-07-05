@@ -208,7 +208,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
         
-        self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc']) #, 'puncture_candidates'])
+        self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc', 'point_influence']) #, 'puncture_candidates'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -1669,7 +1669,7 @@ cdef class MembraneMesh(TriangleMesh):
             init_length_2 = initial_length*initial_length
             final_length_2 = final_length*final_length
 
-            m = (final_length_2 - initial_length_2)/max_iter
+            m = (final_length_2 - init_length_2)/max_iter
 
 
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
@@ -1731,7 +1731,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
-                target_length = np.sqrt(initial_length_2 + m*(j+1))
+                target_length = np.sqrt(init_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
@@ -1776,6 +1776,17 @@ cdef class MembraneMesh(TriangleMesh):
         rn = np.sqrt((self.cg.res*self.cg.res).reshape(self.cg.points.shape).sum(1))[:,None]*np.ones(3)[None,:].ravel()
         rme = self.cg.Ahfunc(rn).reshape(self.vertices.shape)
         return np.sqrt((rme*rme).sum(1))
+
+    @property
+    def point_influence(self):
+        """
+        An attempt to measure how constrained a given vertex is by the points
+
+        (Essentially just Ahfunc(I))
+        """
+
+        s = self.cg.Ahfunc(np.ones_like(self.cg.res)).reshape(self.vertices.shape)
+        return np.sqrt((s*s).sum(1))
 
     #@property
     #def _S1(self):
@@ -1836,7 +1847,7 @@ cdef class MembraneMesh(TriangleMesh):
                 break
             last_area = area
         
-    def shrink_wrap(self, points, sigma, method='conjugate_gradient', max_iter=None, **kwargs):
+    def shrink_wrap(self, points=None, sigma=None, method='conjugate_gradient', max_iter=None, **kwargs):
 
         if method not in DESCENT_METHODS:
             print('Unknown gradient descent method. Using {}.'.format(DEFAULT_DESCENT_METHOD))
@@ -1844,6 +1855,13 @@ cdef class MembraneMesh(TriangleMesh):
 
         if max_iter is None:
             max_iter = self.max_iter
+        
+        # save points and sigmas so we can call again to continue
+        if points is None:
+            points = self._points
+
+        if sigma is None:
+            sigma = self._sigma
         
         opts = dict(points=points,
                     sigma=sigma, 
@@ -1853,6 +1871,11 @@ cdef class MembraneMesh(TriangleMesh):
                     beta_2=self.beta_2,
                     eps=self.eps,
                     **kwargs)
+
+        #opts.update(kwargs)
+
+        self._points = points
+        self._sigma = sigma
 
         return getattr(self, 'opt_{}'.format(method))(**opts)
 
