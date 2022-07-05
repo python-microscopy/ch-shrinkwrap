@@ -646,6 +646,16 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
 
     // the last two rows of Qvi are an orthonormal
     // basis of the tangent space, but not the eigenvectors
+    // Here we treat QviT as Qvi, because, in ESTIMATING THE 
+    // TENSOR OF CURVATURE OF A SURFACE FROM A POLYHEDRAL 
+    // APPROXIMATION by Gabriel Taubin from Proceedings of IEEE 
+    // International Conference on Computer Vision, June 1995,
+    // Qvi's last two columns are orthonormal
+    //
+    // TODO: There is a good chance our Mvi is also transposed,
+    //       as compared to the paper, so we may actually want
+    //       to swap Qvi and QviT on the next three lines. All
+    //       other use of Qvi/QviT is OK.
     transpose(Qvi, QviT, 3, 3);
     matmul(Qvi, Mvi, QviTMvi, 3, 3, 3);
     matmul(QviTMvi, QviT, QviTMviQvi, 3, 3, 3);
