@@ -610,6 +610,9 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
     PRECISION Wvi[3];
     PRECISION Nvi_sub_e1_norm, Nvi_add_e1_norm;
     double Qvi[VECTORSIZE*VECTORSIZE];
+    double QviT[VECTORSIZE*VECTORSIZE];
+    double QviTMvi[VECTORSIZE*VECTORSIZE];
+    double QviTMviQvi[VECTORSIZE*VECTORSIZE];
     double theta, cos_theta, sin_theta, t;
 
     // first coordinate vector
@@ -628,26 +631,60 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
     // construct a Householder matrix
     orthogonal_projection_matrix3(Wvi, Qvi, 2.0);
 
-    // the last two columns of Qvi are an orthonormal
+    // printf("=====Nvi\n");
+    // printf("%.1f %1.f %1.f\n", Nvi[0], Nvi[1], Nvi[2]);
+
+    // printf("=====Wvi\n");
+    // printf("%.1f %1.f %1.f\n", Wvi[0], Wvi[1], Wvi[2]);
+
+    // printf("=====Qvi\n");
+    // printf("%.1f %1.f %1.f\n", Qvi[0], Qvi[1], Qvi[2]);
+    // printf("%.1f %1.f %1.f\n", Qvi[3], Qvi[4], Qvi[5]);
+    // printf("%.1f %1.f %1.f\n", Qvi[6], Qvi[7], Qvi[8]);
+
+    // printf("==================\n");
+
+    // the last two rows of Qvi are an orthonormal
     // basis of the tangent space, but not the eigenvectors
+    // Here we treat QviT as Qvi, because, in ESTIMATING THE 
+    // TENSOR OF CURVATURE OF A SURFACE FROM A POLYHEDRAL 
+    // APPROXIMATION by Gabriel Taubin from Proceedings of IEEE 
+    // International Conference on Computer Vision, June 1995,
+    // Qvi's last two columns are orthonormal
+    transpose(Qvi, QviT, 3, 3);
+    matmul(Qvi, Mvi, QviTMvi, 3, 3, 3);
+    matmul(QviTMvi, QviT, QviTMviQvi, 3, 3, 3);
+
+    // printf("=====Mvi\n");
+    // printf("%4.3e %4.3e %4.3e\n", Mvi[0], Mvi[1], Mvi[2]);
+    // printf("%4.3e %4.3e %4.3e\n", Mvi[3], Mvi[4], Mvi[5]);
+    // printf("%4.3e %4.3e %4.3e\n", Mvi[6], Mvi[7], Mvi[8]);
+
+    // printf("=====QviTMviQvi\n");
+    // printf("%4.3e %4.3e %4.3e\n", QviTMviQvi[0], QviTMviQvi[1], QviTMviQvi[2]);
+    // printf("%4.3e %4.3e %4.3e\n", QviTMviQvi[3], QviTMviQvi[4], QviTMviQvi[5]);
+    // printf("%4.3e %4.3e %4.3e\n", QviTMviQvi[6], QviTMviQvi[7], QviTMviQvi[8]);
+
+    // printf("==================\n");
 
     // compute the Givens rotation of Qvi.T*Mvi*Qvi
-    theta = safe_divide((Mvi[8]-Mvi[4]),(2.0*Mvi[5]));
+    // (we only need to consider the 2x2 non-zero minor)
+    theta = safe_divide((QviTMviQvi[8]-QviTMviQvi[4]),(2.0*QviTMviQvi[5]));
     // the eigenvalues are on the diagonal
     t = SIGN(theta)/(fabs(theta)+sqrt(theta*theta+1));
-    *l1 = Mvi[4] - t*Mvi[5];
-    *l2 = Mvi[4] + t*Mvi[5];
+    *l1 = QviTMviQvi[4] - t*QviTMviQvi[5];
+    *l2 = QviTMviQvi[4] + t*QviTMviQvi[5];
 
     // the eigenvectors now are 
     cos_theta = cos(theta);
     sin_theta = sin(theta);
-    v1[0] = cos_theta*Qvi[1]-sin_theta*Qvi[2];
-    v1[1] = cos_theta*Qvi[4]-sin_theta*Qvi[5];
-    v1[2] = cos_theta*Qvi[7]-sin_theta*Qvi[8];
+    v1[0] = cos_theta*QviT[1]-sin_theta*QviT[2];
+    v1[1] = cos_theta*QviT[4]-sin_theta*QviT[5];
+    v1[2] = cos_theta*QviT[7]-sin_theta*QviT[8];
 
-    v2[0] = sin_theta*Qvi[1]+cos_theta*Qvi[2];
-    v2[1] = sin_theta*Qvi[4]+cos_theta*Qvi[5];
-    v2[2] = sin_theta*Qvi[7]+cos_theta*Qvi[8];
+    v2[0] = sin_theta*QviT[1]+cos_theta*QviT[2];
+    v2[1] = sin_theta*QviT[4]+cos_theta*QviT[5];
+    v2[2] = sin_theta*QviT[7]+cos_theta*QviT[8];
 
 }
 

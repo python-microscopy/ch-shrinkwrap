@@ -1457,6 +1457,389 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
 
+    def _punch_hole(self, np.int32_t face0, np.int32_t face1):
+        """
+        Create a hole in the mesh by connecting face0 and face1
+        with 6 additional triangles to form a triangular prism,
+        and then deleting face0 and face1.
+
+        Parameters
+        ----------
+        face0 : np.int32_t
+            Index of face
+        face1 : np.int32_t
+            Index of opposing face
+        """
+        cdef int n_edge_idx, n_face_idx
+
+        # Allocate 6 new faces, 18 new edges, no new vertices
+        n_faces = self.new_faces(6)
+        n_face_idx = 0
+        n_edges = self.new_edges(18)
+        n_edge_idx = 0
+
+        # Construct boxes in between each pair of edges
+        # Each new face has one edge paired with a twin of face0 or face1, no repeats
+        self._insert_square(self._cfaces[face0].halfedge, 
+                            self._cfaces[face1].halfedge,  
+                            <np.int32_t *> np.PyArray_DATA(n_edges), 
+                            <np.int32_t *> np.PyArray_DATA(n_faces), 
+                            n_edge_idx, n_face_idx)
+
+        n_face_idx += 2
+        n_edge_idx += 6
+        
+        self._insert_square(self._chalfedges[self._cfaces[face0].halfedge].prev, 
+                            self._chalfedges[self._cfaces[face1].halfedge].next,  
+                            <np.int32_t *> np.PyArray_DATA(n_edges), 
+                            <np.int32_t *> np.PyArray_DATA(n_faces), 
+                            n_edge_idx, n_face_idx)
+
+        n_face_idx += 2
+        n_edge_idx += 6
+
+        self._insert_square(self._chalfedges[self._cfaces[face0].halfedge].next, 
+                            self._chalfedges[self._cfaces[face1].halfedge].prev,  
+                            <np.int32_t *> np.PyArray_DATA(n_edges), 
+                            <np.int32_t *> np.PyArray_DATA(n_faces), 
+                            n_edge_idx, n_face_idx)
+
+        # Stitch the 3 squares
+        self._chalfedges[n_edges[2]].twin = n_edges[11]
+        self._chalfedges[n_edges[11]].twin = n_edges[2]
+
+        self._chalfedges[n_edges[5]].twin = n_edges[14]
+        self._chalfedges[n_edges[14]].twin = n_edges[5]
+
+        self._chalfedges[n_edges[8]].twin = n_edges[17]
+        self._chalfedges[n_edges[17]].twin = n_edges[8]
+
+        # Eliminate the original faces
+        self._face_delete(face0)
+        self._face_delete(face1)
+
+        # Make sure we re-calculate
+        self._clear_flags()
+        self.face_normals
+        self.vertex_neighbors
+
+    cdef _insert_square(self, np.int32_t edge0, np.int32_t edge1, 
+                    np.int32_t * new_edges,
+                    np.int32_t * new_faces,
+                    int n_edge_idx,
+                    int n_face_idx):
+        """
+        Insert a free-floating 2D square in between two mesh edges.
+        """
+
+        # Set up the first three edges as one face
+        self._cfaces[new_faces[n_face_idx]].halfedge = new_edges[n_edge_idx]
+        
+        self._chalfedges[new_edges[n_edge_idx]].vertex = self._chalfedges[edge0].vertex
+        self._chalfedges[new_edges[n_edge_idx]].face = new_faces[n_face_idx]
+        if self._chalfedges[edge0].twin != -1:
+            self._chalfedges[new_edges[n_edge_idx]].twin = self._chalfedges[edge0].twin
+            self._chalfedges[self._chalfedges[edge0].twin].twin = new_edges[n_edge_idx]
+        self._chalfedges[new_edges[n_edge_idx]].next = new_edges[n_edge_idx+1]
+        self._chalfedges[new_edges[n_edge_idx]].prev = new_edges[n_edge_idx+2]
+
+        self._chalfedges[new_edges[n_edge_idx+1]].vertex = self._chalfedges[edge1].vertex
+        self._chalfedges[new_edges[n_edge_idx+1]].face = new_faces[n_face_idx]
+        self._chalfedges[new_edges[n_edge_idx+1]].twin = new_edges[n_edge_idx+4]
+        self._chalfedges[new_edges[n_edge_idx+1]].next = new_edges[n_edge_idx+2]
+        self._chalfedges[new_edges[n_edge_idx+1]].prev = new_edges[n_edge_idx]
+
+        self._chalfedges[new_edges[n_edge_idx+2]].vertex = self._chalfedges[self._chalfedges[edge0].prev].vertex
+        self._chalfedges[new_edges[n_edge_idx+2]].face = new_faces[n_face_idx]
+        self._chalfedges[new_edges[n_edge_idx+2]].twin = -1
+        self._chalfedges[new_edges[n_edge_idx+2]].next = new_edges[n_edge_idx]
+        self._chalfedges[new_edges[n_edge_idx+2]].prev = new_edges[n_edge_idx+1]
+
+        # And next 3...
+        self._cfaces[new_faces[n_face_idx+1]].halfedge = new_edges[n_edge_idx+3]
+
+        self._chalfedges[new_edges[n_edge_idx+3]].vertex = self._chalfedges[edge1].vertex
+        self._chalfedges[new_edges[n_edge_idx+3]].face = new_faces[n_face_idx+1]
+        if self._chalfedges[edge1].twin != -1:
+            self._chalfedges[new_edges[n_edge_idx+3]].twin = self._chalfedges[edge1].twin
+            self._chalfedges[self._chalfedges[edge1].twin].twin = new_edges[n_edge_idx+3]
+        self._chalfedges[new_edges[n_edge_idx+3]].next = new_edges[n_edge_idx+4]
+        self._chalfedges[new_edges[n_edge_idx+3]].prev = new_edges[n_edge_idx+5]
+
+        self._chalfedges[new_edges[n_edge_idx+4]].vertex = self._chalfedges[edge0].vertex
+        self._chalfedges[new_edges[n_edge_idx+4]].face = new_faces[n_face_idx+1]
+        self._chalfedges[new_edges[n_edge_idx+4]].twin = new_edges[n_edge_idx+1]
+        self._chalfedges[new_edges[n_edge_idx+4]].next = new_edges[n_edge_idx+5]
+        self._chalfedges[new_edges[n_edge_idx+4]].prev = new_edges[n_edge_idx+3]
+
+        self._chalfedges[new_edges[n_edge_idx+5]].vertex = self._chalfedges[self._chalfedges[edge1].prev].vertex
+        self._chalfedges[new_edges[n_edge_idx+5]].face = new_faces[n_face_idx+1]
+        self._chalfedges[new_edges[n_edge_idx+5]].twin = -1
+        self._chalfedges[new_edges[n_edge_idx+5]].next = new_edges[n_edge_idx+3]
+        self._chalfedges[new_edges[n_edge_idx+5]].prev = new_edges[n_edge_idx+4]
+
+        # New halfedges for each of the vertices
+        self._cvertices[self._chalfedges[edge0].vertex].halfedge = new_edges[n_edge_idx+1]
+        self._cvertices[self._chalfedges[edge1].vertex].halfedge = new_edges[n_edge_idx+4]
+        self._cvertices[self._chalfedges[self._chalfedges[edge0].prev].vertex].halfedge = new_edges[n_edge_idx]
+        self._cvertices[self._chalfedges[self._chalfedges[edge1].prev].vertex].halfedge = new_edges[n_edge_idx+3]
+
+    def hole_candidate_faces(self, points, eps=10.0):
+        """
+        Find all mesh faces that have no points within a distance eps of their center. 
+        Return the index of these faces.
+        """
+        tree = scipy.spatial.cKDTree(points)
+        dist, _ = tree.query(self._vertices['position'][self.faces].mean(1))
+        
+        inds = np.flatnonzero(self._faces['halfedge'] != -1)
+
+        return inds[dist>eps] # Optionally, (mesh._mean_edge_length + eps)], but this seems to work worse
+
+    def pair_candidate_faces(self, candidates):
+        """
+        For each face, find the opposing face with the nearest centroid that has a
+        normal in the opposite direction of this face and form a pair. Note this pair
+        does not need to be unique.
+        """
+        candidate_faces = self._faces[candidates]
+        candidate_halfedges = candidate_faces['halfedge']
+        
+        v0 = self._halfedges['vertex'][self._halfedges['prev'][candidate_halfedges]]
+        v1 = self._halfedges['vertex'][candidate_halfedges]
+        v2 = self._halfedges['vertex'][self._halfedges['next'][candidate_halfedges]]
+        
+        candidate_vertices = np.vstack([v0,v1,v2]).T
+        candidate_positions = self._vertices['position'][candidate_vertices] # (N, (v0,v1,v2), (x,y,z))
+        candidate_centroids = candidate_positions.mean(1)
+        
+        candidate_normals = candidate_faces['normal']  # (N, 3)
+        
+        # Compute the shift orthogonal to the mean normal plane between each of the faces
+        candidate_shift = candidate_centroids[None,...] - candidate_centroids[:,None,:]  # (N, N, 3)
+        n_hat = 0.5*(candidate_normals[None,...] + candidate_normals[:,None,:])  # (N, N, 3)
+        shift = candidate_shift - n_hat*(((n_hat*candidate_shift).sum(2))[...,None])
+        abs_shift = (shift*shift).sum(2)
+        
+        # Compute the dot product between all of the normals
+        nd = (candidate_normals[None,...]*candidate_normals[:,None,:]).sum(2)  # (N, N)
+        
+        # For each face, find the opposing face with the nearest centroid that has a
+        # normal in the opposite direction of this face
+        factor = -0.5
+        ndlt = nd<factor  # TODO: stricter requirement on "opposing face" angle?
+        min_mask = np.any(ndlt,axis=1)  
+        min_inds = np.argmax(-abs_shift*ndlt-1e6*(nd>=factor),axis=1)
+        pairs = np.vstack([np.flatnonzero(min_mask), min_inds[min_mask]])
+        
+        return candidates[pairs[0,:]], pairs[1,:]
+
+    def empty_prism_candidate_faces(self, points, candidates, candidate_pair, eps=10.0):
+        """
+        For each candidate pair, check that there are no points in between the candidate triangles.
+        This expects candidate, candidate_pair output from pair_candidate_faces(), where the
+        candidates are face indices in mesh, and candidate_pair is an index into candidates,
+        indicating the face paired with candidate i for i \in range(len(candidates)).
+        """
+        tree = scipy.spatial.cKDTree(points)
+        kept_cands = np.zeros_like(candidates, dtype=bool)
+        disallowed = np.zeros_like(candidates, dtype=bool)
+        
+        # face centers
+        he = self._faces['halfedge'][candidates]
+        v0 = self._halfedges['vertex'][self._halfedges['prev'][he]]
+        v1 = self._halfedges['vertex'][he]
+        v2 = self._halfedges['vertex'][self._halfedges['next'][he]]
+        fv = np.vstack([v0,v1,v2]).T
+        fv_pos = self._vertices['position'][fv]
+        face_centers = fv_pos.mean(1)
+        
+        # half-planes
+        n = self._faces['normal'][candidates]
+        v01 = fv_pos[:,0]-fv_pos[:,1]
+        v12 = fv_pos[:,1]-fv_pos[:,2]
+        v20 = fv_pos[:,2]-fv_pos[:,0]
+        hp0 = np.cross(n, v01, axis=1)/np.linalg.norm(v01,axis=1)[:,None]
+        hp1 = np.cross(n, v12, axis=1)/np.linalg.norm(v12,axis=1)[:,None]
+        hp2 = np.cross(n, v20, axis=1)/np.linalg.norm(v20,axis=1)[:,None]
+        
+        for i, ci in enumerate(candidates):
+            # Find the points within ||t_i-t_j||+eps of t_i or t_j, where t_{i,j} are pair triangle centroids
+            j = candidate_pair[i]
+            
+            if kept_cands[i] or disallowed[i] or kept_cands[j] or disallowed[j]:
+                # This candidate is already paired (disallow repeats)
+                continue
+            
+            fci, fcj = face_centers[i], face_centers[j]
+            r = np.sqrt(((fci-fcj)*(fci-fcj)).sum())+eps
+            p = tree.query_ball_point([fci,fcj], r)
+            # p = np.hstack([p[0],p[1]]).ravel()
+            
+            p = np.array([y for x in p for y in x if len(x) > 0])
+
+            if len(p) == 0:
+                # There are no points within r of either of these faces
+                kept_cands[i] |= False
+                # disallowed[candidates == candidates[j]] |= True
+                continue
+
+            # Check if any of these are within +eps of half planes of both triangles
+            # A triangle half-plane is the plane spanned by a triangle edge and the triangle normal
+            below_hp0_ci = (hp0[i][None,:]*(points[p]-fv_pos[i,1][None,:])).sum(1) < eps
+            below_hp1_ci = (hp1[i][None,:]*(points[p]-fv_pos[i,2][None,:])).sum(1) < eps
+            below_hp2_ci = (hp2[i][None,:]*(points[p]-fv_pos[i,0][None,:])).sum(1) < eps
+            
+            below_hp0_cj = (hp0[j][None,:]*(points[p]-fv_pos[j,1][None,:])).sum(1) < eps
+            below_hp1_cj = (hp1[j][None,:]*(points[p]-fv_pos[j,2][None,:])).sum(1) < eps
+            below_hp2_cj = (hp2[j][None,:]*(points[p]-fv_pos[j,0][None,:])).sum(1) < eps
+            
+            # If no points are in between these triangles, keep them
+            inside = np.sum(below_hp0_ci & below_hp1_ci & below_hp2_ci \
+                            & below_hp0_cj & below_hp1_cj & below_hp2_cj) == 0
+            
+            kept_cands[i] |= inside
+            disallowed[candidates == candidates[j]] |= inside
+            
+        c = candidates[kept_cands]
+        cp = candidates[candidate_pair[kept_cands]]
+        
+        return np.hstack([c,cp]), np.hstack([range(len(c),2*len(c)), range(len(c))])
+
+    def connect_candidates(self, candidates):
+        """
+        Compute the connected component labeling of the kept faces 
+        such that faces that share edges are considered connected.
+        """
+        # mesh._components_valid = 0
+        self._faces['component'][:] = 1e6  # -1 out the componenets
+        
+        # Give each face its own component
+        self._faces['component'][candidates] = range(len(candidates))
+        
+        for c in candidates:
+            # Assign each face the minimum component of it and the face of its twin edge
+            e0 = self._faces['halfedge'][c]
+            e1 = self._halfedges['next'][e0]
+            e2 = self._halfedges['prev'][e0]
+        
+            c0, c1, c2 = 1e6, 1e6, 1e6
+            if self._halfedges['twin'][e0] != -1:
+                c0 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]]
+            if self._halfedges['twin'][e1] != -1:
+                c1 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]]
+            if self._halfedges['twin'][e2] != -1:
+                c2 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]]
+
+            new_component = np.min([self._faces['component'][c], c0, c1, c2])
+            
+            self._faces['component'][c] = new_component
+            if self._halfedges['face'][self._halfedges['twin'][e0]] in candidates:
+                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]] = new_component
+            if self._halfedges['face'][self._halfedges['twin'][e1]] in candidates:
+                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]] = new_component
+            if self._halfedges['face'][self._halfedges['twin'][e2]] in candidates:
+                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]] = new_component
+            
+        return self._faces['component'][candidates]
+
+    def connected_candidates_euler_characteristic(self, candidates, component):
+        unique_components = np.unique(component)
+        chi = np.zeros_like(unique_components)
+        for i, c in enumerate(unique_components):
+            he = self._faces['halfedge'][candidates[component==c]]
+            v0 = self._halfedges['vertex'][self._halfedges['prev'][he]]
+            v1 = self._halfedges['vertex'][he]
+            v2 = self._halfedges['vertex'][self._halfedges['next'][he]]
+            fv = np.hstack([v0,v1,v2])
+            
+            F = len(he)
+            V = len(set(fv.ravel()))
+            
+            # grab all edges
+            edges = np.vstack([fv, np.hstack([v1,v2,v0])]).T
+
+            # Sort lo->hi
+            sorted_edges = np.sort(edges, axis=1)
+
+            # find the number of unique elements
+            E = len(np.unique(sorted_edges,axis=0))
+            
+            chi[i] = V - E + F
+        
+        return chi
+
+    def update_topology(self, candidates, candidate_pairs, component, euler):
+        unique_components = np.unique(component)
+        used_components = np.zeros_like(unique_components, dtype=bool)
+        for i, c in enumerate(unique_components):
+            if used_components[i]:
+                # We've already used this in a different hole punch
+                continue
+            component_idxs = component==c
+            component_cands = candidates[component_idxs]
+            if euler[i] == 0:
+                # TODO: Currently disabled due to problems with repair() after _face_delete
+
+                # This is topologically a cylinder
+                
+                # 1. Delete all faces in this component
+                # for face in component_cands:
+                #     self._face_delete(face)
+                    
+                # 2. Patch holes in the resulting boundaries
+                # self.repair()
+                pass
+                
+            elif euler[i] == 1:
+                # This is topologically a plane. If there is a pair in another
+                # component, punch a hole and remove both components from consideration.
+                component_cand_pairs = candidate_pairs[component_idxs]
+                for j, pair_idx in enumerate(component_cand_pairs):
+                    pair_component_idx = np.flatnonzero(unique_components==component[pair_idx])
+                    assert(len(pair_component_idx) == 1)
+                    pair_component_idx = [0]
+                    if (component[pair_idx] != c) and (used_components[pair_component_idx] != True):
+                        self._punch_hole(component_cands[j], candidates[pair_idx])
+                        used_components[pair_component_idx] = True
+                        break
+            else:
+                print(f"Component {c} has Euler characteristic {euler[i]}. I don't know what to do with this.")
+            # Mark this component as used
+            used_components[i] = True
+
+    def cut_and_punch(self, pts, eps=10.0):
+        """
+        Create holes in the mesh if there are opposing faces with no points (pts) within eps of 
+        the prism formed between them.
+
+        Parameters
+        ----------
+        pts : np.array
+            (N, 3) array of point locations
+        eps : float
+            Distance to closest point
+        """
+        # Find all mesh faces that have no points within eps of their face center
+        hc = self.hole_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
+
+        # Pair these faces by matching each face to its closest face in mean normal space
+        # with an opposing normal. Allows many-to-one.
+        cands, pairs = self.pair_candidate_faces(hc)
+
+        # Check if there are no points within eps of the prism formed by each face pair. Keep these
+        # only. Restores one-to-one face matching.
+        empty_cands, empty_pairs = self.empty_prism_candidate_faces(pts, cands, pairs, eps=eps)
+
+        # Group the remaining faces by edge connectivity.
+        component = self.connect_candidates(empty_cands)
+
+        # Compute the euler characteristic of each component. Euler 0 = tube, 1 = plane patch.
+        chi = self.connected_candidates_euler_characteristic(empty_cands, component)
+
+        # Punch holes between place patches (cut tubes is currently disabled)
+        self.update_topology(empty_cands, empty_pairs, component, chi)
+
     cdef grad(self, points, sigma):
         """
         Gradient between points and the surface.
@@ -1659,17 +2042,17 @@ cdef class MembraneMesh(TriangleMesh):
 
         if r:
             initial_length = self._mean_edge_length
-            if kwargs.get('minimum_edge_length') < 0:
+            if kwargs.get('minimum_edge_length', -1) < 0:
                 final_length = np.clip(np.min(sigma)/2.5, 1.0, 50.0)
             else:
                 final_length = kwargs.get('minimum_edge_length')
             
             # We want face area, rather than edge length to decrease linearly as iterations proceed
             # this means we should be linear in edge length squared
-            init_length_2 = initial_length*initial_length
+            initial_length_2 = initial_length*initial_length
             final_length_2 = final_length*final_length
 
-            m = (final_length_2 - init_length_2)/max_iter
+            m = (final_length_2 - initial_length_2)/max_iter
 
 
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
@@ -1726,12 +2109,13 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Delaunay remesh (hole punch)
             if dr and ((j % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points, self.delaunay_eps)
-                break
+                # self.delaunay_remesh(points, self.delaunay_eps)
+                self.cut_and_punch(points, self.delaunay_eps)
+                # break
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
-                target_length = np.sqrt(init_length_2 + m*(j+1))
+                target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
