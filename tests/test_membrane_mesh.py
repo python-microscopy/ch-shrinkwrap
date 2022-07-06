@@ -45,6 +45,7 @@ def test_mean_curvature_plane():
     n_subdivision = int(5*np.random.rand()+1)
 
     mesh = planar_mesh(a, n_subdivision)
+    # mesh.calculate_curvatures()
 
     assert np.abs(np.nanmean(mesh.curvature_mean)) < EPS
 
@@ -55,17 +56,19 @@ def test_mean_curvature_sphere():
     n_subdivision = int(4*np.random.rand()+2)
 
     mesh = spherical_mesh(R, n_subdivision)
+    # mesh.calculate_curvatures()
 
     # TODO: there are many ways to get at this and decimal=1 is awfully permissive.
     #       this is a result of a few vertices getting up to 0.5 out of whack every
     #       few runs of this test.
-    np.testing.assert_almost_equal(mesh.curvature_mean,1/R,decimal=1)
+    np.testing.assert_almost_equal(mesh.curvature_mean,1/R,decimal=2)
 
 def test_gaussian_curvature_plane():
     a = int(100*np.random.rand()+1)
     n_subdivision = int(4*np.random.rand()+2)
 
     mesh = planar_mesh(a, n_subdivision)
+    # mesh.calculate_curvatures()
 
     assert np.abs(np.nanmedian(mesh.curvature_gaussian)) < EPS
 
@@ -76,12 +79,13 @@ def test_gaussian_curvature_sphere():
     n_subdivision = int(4*np.random.rand()+2)
 
     mesh = spherical_mesh(R, n_subdivision)
+    # mesh.calculate_curvatures()
 
     # TODO: there are many ways to get at this and decimal=1 is awfully permissive.
     #       this is a result of a few vertices getting up to 0.05 out of whack every
     #       few runs of this test. this test still fails every once and a while on
     #       a radius of 1.
-    np.testing.assert_almost_equal(mesh.curvature_gaussian,1/(R*R),decimal=1)
+    np.testing.assert_almost_equal(mesh.curvature_gaussian,1/(R*R),decimal=4)
 
 # def test_curvature_cyl():
 #     # confirm cylinder of radius R has mean curvature 1/(2*R) and Gaussian curvature of 0

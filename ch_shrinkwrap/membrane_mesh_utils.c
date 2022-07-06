@@ -613,7 +613,7 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
     double QviT[VECTORSIZE*VECTORSIZE];
     double QviTMvi[VECTORSIZE*VECTORSIZE];
     double QviTMviQvi[VECTORSIZE*VECTORSIZE];
-    double theta, cos_theta, sin_theta, t;
+    double cos_theta, sin_theta, t, tau;
 
     // first coordinate vector
     e1[0] = 1; e1[1] = 0; e1[2] = 0;
@@ -669,15 +669,14 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
 
     // compute the Givens rotation of Qvi.T*Mvi*Qvi
     // (we only need to consider the 2x2 non-zero minor)
-    theta = safe_divide((QviTMviQvi[8]-QviTMviQvi[4]),(2.0*QviTMviQvi[5]));
-    // the eigenvalues are on the diagonal
-    t = SIGN(theta)/(fabs(theta)+sqrt(theta*theta+1));
+    tau = safe_divide((QviTMviQvi[8]-QviTMviQvi[4]),(2.0*QviTMviQvi[5]));
+    t = SIGN(tau)/(fabs(tau)+sqrt(1+tau*tau));
     *l1 = QviTMviQvi[4] - t*QviTMviQvi[5];
-    *l2 = QviTMviQvi[4] + t*QviTMviQvi[5];
+    *l2 = QviTMviQvi[8] + t*QviTMviQvi[5];
 
     // the eigenvectors now are 
-    cos_theta = cos(theta);
-    sin_theta = sin(theta);
+    cos_theta = 1.0/sqrt(1+t*t);
+    sin_theta = t*cos_theta;
     v1[0] = cos_theta*QviT[1]-sin_theta*QviT[2];
     v1[1] = cos_theta*QviT[4]-sin_theta*QviT[5];
     v1[2] = cos_theta*QviT[7]-sin_theta*QviT[8];
@@ -1179,18 +1178,18 @@ static void c_curvature_grad(void *vertices_,
 
         if ((dEdN_sum < (-10*((double)vivj_norm))) || (dEdN_sum > (10*((double)vivj_norm))))
         {
-            printf("Exceeded at vertex %d with sum %e\n", i, dEdN_sum);
-            printf("radius: %e radius_diff: %e\n", fnorm3f(vi), norm3(viNvidN));
-            printf("vivj_norm: %e\n", vivj_norm);
-            printf("areas: %e\n", areas);
-            printf("dareas: %e\n", dareas);
-            printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0[i], k_1[i], k_p[0], k_p[1]);
-            printf("H[i]: %e dH[i]: %e\n", H[i], dH[i]);
-            printf("K[i]: %e dK[i]: %e\n", K[i], dK[i]);
-            printf("E[i]: %e\n", E[i]);
-            printf("dE[i]: %e\n", dEdN_H);
-            printf("pE[i]: %e\n", pE[i]);
-            printf("dE_neighbors[i]: %e\n", dE_neighbors[i]);
+            // printf("Exceeded at vertex %d with sum %e\n", i, dEdN_sum);
+            // printf("radius: %e radius_diff: %e\n", fnorm3f(vi), norm3(viNvidN));
+            // printf("vivj_norm: %e\n", vivj_norm);
+            // printf("areas: %e\n", areas);
+            // printf("dareas: %e\n", dareas);
+            // printf("k_0: %e k_1: %e k_p[0]: %e k_p[1]: %e\n",k_0[i], k_1[i], k_p[0], k_p[1]);
+            // printf("H[i]: %e dH[i]: %e\n", H[i], dH[i]);
+            // printf("K[i]: %e dK[i]: %e\n", K[i], dK[i]);
+            // printf("E[i]: %e\n", E[i]);
+            // printf("dE[i]: %e\n", dEdN_H);
+            // printf("pE[i]: %e\n", pE[i]);
+            // printf("dE_neighbors[i]: %e\n", dE_neighbors[i]);
         }
 
         // printf("dEdN_H: %e dEdN_K: %e dE_neighbors[i]: %e ratio: %e\n",dEdN_H, dEdN_K, dE_neighbors[i], dE_neighbors[i]/dEdN_H);
