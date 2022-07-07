@@ -174,6 +174,8 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public float skip_prob
     cdef object _tree
     cdef public object cg
+    cdef object _points
+    cdef object _sigma
 
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
         TriangleMesh.__init__(self, vertices, faces, mesh, **kwargs)
