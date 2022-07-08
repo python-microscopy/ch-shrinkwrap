@@ -703,7 +703,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
 
-    def _punch_hole(self, np.int32_t face0, np.int32_t face1):
+    def _holepunch_punch_hole(self, np.int32_t face0, np.int32_t face1):
         """
         Create a hole in the mesh by connecting face0 and face1
         with 6 additional triangles to form a triangular prism,
@@ -726,7 +726,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Construct boxes in between each pair of edges
         # Each new face has one edge paired with a twin of face0 or face1, no repeats
-        self._insert_square(self._cfaces[face0].halfedge, 
+        self._holepunch_insert_square(self._cfaces[face0].halfedge, 
                             self._cfaces[face1].halfedge,  
                             <np.int32_t *> np.PyArray_DATA(n_edges), 
                             <np.int32_t *> np.PyArray_DATA(n_faces), 
@@ -735,7 +735,7 @@ cdef class MembraneMesh(TriangleMesh):
         n_face_idx += 2
         n_edge_idx += 6
         
-        self._insert_square(self._chalfedges[self._cfaces[face0].halfedge].prev, 
+        self._holepunch_insert_square(self._chalfedges[self._cfaces[face0].halfedge].prev, 
                             self._chalfedges[self._cfaces[face1].halfedge].next,  
                             <np.int32_t *> np.PyArray_DATA(n_edges), 
                             <np.int32_t *> np.PyArray_DATA(n_faces), 
@@ -744,7 +744,7 @@ cdef class MembraneMesh(TriangleMesh):
         n_face_idx += 2
         n_edge_idx += 6
 
-        self._insert_square(self._chalfedges[self._cfaces[face0].halfedge].next, 
+        self._holepunch_insert_square(self._chalfedges[self._cfaces[face0].halfedge].next, 
                             self._chalfedges[self._cfaces[face1].halfedge].prev,  
                             <np.int32_t *> np.PyArray_DATA(n_edges), 
                             <np.int32_t *> np.PyArray_DATA(n_faces), 
@@ -769,7 +769,7 @@ cdef class MembraneMesh(TriangleMesh):
         self.face_normals
         self.vertex_neighbors
 
-    cdef _insert_square(self, np.int32_t edge0, np.int32_t edge1, 
+    cdef _holepunch_insert_square(self, np.int32_t edge0, np.int32_t edge1, 
                     np.int32_t * new_edges,
                     np.int32_t * new_faces,
                     int n_edge_idx,
@@ -830,7 +830,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._cvertices[self._chalfedges[self._chalfedges[edge0].prev].vertex].halfedge = new_edges[n_edge_idx]
         self._cvertices[self._chalfedges[self._chalfedges[edge1].prev].vertex].halfedge = new_edges[n_edge_idx+3]
 
-    def hole_candidate_faces(self, points, eps=10.0):
+    def _holepunch_find_candidate_faces(self, points, eps=10.0):
         """
         Find all mesh faces that have no points within a distance eps of their center. 
         Return the index of these faces.
@@ -842,7 +842,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         return inds[dist>eps] # Optionally, (mesh._mean_edge_length + eps)], but this seems to work worse
 
-    def pair_candidate_faces(self, candidates):
+    def _holepunch_pair_candidate_faces(self, candidates):
         """
         For each face, find the opposing face with the nearest centroid that has a
         normal in the opposite direction of this face and form a pair. Note this pair
@@ -880,10 +880,10 @@ cdef class MembraneMesh(TriangleMesh):
         
         return candidates[pairs[0,:]], pairs[1,:]
 
-    def empty_prism_candidate_faces(self, points, candidates, candidate_pair, eps=10.0):
+    def _holepunch_empty_prism_candidate_faces(self, points, candidates, candidate_pair, eps=10.0):
         """
         For each candidate pair, check that there are no points in between the candidate triangles.
-        This expects candidate, candidate_pair output from pair_candidate_faces(), where the
+        This expects candidate, candidate_pair output from _holepunch_pair_candidate_faces(), where the
         candidates are face indices in mesh, and candidate_pair is an index into candidates,
         indicating the face paired with candidate i for i \in range(len(candidates)).
         """
@@ -952,7 +952,7 @@ cdef class MembraneMesh(TriangleMesh):
         
         return np.hstack([c,cp]), np.hstack([range(len(c),2*len(c)), range(len(c))])
 
-    def connect_candidates(self, candidates):
+    def _holepunch_connect_candidates(self, candidates):
         """
         Compute the connected component labeling of the kept faces 
         such that faces that share edges are considered connected.
@@ -989,7 +989,7 @@ cdef class MembraneMesh(TriangleMesh):
             
         return self._faces['component'][candidates]
 
-    def connected_candidates_euler_characteristic(self, candidates, component):
+    def _holepunch_component_euler_characteristic(self, candidates, component):
         unique_components = np.unique(component)
         chi = np.zeros_like(unique_components)
         for i, c in enumerate(unique_components):
@@ -1015,7 +1015,7 @@ cdef class MembraneMesh(TriangleMesh):
         
         return chi
 
-    def update_topology(self, candidates, candidate_pairs, component, euler):
+    def _holepunch_update_topology(self, candidates, candidate_pairs, component, euler):
         unique_components = np.unique(component)
         used_components = np.zeros_like(unique_components, dtype=bool)
         for i, c in enumerate(unique_components):
@@ -1046,7 +1046,7 @@ cdef class MembraneMesh(TriangleMesh):
                     assert(len(pair_component_idx) == 1)
                     pair_component_idx = [0]
                     if (component[pair_idx] != c) and (used_components[pair_component_idx] != True):
-                        self._punch_hole(component_cands[j], candidates[pair_idx])
+                        self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
                         used_components[pair_component_idx] = True
                         break
             else:
@@ -1054,7 +1054,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Mark this component as used
             used_components[i] = True
 
-    def cut_and_punch(self, pts, eps=10.0):
+    def punch_holes(self, pts, eps=10.0):
         """
         Create holes in the mesh if there are opposing faces with no points (pts) within eps of 
         the prism formed between them.
@@ -1067,24 +1067,24 @@ cdef class MembraneMesh(TriangleMesh):
             Distance to closest point
         """
         # Find all mesh faces that have no points within eps of their face center
-        hc = self.hole_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
+        hc = self._holepunch_find_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
 
         # Pair these faces by matching each face to its closest face in mean normal space
         # with an opposing normal. Allows many-to-one.
-        cands, pairs = self.pair_candidate_faces(hc)
+        cands, pairs = self._holepunch_pair_candidate_faces(hc)
 
         # Check if there are no points within eps of the prism formed by each face pair. Keep these
         # only. Restores one-to-one face matching.
-        empty_cands, empty_pairs = self.empty_prism_candidate_faces(pts, cands, pairs, eps=eps)
+        empty_cands, empty_pairs = self._holepunch_empty_prism_candidate_faces(pts, cands, pairs, eps=eps)
 
         # Group the remaining faces by edge connectivity.
-        component = self.connect_candidates(empty_cands)
+        component = self._holepunch_connect_candidates(empty_cands)
 
         # Compute the euler characteristic of each component. Euler 0 = tube, 1 = plane patch.
-        chi = self.connected_candidates_euler_characteristic(empty_cands, component)
+        chi = self._holepunch_component_euler_characteristic(empty_cands, component)
 
         # Punch holes between place patches (cut tubes is currently disabled)
-        self.update_topology(empty_cands, empty_pairs, component, chi)
+        self._holepunch_update_topology(empty_cands, empty_pairs, component, chi)
 
     cdef grad(self, np.ndarray points, np.ndarray sigma):
         """
@@ -1356,7 +1356,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Delaunay remesh (hole punch)
             if dr and ((j % self.delaunay_remesh_frequency) == 0):
                 # self.delaunay_remesh(points, self.delaunay_eps)
-                self.cut_and_punch(points, self.delaunay_eps)
+                self.punch_holes(points, self.delaunay_eps)
                 # break
 
             # Remesh

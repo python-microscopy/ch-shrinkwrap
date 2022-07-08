@@ -53,7 +53,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef curvature_grad(self, float dN=*, float skip_prob=*)
 
     cdef point_attraction_grad_kdtree(self, np.ndarray points, np.ndarray sigma, float w=*, int search_k=*)
-    cdef _insert_square(self, np.int32_t edge0, np.int32_t edge1, 
+    cdef _holepunch_insert_square(self, np.int32_t edge0, np.int32_t edge1, 
                     np.int32_t * new_edges,
                     np.int32_t * new_faces,
                     int n_edge_idx,
