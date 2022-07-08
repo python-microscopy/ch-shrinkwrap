@@ -618,7 +618,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         tree = scipy.spatial.cKDTree(face_centers)
 
         # Get k closet face centroids for each point
-        dmean, _faces = tree.query(self.points, k=1)
+        dmean, _faces = tree.query(self.points, k=1, workers=-1)
         self.d = np.vstack([dmean, dmean, dmean]).T
         
         #print(self._faces.shape, _faces.shape)

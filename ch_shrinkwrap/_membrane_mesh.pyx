@@ -703,6 +703,28 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
 
+    #################################
+    # Functions to fix mesh topology
+    # 
+    # In general we must assume that our starting mesh does not always accurately capture
+    # the true toplology of the object. As we refine the mesh, we must also be able to correct
+    # these topological errors. Topological errors fall into 3 categories:
+    #
+    # 1) objects which should not be connected but are connected (necks). In general, the 
+    #    shinkwrapping algorithm will pull the surface in to a constricted "neck" which
+    #    we must sever.
+    #
+    # 2) objects which are not connected but which should be connected (fusion).
+    #
+    # 3) objects which should have "holes" / fenestrations but do not. This can also be
+    #    considered as a special case of 2) where an object should be connected to itself.
+    #
+    # We currently have methods to deal with cases 1 and 3 (necks and holes), but lack handling
+    # for more generic object fusion. It is possible that this could be obtained by relaxing the
+    # connected component and sign testing in the hole punching code.
+    #
+    # There are several avenues for potential improvement, but the current code is functional
+
     def _holepunch_punch_hole(self, np.int32_t face0, np.int32_t face1):
         """
         Create a hole in the mesh by connecting face0 and face1
@@ -1086,6 +1108,26 @@ cdef class MembraneMesh(TriangleMesh):
         # Punch holes between place patches (cut tubes is currently disabled)
         self._holepunch_update_topology(empty_cands, empty_pairs, component, chi)
 
+    def remove_necks(self, neck_curvature_threshold=-1e-4):
+        """
+        Remove necks, using high -ve Gaussian curvature as a marker for candidate necks.
+
+        When compared to holes, necks are an easier prospect as one can simple delete all vertices/faces
+        below threshold and repair.
+
+        TODO: Improve neck selection by looking at, e.g. point_influence as well. 
+        """
+
+        verts = np.flatnonzero(self.curvature_gaussian < neck_curvature_threshold)
+        self.unsafe_remove_vertices(verts)
+        self.repair()
+        #self.repair()
+        self.remesh()
+
+    # End topology functions
+    ##########################
+    
+    
     cdef grad(self, np.ndarray points, np.ndarray sigma):
         """
         Gradient between points and the surface.
@@ -1357,10 +1399,13 @@ cdef class MembraneMesh(TriangleMesh):
             if dr and ((j % self.delaunay_remesh_frequency) == 0):
                 # self.delaunay_remesh(points, self.delaunay_eps)
                 self.punch_holes(points, self.delaunay_eps)
+                #self.remove_necks()
                 # break
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
+                self.remove_necks() # TODO - do this every remesh iteration or not?
+
                 target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
