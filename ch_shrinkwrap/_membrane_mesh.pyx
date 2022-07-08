@@ -20,7 +20,8 @@ DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 KBT = 0.0257  # eV # 4.11e-21  # joules
 NM2M = 1
 COS110 = -0.34202014332
-PI = 3.1415927
+#cdef const float PI 3.1415927
+DEF PI=3.1415927
 
 MAX_VERTEX_COUNT = 2**31
 
