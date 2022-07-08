@@ -17,9 +17,9 @@ from ch_shrinkwrap import delaunay_utils
 DESCENT_METHODS = ['conjugate_gradient', 'skeleton']
 DEFAULT_DESCENT_METHOD = 'conjugate_gradient'
 
-KBT = 0.0257  # eV # 4.11e-21  # joules
-NM2M = 1
-COS110 = -0.34202014332
+DEF KBT = 0.0257  # eV # 4.11e-21  # joules
+DEF NM2M = 1
+DEF COS110 = -0.34202014332
 #cdef const float PI 3.1415927
 DEF PI=3.1415927
 
@@ -27,7 +27,7 @@ MAX_VERTEX_COUNT = 2**31
 
 I = np.eye(3, dtype=float)
 
-USE_C = True
+DEF USE_C = True
 
 POINTS_DTYPE = np.dtype([('position', '3f4')])
 POINTS_DTYPE2 = np.dtype([('position0', 'f4'), 
