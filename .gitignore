@@ -16,3 +16,4 @@ ch_shrinkwrap/_conj_grad.c
 notebooks/*.stl
 notebooks/*.txt
 ch_shrinkwrap/_skeleton_mesh.c
+.idea*
