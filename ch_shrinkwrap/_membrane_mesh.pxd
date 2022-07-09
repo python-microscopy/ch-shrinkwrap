@@ -49,6 +49,10 @@ cdef class MembraneMesh(TriangleMesh):
     cdef object _points
     cdef object _sigma
 
+    cdef public float neck_threshold_low
+    cdef public float neck_threshold_high
+    cdef public int neck_first_iter
+
     cdef curvature_grad_c(self, float dN=*, float skip_prob=*)
     cdef curvature_grad(self, float dN=*, float skip_prob=*)
 
