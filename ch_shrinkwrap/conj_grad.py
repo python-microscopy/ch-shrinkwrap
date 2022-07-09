@@ -610,17 +610,38 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         fv = f.reshape(-1,self.dims)
         
         import scipy.spatial
+        from PYME.experimental import octree
 
         # Create a list of face centroids for search
         face_centers = fv[self._faces].mean(1)
 
+        ####
+        # KDTREE
         # Construct a kdtree over the face centers
-        tree = scipy.spatial.cKDTree(face_centers)
+        #tree = scipy.spatial.cKDTree(face_centers)
 
         # Get k closet face centroids for each point
-        dmean, _faces = tree.query(self.points, k=1, workers=-1)
-        self.d = np.vstack([dmean, dmean, dmean]).T
+        #dmean, _faces = tree.query(self.points, k=1, workers=-1)
         
+
+        # END KDTREE
+        ############
+
+        ########
+        # OCTREE
+
+        tree = octree.gen_octree_from_points({'x' : face_centers[:,0], 'y' : face_centers[:,1], 'z' : face_centers[:,2]}, min_pixel_size=1)
+
+        _faces = np.array([tree.search(float(p[0]), float(p[1]), float(p[2]))[0] for p in self.points])
+
+        vd = self.points - face_centers[_faces, :]
+        dmean = np.sqrt((vd*vd).sum(1))
+        
+        # END OCTREE
+        ############
+
+        self.d = np.vstack([dmean, dmean, dmean]).T
+
         #print(self._faces.shape, _faces.shape)
         
         # vertex indices (n_points x 3)
