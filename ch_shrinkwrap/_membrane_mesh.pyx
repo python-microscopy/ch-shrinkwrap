@@ -1108,7 +1108,7 @@ cdef class MembraneMesh(TriangleMesh):
         # Punch holes between place patches (cut tubes is currently disabled)
         self._holepunch_update_topology(empty_cands, empty_pairs, component, chi)
 
-    def remove_necks(self, neck_curvature_threshold=-1e-4):
+    def remove_necks(self, neck_curvature_threshold_low=-1e-4, neck_curvature_threshold_high=1e-2):
         """
         Remove necks, using high -ve Gaussian curvature as a marker for candidate necks.
 
@@ -1118,7 +1118,7 @@ cdef class MembraneMesh(TriangleMesh):
         TODO: Improve neck selection by looking at, e.g. point_influence as well. 
         """
 
-        verts = np.flatnonzero(self.curvature_gaussian < neck_curvature_threshold)
+        verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
         self.unsafe_remove_vertices(verts)
         self.repair()
         #self.repair()
@@ -1342,6 +1342,8 @@ cdef class MembraneMesh(TriangleMesh):
 
             m = (final_length_2 - initial_length_2)/max_iter
 
+        neck_first_iter = getattr(self, 'neck_first_iter', -1)
+
 
         if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
             print("Not this case???")
@@ -1404,7 +1406,8 @@ cdef class MembraneMesh(TriangleMesh):
 
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
-                self.remove_necks() # TODO - do this every remesh iteration or not?
+                if (neck_first_iter > 0) and (j > neck_first_iter):
+                    self.remove_necks(getattr(self, 'neck_threhold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
                 target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
