@@ -337,7 +337,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
     def search_rad(self, search_rad):
         self._search_rad = max(search_rad, 1.0)
 
-    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None):
+    def __init__(self, vertices, vertex_neighbors, faces, face_neighbors, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None, use_octree=False):
         TikhonovConjugateGradient.__init__(self)
         self.Lfuncs, self.Lhfuncs = ["Lfunc3"], ["Lhfunc3"]
         self.vertices, self.vertex_neighbors, self.sigma = vertices, vertex_neighbors, sigma
@@ -346,6 +346,8 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         self.search_k = search_k
         self.search_rad = search_rad
         self._prev_loopcount = -1
+
+        self._use_octreee = use_octree #toggle between octree and kDTree for calculating weight matrix
         
     def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
         """Custom search to add weighting to res
@@ -615,30 +617,43 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
         # Create a list of face centroids for search
         face_centers = fv[self._faces].mean(1)
 
-        ####
-        # KDTREE
-        # Construct a kdtree over the face centers
-        #tree = scipy.spatial.cKDTree(face_centers)
-
-        # Get k closet face centroids for each point
-        #dmean, _faces = tree.query(self.points, k=1, workers=-1)
         
 
-        # END KDTREE
-        ############
+        if not self._use_octreee:
+            ####
+            # KDTREE
+            # Construct a kdtree over the face centers
+            tree = scipy.spatial.cKDTree(face_centers)
 
-        ########
-        # OCTREE
+            # Get k closet face centroids for each point
+            dmean, _faces = tree.query(self.points, k=1, workers=-1)
+            
 
-        tree = octree.gen_octree_from_points({'x' : face_centers[:,0], 'y' : face_centers[:,1], 'z' : face_centers[:,2]}, min_pixel_size=1)
+            # END KDTREE
+            ############
+        else:
+            ########
+            # OCTREE
+            #
+            # NOTE: this is faster (~10x), but currently inexact - it finds the node where the point would be placed in the octree
+            # rather than strictly the nearest neighbour - the true nearest neighbour might be in one of the neighbouring cells.
+            # Upper bound on error is roughly the size of the octree cell (which will be approx the mesh edge length). 
 
-        _faces = np.array([tree.search(float(p[0]), float(p[1]), float(p[2]))[0] for p in self.points])
+            tree = octree.gen_octree_from_points({'x' : face_centers[:,0], 'y' : face_centers[:,1], 'z' : face_centers[:,2]}, min_pixel_size=1)
 
-        vd = self.points - face_centers[_faces, :]
-        dmean = np.sqrt((vd*vd).sum(1))
-        
-        # END OCTREE
-        ############
+            #_faces_1 = np.array([tree.search(float(p[0]), float(p[1]), float(p[2]))[0] for p in self.points])
+
+            _faces = tree.search_pts(self.points)
+
+            vd = self.points - face_centers[_faces, :]
+            dmean = np.sqrt((vd*vd).sum(1))
+
+            #print('vd.shape', vd.shape)
+            #print(dmean, dmean_1, _faces, _faces_1)
+            #print(np.median(dmean))
+            
+            # END OCTREE
+            ############
 
         self.d = np.vstack([dmean, dmean, dmean]).T
 
