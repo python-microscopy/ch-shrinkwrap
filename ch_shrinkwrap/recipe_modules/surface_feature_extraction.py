@@ -27,9 +27,9 @@ class SkeletonizeMembrane(ModuleBase):
 
     def execute(self, namespace):
         import numpy as np
-        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from ch_shrinkwrap import _skeleton_mesh as membrane_mesh
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+        mesh = membrane_mesh.SkeletonMesh(mesh=namespace[self.input], 
                                           max_iter=self.max_iters)
 
         # pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
