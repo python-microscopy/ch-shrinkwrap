@@ -1118,6 +1118,8 @@ cdef class MembraneMesh(TriangleMesh):
         TODO: Improve neck selection by looking at, e.g. point_influence as well. 
         """
 
+        #print(self.curvature_gaussian)
+        self._populate_curvature_grad()
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
         self.unsafe_remove_vertices(verts)
         self.repair()
@@ -1311,9 +1313,9 @@ cdef class MembraneMesh(TriangleMesh):
             # If we've reached precision, terminate
             if np.all(shift < eps):
                 return
-
+    
     def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
-        from ch_shrinkwrap.conj_grad import ShrinkwrapConjGrad
+        from ch_shrinkwrap.mesh_conj_grad import ShrinkwrapMeshConjGrad
 
         r = (self.remesh_frequency != 0) and (self.remesh_frequency <= max_iter)
         dr = (self.delaunay_remesh_frequency != 0) and (self.delaunay_remesh_frequency <= max_iter)
@@ -1367,28 +1369,36 @@ cdef class MembraneMesh(TriangleMesh):
         j = 0
 
         while j < max_iter:
-            n = self._halfedges['vertex'][self._vertices['neighbors']]
-            n_idxs = self._vertices['neighbors'] == -1
-            n[n_idxs] = -1
-            fn = self._halfedges['face'][self._vertices['neighbors']]
-            fn[n_idxs] = -1
-            faces = self._faces['halfedge']
-            v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
-            v1 = self._halfedges['vertex'][faces]
-            v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
-            faces_by_vertex = np.vstack([v0, v1, v2]).T
-            self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            # n = self._halfedges['vertex'][self._vertices['neighbors']]
+            # n_idxs = self._vertices['neighbors'] == -1
+            # n[n_idxs] = -1
+            
+            # fn = self._halfedges['face'][self._vertices['neighbors']]
+            # fn[n_idxs] = -1
+            
+            # faces = self._faces['halfedge']
+            # v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
+            # v1 = self._halfedges['vertex'][faces]
+            # v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
+            # faces_by_vertex = np.vstack([v0, v1, v2]).T
+            
+            # self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            #                         search_k=self.search_k, search_rad=self.search_rad,
+            #                         shield_sigma=self._mean_edge_length/2.0)
+
+            self.cg = ShrinkwrapMeshConjGrad(self, points, 
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
+
             n_it = min(max_iter - j, rf)
-            vp = self.cg.search(points,lams=step_size*self.kc/2.0,num_iters=n_it,
+            vp = self.cg.search(points,lams=[step_size*self.kc/2.0, self.shrink_weight],num_iters=n_it,
                            weights=s)
 
             j += n_it
 
-            k = (self._vertices['halfedge'] != -1)
-            self._vertices['position'][k] = vp[k]
+            #k = (self._vertices['halfedge'] != -1)
+            #self._vertices['position'][k] = vp[k]
 
             # self._faces['normal'][:] = -1
             # self._vertices['neighbors'][:] = -1

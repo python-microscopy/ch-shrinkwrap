@@ -14,6 +14,7 @@ class ShrinkwrapMembrane(ModuleBase):
 
     max_iters = Int(100)
     curvature_weight = Float(10.0)
+    shrink_weight = Float(1.0)
     #attraction_weight = Float(1)
     #curvature_weight = Float(1)
     # search_rad = Float(100.0)
@@ -49,7 +50,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           delaunay_eps=self.min_hole_radius,
                                           neck_threshold_low = self.neck_theshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
-                                          neck_first_iter = self.neck_first_iter) # self.min_hole_radius)
+                                          neck_first_iter = self.neck_first_iter,
+                                          shrink_weight = self.shrink_weight) # self.min_hole_radius)
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
                                         #   search_rad=self.search_rad)
