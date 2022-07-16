@@ -10,7 +10,6 @@ http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.190.6244.
 
 """
 
-from sqlite3 import paramstyle
 from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 from ch_shrinkwrap import util
 from ch_shrinkwrap import shape
