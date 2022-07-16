@@ -696,20 +696,20 @@ def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, se
                         mesh.delaunay_remesh_frequency = 0
                         mesh.neck_first_iter = 0
 
-                        # try:
-                        start = time.time()
-                        mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                        stop = time.time()
-                        duration = stop-start
-                        mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
-                        'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
-                        if save_folder is not None:
-                            wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
-                            mesh.to_stl(wrap_fp)
-                            mmd['filename'] = wrap_fp
-                        md.append({'mesh': mmd})
-                        # except:
-                        #     failed_count += 1
+                        try:
+                            start = time.time()
+                            mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
+                            stop = time.time()
+                            duration = stop-start
+                            mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
+                            'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
+                            if save_folder is not None:
+                                wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
+                                mesh.to_stl(wrap_fp)
+                                mmd['filename'] = wrap_fp
+                            md.append({'mesh': mmd})
+                        except:
+                            failed_count += 1
     print(f'{failed_count} shrinkwrapped meshes failed.')
     return md
 
@@ -722,13 +722,13 @@ def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_f
             for d in depth:
                 for spn in samplespernode:
                     for wt in pointweight:
-                        # try:
-                        wrap_fp = unique_filename(save_folder, 'spr_mesh', 'stl')
-                        _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
-                                                    iters=it, save_fn=wrap_fp)
-                        md.append({'mesh': mmd})
-                        # except:
-                        #     failed_count += 1
+                        try:
+                            wrap_fp = unique_filename(save_folder, 'spr_mesh', 'stl')
+                            _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
+                                                        iters=it, save_fn=wrap_fp)
+                            md.append({'mesh': mmd})
+                        except:
+                            failed_count += 1
     print(f'{failed_count} SPR meshes failed.')
     return md
 
@@ -975,6 +975,15 @@ def test_structure(yaml_file, multiprocessing=False, force=False):
     mean_photon_counts = test_d['system']['mean_photon_count']
     threshold_densities = test_d['shrinkwrapping']['density']
     point_densities = test_d['point_cloud']['p']
+
+    if np.isscalar(noise_fractions):
+        noise_fractions = [noise_fractions]
+    if np.isscalar(mean_photon_counts):
+        mean_photon_counts = [mean_photon_counts]
+    if np.isscalar(threshold_densities):
+        threshold_densities = [threshold_densities]
+    if np.isscalar(point_densities):
+        point_densities = [point_densities]
 
     params = []
     # loop over psf combinations, if present
