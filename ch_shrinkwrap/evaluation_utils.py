@@ -10,14 +10,14 @@ http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.190.6244.
 
 """
 
-from audioop import mul
+from sqlite3 import paramstyle
 from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 from ch_shrinkwrap import util
 from ch_shrinkwrap import shape
 
 from PYME.simulation.locify import points_from_sdf
 from PYME.experimental.isosurface import distance_to_mesh
-from PYME.IO.tabular import HDFSource
+# from PYME.IO.tabular import HDFSource
 
 import os
 import time
@@ -30,6 +30,8 @@ import itertools
 import yaml
 import time
 from functools import partial
+
+from tables.exceptions import HDF5ExtError
 
 def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
     """
@@ -543,7 +545,14 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         elif ext == '.hdf':
             from PYME.IO.tabular import ColumnSource
             ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], sigma_z=sigma[:,2])
-            ds.to_hdf(save_fn)
+            for i in range(3):
+                # Make a few attempts to save the file
+                try:
+                    ds.to_hdf(save_fn)
+                    break
+                except HDF5ExtError:
+                    print(f"Save of {save_fn} failed, attempt {i+1}/3.")
+                    time.sleep(0.01)
         else:
             raise UserWarning('File type unrecognized. File was not saved.')
         md['filename'] = save_fn
@@ -687,20 +696,20 @@ def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, se
                         mesh.remesh_frequency = re
                         mesh.delaunay_remesh_frequency = 0
 
-                        # try:
-                        start = time.time()
-                        mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                        stop = time.time()
-                        duration = stop-start
-                        mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
-                        'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
-                        if save_folder is not None:
-                            wrap_fp = os.path.join(save_folder,'_'.join(f"sw_mesh_{time.time():.1f}".split('.'))+".stl")
-                            mesh.to_stl(wrap_fp)
-                            mmd['filename'] = wrap_fp
-                        md.append({'mesh': mmd})
-                        # except:
-                        #     failed_count += 1
+                        try:
+                            start = time.time()
+                            mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
+                            stop = time.time()
+                            duration = stop-start
+                            mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
+                            'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
+                            if save_folder is not None:
+                                wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
+                                mesh.to_stl(wrap_fp)
+                                mmd['filename'] = wrap_fp
+                            md.append({'mesh': mmd})
+                        except:
+                            failed_count += 1
     print(f'{failed_count} shrinkwrapped meshes failed.')
     return md
 
@@ -713,13 +722,13 @@ def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_f
             for d in depth:
                 for spn in samplespernode:
                     for wt in pointweight:
-                        try:
-                            wrap_fp = os.path.join(save_folder,'_'.join(f"spr_mesh_{time.time():.1f}".split('.'))+".stl")
-                            _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
-                                                        iters=it, save_fn=wrap_fp)
-                            md.append({'mesh': mmd})
-                        except:
-                            failed_count += 1
+                        # try:
+                        wrap_fp = unique_filename(save_folder, 'spr_mesh', 'stl')
+                        _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
+                                                    iters=it, save_fn=wrap_fp)
+                        md.append({'mesh': mmd})
+                        # except:
+                        #     failed_count += 1
     print(f'{failed_count} SPR meshes failed.')
     return md
 
@@ -790,6 +799,45 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0
     print(f"Failed to compute metrics for {failed} meshes")
     return new_d
 
+def unique_filename(save_directory, stub, ext, return_time=False):
+    """
+    Generate a unique file name using time.time() from stub and append the file extension.
+
+    Parameters
+    ----------
+    save_directory : str
+        Path to directory where the file will be saved
+    stub : str
+        Non-unqiue identifier of the type stored in the file
+    ext : str
+        File extension
+    return_time : bool
+        Return the time the file extension was generated. Proxy for unique identifier.
+
+    Returns
+    -------
+    fn : str
+        Path to unique file.
+    file_time : float, optional
+        The time at which this file string was generated. Proxy for unique identifier.
+    """
+    attempts = 10
+    while True:
+        file_time = time.time()
+        fn = os.path.join(save_directory, 
+                          '_'.join(f'{stub}_{file_time:.1f}'.split('.')) \
+                          + '.' + ext.split('.')[-1])
+        if not os.path.exists(fn):
+            break
+        elif attempts == 0:
+            print('Ran out of attempts to generate a unique file.'
+                  'There are probably some downstream consequences.')
+        time.sleep(0.2*np.random.rand())
+        attempts -= 1
+    if return_time:
+        return fn, file_time
+    return fn
+
 def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
     """
     Inner part of test_structure() loop, abstracted for multiprocessing
@@ -814,10 +862,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
     # start_time = time.strftime('%Y%d%m_%HH%M')
 
     # generate and save the points
-    points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
-    while os.path.exists(points_fp):
-        points_fp = os.path.join(test_d['save_fp'], '_'.join(f"points_{time.time():.1f}".split('.'))+".hdf")
-        time.sleep(0.1)
+    points_fp = unique_filename(test_d['save_fp'], 'points', 'hdf')
     points_ds, points_md = generate_smlm_pointcloud_from_shape(test_shape, density=test_d['point_cloud']['density'], 
                                                     p=pp, 
                                                     psf_width=psf_width, 
@@ -832,10 +877,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
     iso_md = []
     for spn in test_d['shrinkwrapping']['samplespernode']:
         # Generate an isosurface, where we set the initial density based on the ground truth density
-        iso_save_fp = os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl")
-        while os.path.exists(iso_save_fp):
-            iso_save_fp = os.path.join(test_d['save_fp'], '_'.join(f"isosurface_{time.time():.1f}".split('.'))+".stl")
-            time.sleep(0.1)
+        iso_save_fp = unique_filename(test_d['save_fp'], 'isosurface', 'stl')
         initial_mesh, i_md = generate_coarse_isosurface(points_ds,
                                                         samples_per_node=spn, 
                                                         threshold_density=td,  # test_d['shrinkwrapping']['density'][i], #test_d['point_cloud']['density']*test_d['point_cloud']['p']/(10*spn),  # choose a density less than the point cloud density 
@@ -860,18 +902,14 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                     test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
     
     # Save the results
-    start_time = time.time()
-    yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'.yaml')
-    while os.path.exists(yaml_out):
-        yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'.yaml')
-        time.sleep(0.1)
+    yaml_out, start_time = unique_filename(test_d['save_fp'], 'run', 'yaml', return_time=True)
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
     
     # Load the results and compute metrics
     res = compute_mesh_metrics(yaml_out, test_shape, psf_width=psf_width,
-                            mean_photon_count=mpc,
-                            bg_photon_count=test_d['system']['bg_photon_count'])
+                               mean_photon_count=mpc,
+                               bg_photon_count=test_d['system']['bg_photon_count'])
     
     # Save the results
     yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'_metrics.yaml')
@@ -880,13 +918,51 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
 
     return yaml_out
 
-def test_structure(yaml_file, multiprocessing=False):
+def test_structure(yaml_file, multiprocessing=False, force=False):
     
     with open(yaml_file) as f:
         test_d = yaml.safe_load(f)
     
     if not os.path.exists(test_d['save_fp']):
         os.mkdir(test_d['save_fp'])
+    else:
+        # let's check if any analyzed files exist in this folder
+        import glob
+        prev_runs = glob.glob(os.path.join(test_d['save_fp'], '*_metrics.yaml'))
+        if len(prev_runs) > 0:  # There are files in here from a previous run
+            if force:
+                # Delete all of the files from the previous run
+                prev_runs = glob.glob(os.path.join(test_d['save_fp'],'*'))
+                for run in prev_runs:
+                    os.remove(run)
+            else:
+                # we should attempt a graceful restart
+                for run in prev_runs:
+                    psf_widths = []
+                    noise_fractions = []
+                    mean_photon_counts = []
+                    threshold_densities = []
+                    point_densities = []
+                    with open(run, 'r') as fp:
+                        run_dict = yaml.safe_load(fp)
+                        psf_widths.append(tuple(run_dict[0]['points']['psf_width']))
+                        noise_fractions.append(run_dict[0]['points']['noise_fraction'])
+                        mean_photon_counts.append(run_dict[0]['points']['mean_photon_count'])
+                        threshold_densities.append(run_dict[1]['isosurface']['threshold_density'])
+                        point_densities.append(run_dict[0]['points']['p'])
+
+                    run_params = []
+                    # loop over psf combinations, if present
+                    for psf_width in psf_widths:
+                        # allow for testing at multiple noise levels
+                        for no in noise_fractions:
+                            # test at multiple mean photon counts (multiple localization precisions)
+                            for mpc in mean_photon_counts:
+                                # test at multiple densities via adjustment in Monte-Carlo sampling
+                                # enumerate to allow changing shrinkwrapping density with generated density
+                                for td, pp in zip(threshold_densities, point_densities):
+                                    run_params.append((pp, td, psf_width, mpc, no))
+                    
 
     # Generate the theoretical shape
     test_shape = getattr(shape, test_d['shape']['type'])(**test_d['shape']['parameters'])
@@ -912,6 +988,12 @@ def test_structure(yaml_file, multiprocessing=False):
                 for td, pp in zip(threshold_densities, point_densities):
                     params.append((pp, td, psf_width, mpc, no))
 
+    if 'run_params' in locals():
+        print("Run params: ", run_params)
+        print("Total params:", params)
+        params = list(set(params)-set(run_params))
+        print("Diffed params: ", params)
+
     if multiprocessing:
         import multiprocessing as mp
 
@@ -930,9 +1012,13 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Load a YAML.')
-    parser.add_argument('filename', help="File that should be used", default=None, nargs='?')
-    parser.add_argument('-mp', '--multiprocessing', dest='mp', default=False, action='store_true')
+    parser.add_argument('filename', help="YAML file containing paramater space for evaluation.", 
+                        default=None, nargs='?')
+    parser.add_argument('-mp', '--multiprocessing', help="Parallelize evaluation process.", 
+                        dest='mp', default=False, action='store_true')
+    parser.add_argument('-f', '--force', help="Restart evaluation from the beginning.",
+                        dest='force', default=False, action='store_true')
 
     args = parser.parse_args()
 
-    test_structure(args.filename, multiprocessing=args.mp)
+    test_structure(args.filename, multiprocessing=args.mp, force=args.force)
