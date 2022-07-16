@@ -695,6 +695,7 @@ def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, se
                         mesh.search_rad = sr
                         mesh.remesh_frequency = re
                         mesh.delaunay_remesh_frequency = 0
+                        mesh.neck_first_iter = 0
 
                         try:
                             start = time.time()
