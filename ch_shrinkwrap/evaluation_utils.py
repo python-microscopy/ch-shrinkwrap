@@ -697,20 +697,20 @@ def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, se
                         mesh.delaunay_remesh_frequency = 0
                         mesh.neck_first_iter = 0
 
-                        try:
-                            start = time.time()
-                            mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                            stop = time.time()
-                            duration = stop-start
-                            mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
-                            'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
-                            if save_folder is not None:
-                                wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
-                                mesh.to_stl(wrap_fp)
-                                mmd['filename'] = wrap_fp
-                            md.append({'mesh': mmd})
-                        except:
-                            failed_count += 1
+                        # try:
+                        start = time.time()
+                        mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
+                        stop = time.time()
+                        duration = stop-start
+                        mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
+                        'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
+                        if save_folder is not None:
+                            wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
+                            mesh.to_stl(wrap_fp)
+                            mmd['filename'] = wrap_fp
+                        md.append({'mesh': mmd})
+                        # except:
+                        #     failed_count += 1
     print(f'{failed_count} shrinkwrapped meshes failed.')
     return md
 
@@ -993,7 +993,8 @@ def test_structure(yaml_file, multiprocessing=False, force=False):
         print("Run params: ", run_params)
         print("Total params:", params)
         params = list(set(params)-set(run_params))
-        print("Diffed params: ", params)
+    
+    print("Diffed params: ", params)
 
     if multiprocessing:
         import multiprocessing as mp
