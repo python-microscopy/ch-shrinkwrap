@@ -24,7 +24,7 @@ import time
 import math
 import scipy.spatial
 import numpy as np
-# import pymeshlab as ml
+import pymeshlab as ml
 
 import itertools
 import yaml
