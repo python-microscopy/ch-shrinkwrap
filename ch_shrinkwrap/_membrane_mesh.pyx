@@ -1101,15 +1101,17 @@ cdef class MembraneMesh(TriangleMesh):
                 # component, punch a hole and remove both components from consideration.
                 component_cand_pairs = candidate_pairs[component_idxs]
                 for j, pair_idx in enumerate(component_cand_pairs):
-                    pair_component_idx = np.flatnonzero(unique_components==component[pair_idx])
-                    assert(len(pair_component_idx) == 1)
-                    pair_component_idx = [0]
-                    if (component[pair_idx] != c) and (used_components[pair_component_idx] != True):
-                        self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
-                        used_components[pair_component_idx] = True
-                        break
+                    if component[pair_idx] == c:
+                        continue
+                    pair_component_idx = np.argmax(unique_components==component[pair_idx])
+                    if used_components[pair_component_idx]:
+                        continue
+                    self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
+                    used_components[pair_component_idx] = True
+                    break
             else:
                 print(f"Component {c} has Euler characteristic {euler[i]}. I don't know what to do with this.")
+            
             # Mark this component as used
             used_components[i] = True
 
