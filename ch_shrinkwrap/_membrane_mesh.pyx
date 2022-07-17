@@ -985,8 +985,8 @@ cdef class MembraneMesh(TriangleMesh):
 
             if len(p) == 0:
                 # There are no points within r of either of these faces
-                kept_cands[i] |= False
-                # disallowed[candidates == candidates[j]] |= True
+                kept_cands[i] |= True
+                disallowed[candidates == candidates[j]] |= True
                 continue
 
             # Check if any of these are within +eps of half planes of both triangles
@@ -1000,11 +1000,11 @@ cdef class MembraneMesh(TriangleMesh):
             below_hp2_cj = (hp2[j][None,:]*(points[p]-fv_pos[j,0][None,:])).sum(1) < eps
             
             # If no points are in between these triangles, keep them
-            inside = np.sum(below_hp0_ci & below_hp1_ci & below_hp2_ci \
-                            & below_hp0_cj & below_hp1_cj & below_hp2_cj) == 0
+            empty = np.sum(below_hp0_ci & below_hp1_ci & below_hp2_ci \
+                           & below_hp0_cj & below_hp1_cj & below_hp2_cj) == 0
             
-            kept_cands[i] |= inside
-            disallowed[candidates == candidates[j]] |= inside
+            kept_cands[i] |= empty
+            disallowed[candidates == candidates[j]] |= empty
             
         c = candidates[kept_cands]
         cp = candidates[candidate_pair[kept_cands]]
