@@ -3,6 +3,7 @@ import numpy as np
 import scipy.spatial
 import cython
 import math
+import ctypes
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
@@ -35,13 +36,24 @@ POINTS_DTYPE2 = np.dtype([('position0', 'f4'),
                           ('position2', 'f4')])
 
 cdef extern from "triangle_mesh_utils.c":
-    void _update_face_normals(np.int32_t *f_idxs, halfedge_t *halfedges, vertex_t *vertices, face_t *faces, signed int n_idxs)
+    void _update_face_normals(np.int32_t *f_idxs, 
+                              halfedge_t *halfedges, 
+                              vertex_t *vertices, 
+                              face_t *faces, 
+                              signed int n_idxs)
     void update_face_normal(int f_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
     void update_single_vertex_neighbours(int v_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
 
 cdef extern from "membrane_mesh_utils.c":
     void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
-    void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
+    void c_point_attraction_grad(points_t *attraction, 
+                                 points_t *points, 
+                                 float *sigma, 
+                                 void *vertices_, 
+                                 float w, 
+                                 float charge_sigma, 
+                                 int n_points, 
+                                 int n_vertices)
     void c_curvature_grad(void *vertices_, 
                          void *faces_,
                          halfedge_t *halfedges,
@@ -63,6 +75,12 @@ cdef extern from "membrane_mesh_utils.c":
                          float kg,
                          float c0,
                          points_t *dEdN)
+    void c_holepunch_pair_candidate_faces(void *vertices_, 
+                                          void *faces_,
+                                          halfedge_t *halfedges,
+                                          int *candidates,
+                                          int n_candidates,
+                                          int *pairs)
 
 cdef class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -860,47 +878,66 @@ cdef class MembraneMesh(TriangleMesh):
         tree = scipy.spatial.cKDTree(points)
         dist, _ = tree.query(self._vertices['position'][self.faces].mean(1))
         
-        inds = np.flatnonzero(self._faces['halfedge'] != -1)
+        inds = np.flatnonzero(self._faces['halfedge'] != -1).astype('i4')
 
         return inds[dist>eps] # Optionally, (mesh._mean_edge_length + eps)], but this seems to work worse
 
-    def _holepunch_pair_candidate_faces(self, candidates):
+    cdef _c_holepunch_pair_candidate_faces(self, int[:] candidates, int n_candidates, int[:] pairs):
+        c_holepunch_pair_candidate_faces(&(self._cvertices[0]), 
+                                         &(self._cfaces[0]),
+                                         &(self._chalfedges[0]),
+                                         &(candidates[0]),
+                                         n_candidates,
+                                         &(pairs[0]))
+
+    def _holepunch_pair_candidate_faces(self, np.ndarray candidates):
         """
         For each face, find the opposing face with the nearest centroid that has a
         normal in the opposite direction of this face and form a pair. Note this pair
         does not need to be unique.
         """
-        candidate_faces = self._faces[candidates]
-        candidate_halfedges = candidate_faces['halfedge']
-        
-        v0 = self._halfedges['vertex'][self._halfedges['prev'][candidate_halfedges]]
-        v1 = self._halfedges['vertex'][candidate_halfedges]
-        v2 = self._halfedges['vertex'][self._halfedges['next'][candidate_halfedges]]
-        
-        candidate_vertices = np.vstack([v0,v1,v2]).T
-        candidate_positions = self._vertices['position'][candidate_vertices] # (N, (v0,v1,v2), (x,y,z))
-        candidate_centroids = candidate_positions.mean(1)
-        
-        candidate_normals = candidate_faces['normal']  # (N, 3)
-        
-        # Compute the shift orthogonal to the mean normal plane between each of the faces
-        candidate_shift = candidate_centroids[None,...] - candidate_centroids[:,None,:]  # (N, N, 3)
-        n_hat = 0.5*(candidate_normals[None,...] + candidate_normals[:,None,:])  # (N, N, 3)
-        shift = candidate_shift - n_hat*(((n_hat*candidate_shift).sum(2))[...,None])
-        abs_shift = (shift*shift).sum(2)
-        
-        # Compute the dot product between all of the normals
-        nd = (candidate_normals[None,...]*candidate_normals[:,None,:]).sum(2)  # (N, N)
-        
-        # For each face, find the opposing face with the nearest centroid that has a
-        # normal in the opposite direction of this face
-        factor = -0.5
-        ndlt = nd<factor  # TODO: stricter requirement on "opposing face" angle?
-        min_mask = np.any(ndlt,axis=1)  
-        min_inds = np.argmax(-abs_shift*ndlt-1e6*(nd>=factor),axis=1)
-        pairs = np.vstack([np.flatnonzero(min_mask), min_inds[min_mask]])
-        
-        return candidates[pairs[0,:]], pairs[1,:]
+        if USE_C:
+            pairs = np.ones(candidates.shape[0], dtype='i4')  # index of paired face for each candidate
+            self._c_holepunch_pair_candidate_faces(candidates, candidates.shape[0], pairs)
+            pair_inds = pairs!=-1  # some faces may have no pairs
+            new_inds = np.cumsum(pair_inds)-1
+
+            return candidates[pair_inds], new_inds[pairs[pair_inds]]
+            
+        else:
+            # CAUTION: This has a tendency to blow up memory usage.
+
+            candidate_faces = self._faces[candidates]
+            candidate_halfedges = candidate_faces['halfedge']
+            
+            v0 = self._halfedges['vertex'][self._halfedges['prev'][candidate_halfedges]]
+            v1 = self._halfedges['vertex'][candidate_halfedges]
+            v2 = self._halfedges['vertex'][self._halfedges['next'][candidate_halfedges]]
+            
+            candidate_vertices = np.vstack([v0,v1,v2]).T
+            candidate_positions = self._vertices['position'][candidate_vertices] # (N, (v0,v1,v2), (x,y,z))
+            candidate_centroids = candidate_positions.mean(1)
+            
+            candidate_normals = candidate_faces['normal']  # (N, 3)
+            
+            # Compute the shift orthogonal to the mean normal plane between each of the faces
+            candidate_shift = candidate_centroids[None,...] - candidate_centroids[:,None,:]  # (N, N, 3)
+            n_hat = 0.5*(candidate_normals[None,...] + candidate_normals[:,None,:])  # (N, N, 3)
+            shift = candidate_shift - n_hat*(((n_hat*candidate_shift).sum(2)*np.linalg.norm(candidate_shift*candidate_shift, axis=2))[...,None])
+            abs_shift = (shift*shift).sum(2)
+            
+            # Compute the dot product between all of the normals
+            nd = (candidate_normals[None,...]*candidate_normals[:,None,:]).sum(2)  # (N, N)
+            
+            # For each face, find the opposing face with the nearest centroid that has a
+            # normal in the opposite direction of this face
+            factor = -0.5
+            ndlt = nd<factor  # TODO: stricter requirement on "opposing face" angle?
+            min_mask = np.any(ndlt,axis=1)  
+            min_inds = np.argmax(-abs_shift*ndlt-1e6*(nd>=factor),axis=1)
+            pairs = np.vstack([np.flatnonzero(min_mask), min_inds[min_mask]])
+            
+            return candidates[pairs[0,:]], pairs[1,:]
 
     def _holepunch_empty_prism_candidate_faces(self, points, candidates, candidate_pair, eps=10.0):
         """
