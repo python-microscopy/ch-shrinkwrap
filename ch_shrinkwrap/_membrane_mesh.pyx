@@ -897,7 +897,7 @@ cdef class MembraneMesh(TriangleMesh):
         does not need to be unique.
         """
         if USE_C:
-            pairs = np.ones(candidates.shape[0], dtype='i4')  # index of paired face for each candidate
+            pairs = -1*np.ones(candidates.shape[0], dtype='i4')  # index of paired face for each candidate
             self._c_holepunch_pair_candidate_faces(candidates, candidates.shape[0], pairs)
             pair_inds = pairs!=-1  # some faces may have no pairs
             new_inds = np.cumsum(pair_inds)-1

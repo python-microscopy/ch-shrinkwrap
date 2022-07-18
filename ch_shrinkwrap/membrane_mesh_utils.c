@@ -1311,6 +1311,11 @@ static void c_holepunch_pair_candidate_faces(void *vertices_,
         // ...compare the upper triangle of the pairwise comparison
         for (j=(i+1);j<n_candidates;++j)
         {
+            // This was already assigned.
+            // Note, this check deviates slightly from the behavior of the Python version
+            // of this function.
+            if (pairs[j] != -1) continue;
+
             face_j = &(faces[j]);
             nd = ffdot3f(face_i->normal, face_j->normal);
 
