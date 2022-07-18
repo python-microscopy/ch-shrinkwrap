@@ -744,8 +744,6 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0
     p : float
         Monte-Carlo acceptance probability.
     """
-    import yaml
-    import ch_shrinkwrap._membrane_mesh as membrane_mesh
 
     d, new_d = [], []
     with open(yaml_file) as f:
@@ -795,7 +793,7 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0
                 new_d.append({'mesh': mesh_d})
             except:
                 failed += 1
-                
+    
     print(f"Failed to compute metrics for {failed} meshes")
     return new_d
 
@@ -1008,15 +1006,13 @@ def test_structure(yaml_file, multiprocessing=False, force=False):
         import multiprocessing as mp
 
         with mp.Pool() as pool:
-            pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
-
-        return ""
+            yaml_out = pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
 
     else:
         for p in params:
             yaml_out = partial(evaluate_structure, test_d, test_shape)(*p)
 
-        return yaml_out
+    return yaml_out
 
 if __name__ == '__main__':
     import argparse
