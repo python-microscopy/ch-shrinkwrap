@@ -29,6 +29,7 @@ import itertools
 import yaml
 import time
 from functools import partial
+import uuid
 
 from tables.exceptions import HDF5ExtError
 
@@ -799,9 +800,9 @@ def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0
     print(f"Failed to compute metrics for {failed} meshes")
     return new_d
 
-def unique_filename(save_directory, stub, ext, return_time=False):
+def unique_filename(save_directory, stub, ext, return_uuid=False):
     """
-    Generate a unique file name using time.time() from stub and append the file extension.
+    Generate a unique file name using uuid from stub and append the file extension.
 
     Parameters
     ----------
@@ -811,22 +812,21 @@ def unique_filename(save_directory, stub, ext, return_time=False):
         Non-unqiue identifier of the type stored in the file
     ext : str
         File extension
-    return_time : bool
-        Return the time the file extension was generated. Proxy for unique identifier.
+    return_uuid : bool
+        Return the uuid for the generated file.
 
     Returns
     -------
     fn : str
         Path to unique file.
-    file_time : float, optional
-        The time at which this file string was generated. Proxy for unique identifier.
+    uuid : float, optional
+        The unique identifier.
     """
     attempts = 10
     while True:
-        file_time = time.time()
+        uid = uuid.uuid4()
         fn = os.path.join(save_directory, 
-                          '_'.join(f'{stub}_{file_time:.1f}'.split('.')) \
-                          + '.' + ext.split('.')[-1])
+                          f"{stub}_{uid}.{ext.split('.')[-1]}")
         if not os.path.exists(fn):
             break
         elif attempts == 0:
@@ -834,8 +834,8 @@ def unique_filename(save_directory, stub, ext, return_time=False):
                   'There are probably some downstream consequences.')
         time.sleep(0.2*np.random.rand())
         attempts -= 1
-    if return_time:
-        return fn, file_time
+    if return_uuid:
+        return fn, uid
     return fn
 
 def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
@@ -902,7 +902,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                     test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
     
     # Save the results
-    yaml_out, start_time = unique_filename(test_d['save_fp'], 'run', 'yaml', return_time=True)
+    yaml_out, uid = unique_filename(test_d['save_fp'], 'run', 'yaml', return_time=True)
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
     
@@ -912,7 +912,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                                bg_photon_count=test_d['system']['bg_photon_count'])
     
     # Save the results
-    yaml_out = os.path.join(test_d['save_fp'], '_'.join(f'run_{start_time:.1f}'.split('.'))+'_metrics.yaml')
+    yaml_out = os.path.join(test_d['save_fp'], f"run_{uid}_metrics.yaml")
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *res], f)
 
