@@ -63,7 +63,7 @@ cdef class MembraneMesh(TriangleMesh):
                     int n_edge_idx,
                     int n_face_idx)
 
-    cdef grad(self, np.ndarray points, np.ndarray sigma)
+    # cdef grad(self, np.ndarray points, np.ndarray sigma)
 
     cdef _c_holepunch_pair_candidate_faces(self, int[:] candidates, int n_candidates, int[:] pairs)
         

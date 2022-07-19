@@ -1288,7 +1288,7 @@ static void c_holepunch_pair_candidate_faces(void *vertices_,
                                              int *pairs)
 {
     int i, j;
-    float nd, candidate_shift_n_hat_dot, candidate_shift_norm, abs_shift, min_shift;
+    float nd, ndi, ndj, candidate_shift_n_hat_dot, candidate_shift_norm, abs_shift, min_shift;
     float centroid_i[3];
     float centroid_j[3];
     float n_sum[3];
@@ -1304,7 +1304,7 @@ static void c_holepunch_pair_candidate_faces(void *vertices_,
     // for all the candidate faces...
     for (i=0;i<n_candidates;++i)
     {
-        face_i = &(faces[i]);
+        face_i = &(faces[candidates[i]]);
         calculate_face_centroid(face_i, vertices, halfedges, centroid_i);
         min_shift = 1e6;
 
@@ -1316,10 +1316,12 @@ static void c_holepunch_pair_candidate_faces(void *vertices_,
             // of this function.
             if (pairs[j] != -1) continue;
 
-            face_j = &(faces[j]);
+            face_j = &(faces[candidates[j]]);
             nd = ffdot3f(face_i->normal, face_j->normal);
 
-            if (nd>-0.5) continue;  // These two faces are not opposite. 
+            // printf("the dot product is %f\n", nd);
+
+            if (nd>-0.6) continue;  // These two faces are not opposite. 
                                     // TODO: stricter requirement on "opposing face" angle?
             
             calculate_face_centroid(face_j, vertices, halfedges, centroid_j);
@@ -1328,8 +1330,17 @@ static void c_holepunch_pair_candidate_faces(void *vertices_,
             ffadd3f(face_i->normal, face_j->normal, n_sum);
             ffscalar_mult3f(n_sum, 0.5, n_hat);
 
-            // Compute the shift orthogonal to the mean normal plane between the faces
+            
             ffsubtract3f(centroid_i, centroid_j, candidate_shift);
+
+            ndi = ffdot3f(face_i->normal, candidate_shift);
+            ndj = ffdot3f(face_j->normal, candidate_shift);
+
+            // These are paired with the normals pointing at one another, don't use
+            // This also deviates from the behavior of the Python version
+            if ((ndi < 0) && (ndj > 0)) continue;
+
+            // Compute the shift orthogonal to the mean normal plane between the faces
             candidate_shift_norm = fnorm3f(candidate_shift);
             candidate_shift_n_hat_dot = ffdot3f(n_hat, candidate_shift);
             ffscalar_mult3f(n_hat, candidate_shift_n_hat_dot*candidate_shift_norm, candidate_shift_n_hat);
