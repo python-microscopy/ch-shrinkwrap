@@ -820,18 +820,9 @@ def unique_filename(save_directory, stub, ext, return_uuid=False):
     uuid : float, optional
         The unique identifier.
     """
-    attempts = 10
-    while True:
-        uid = uuid.uuid4()
-        fn = os.path.join(save_directory, 
-                          f"{stub}_{uid}.{ext.split('.')[-1]}")
-        if not os.path.exists(fn):
-            break
-        elif attempts == 0:
-            print('Ran out of attempts to generate a unique file.'
-                  'There are probably some downstream consequences.')
-        time.sleep(0.2*np.random.rand())
-        attempts -= 1
+    uid = uuid.uuid4()
+    fn = os.path.join(save_directory, 
+                        f"{stub}_{uid}.{ext.split('.')[-1]}")
     if return_uuid:
         return fn, uid
     return fn
