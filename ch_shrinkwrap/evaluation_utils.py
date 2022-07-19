@@ -891,7 +891,7 @@ def evaluate_structure(test_d, test_shape, pp, td, psf_width, mpc, no):
                     test_d['screened_poisson']['pointweight'], save_folder=test_d['save_fp'])
     
     # Save the results
-    yaml_out, uid = unique_filename(test_d['save_fp'], 'run', 'yaml', return_time=True)
+    yaml_out, uid = unique_filename(test_d['save_fp'], 'run', 'yaml', return_uuid=True)
     with open(yaml_out, 'w') as f:
         yaml.safe_dump([{'points': points_md}, *iso_md, *sw_md, *spr_md], f)
     
@@ -998,7 +998,7 @@ def test_structure(yaml_file, multiprocessing=False, force=False):
 
         # with mp.Pool() as pool:
         #     yaml_out = pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
-        with mp.Pool as pool:
+        with mp.Pool() as pool:
             funclist = []
             for p in params:
                 f = pool.apply_async(partial(evaluate_structure, test_d, test_shape), p)
