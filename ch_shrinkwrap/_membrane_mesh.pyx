@@ -1314,7 +1314,7 @@ cdef class MembraneMesh(TriangleMesh):
             if np.all(shift < eps):
                 return
     
-    def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
+    def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, weights=None, **kwargs):
         from ch_shrinkwrap.mesh_conj_grad import ShrinkwrapMeshConjGrad
 
         r = (self.remesh_frequency != 0) and (self.remesh_frequency <= max_iter)
@@ -1347,7 +1347,9 @@ cdef class MembraneMesh(TriangleMesh):
         neck_first_iter = getattr(self, 'neck_first_iter', -1)
 
 
-        if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
+        if np.isscalar(sigma):
+            s = float(sigma)
+        elif (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
             print("Not this case???")
             print(points.shape, sigma.shape)
             s = 1.0/np.repeat(sigma,points.shape[1])
@@ -1393,7 +1395,7 @@ cdef class MembraneMesh(TriangleMesh):
 
             n_it = min(max_iter - j, rf)
             vp = self.cg.search(points,lams=[step_size*self.kc/2.0, self.shrink_weight],num_iters=n_it,
-                           weights=s)
+                           sigma_inv=s, weights=weights)
 
             j += n_it
 
