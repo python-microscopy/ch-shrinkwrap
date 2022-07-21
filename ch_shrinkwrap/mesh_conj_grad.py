@@ -144,17 +144,23 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
     
         
-    def search(self, data, lams, defaults=None, num_iters=10, weights=1, pos=False, last_step=True):
+    def search(self, data, lams, defaults=None, num_iters=10, weights=None, sigma_inv=1.0, pos=False, last_step=True):
         """Custom search to add weighting to res
         """
 
         self._prev_loopcount = -1
+
+        if weights is None:
+            # allow sigma and weights to be different (for image fitting)
+            weights = sigma_inv
 
         if not np.isscalar(weights):
             self.mask = weights > 0
             weights = weights / weights.mean()
         else:
             self.mask = np.isfinite(data.ravel())
+
+        #self._sigma = sigma
 
         # guess a starting estimate for the object
         # NOTE: start_guess must return a unique object (e.g. a copy() of data)
@@ -218,7 +224,9 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
-            w = 1.0/(self.d.ravel()*weights/2.0+1)
+            w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            #w = 1.0/(self.d.ravel()/2.0+1)
+            #w = weights
             # w = np.exp(-(self.d.ravel()*weights/2)**2)
             # w = 1.0/np.log((2*self.d.ravel()/weights)**2+np.exp(1))
             # print("WEIGHTING")
