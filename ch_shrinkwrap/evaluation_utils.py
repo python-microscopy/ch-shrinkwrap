@@ -996,19 +996,8 @@ def test_structure(yaml_file, multiprocessing=False, force=False):
     if multiprocessing:
         import multiprocessing as mp
 
-        # with mp.Pool() as pool:
-        #     yaml_out = pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
         with mp.Pool() as pool:
-            funclist = []
-            for p in params:
-                f = pool.apply_async(partial(evaluate_structure, test_d, test_shape), p)
-                funclist.append(f)
-            results = []
-            for f in funclist:
-                result = f.get()
-                results.append(result)
-            pool.close()
-            pool.terminate()
+            yaml_out = pool.starmap(partial(evaluate_structure, test_d, test_shape), params)
 
     else:
         for p in params:
