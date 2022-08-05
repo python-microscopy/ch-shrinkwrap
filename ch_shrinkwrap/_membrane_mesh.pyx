@@ -99,6 +99,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._initialize_curvature_vectors()
         
         self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc', 'point_influence']) #, 'puncture_candidates'])
+        self.vertex_vector_properties.extend(['S0', 'S1', 'S2', 'S3'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -1125,6 +1126,7 @@ cdef class MembraneMesh(TriangleMesh):
         self.repair()
         #self.repair()
         self.remesh()
+        self.remove_inner_surfaces()
 
     # End topology functions
     ##########################
@@ -1370,6 +1372,11 @@ cdef class MembraneMesh(TriangleMesh):
 
         j = 0
 
+        if self.shrink_weight > 0:
+            lams = [step_size*self.kc/2.0, self.shrink_weight]
+        else:
+            lams  = [step_size*self.kc/2.0,]
+
         while j < max_iter:
             # n = self._halfedges['vertex'][self._vertices['neighbors']]
             # n_idxs = self._vertices['neighbors'] == -1
@@ -1394,7 +1401,7 @@ cdef class MembraneMesh(TriangleMesh):
 
 
             n_it = min(max_iter - j, rf)
-            vp = self.cg.search(points,lams=[step_size*self.kc/2.0, self.shrink_weight],num_iters=n_it,
+            vp = self.cg.search(points,lams=lams,num_iters=n_it,
                            sigma_inv=s, weights=weights)
 
             j += n_it
@@ -1442,6 +1449,23 @@ cdef class MembraneMesh(TriangleMesh):
     def _S0(self):
         """ Search direction to minimise data misfit"""
         return self.cg.Ahfunc(self.cg.res).reshape(self.vertices.shape)
+
+
+    @property
+    def S0(self):
+        return self.cg.S[:,0].reshape(self.vertices.shape)
+
+    @property
+    def S1(self):
+        return self.cg.S[:,1].reshape(self.vertices.shape)
+
+    @property
+    def S2(self):
+        return self.cg.S[:,2].reshape(self.vertices.shape)
+
+    @property
+    def S3(self):
+        return self.cg.S[:,3].reshape(self.vertices.shape)
 
     @property
     def point_dis(self):

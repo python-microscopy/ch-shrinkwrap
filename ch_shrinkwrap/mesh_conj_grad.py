@@ -33,7 +33,8 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
     def __init__(self, mesh, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None, use_octree=False):
         TikhonovConjugateGradient.__init__(self)
         
-        self.Lfuncs, self.Lhfuncs = ["Lfunc3", "I"], ["Lfunc3", "I"]
+        #self.Lfuncs, self.Lhfuncs = ["Lfunc3", "I"], ["Lfunc3", "I"]
+        self.Lfuncs, self.Lhfuncs = ["I"], ["I"]
         self.mesh = mesh
         self.points = points
         self.sigma = sigma
@@ -178,7 +179,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         self.res = 0*data
 
         #number of search directions
-        n_smooth = len(self.Lfuncs)
+        n_smooth = min(len(self.Lfuncs), len(lams))
         n_search = n_smooth+1  # inital number of search directions is search along Afunc + Lfuncs
         s_size = n_search+1    # eventually we'll search along fnew - self.f
 
@@ -204,11 +205,11 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         S = np.zeros((np.size(self.f), s_size), 'f')
 
         # replace any empty lambdas with zeros
-        if len(lams) < len(self.Lfuncs):
-            print(f"not enough lambdas, defaulting {len(self.Lfuncs)-len(lams)} of them to 0")
-            tmp = lams
-            lams = [0]*len(self.Lfuncs)
-            lams[:len(tmp)] = tmp
+        #if len(lams) < len(self.Lfuncs):
+        #    print(f"not enough lambdas, defaulting {len(self.Lfuncs)-len(lams)} of them to 0")
+        #    tmp = lams
+        #    lams = [0]*len(self.Lfuncs)
+        #    lams[:len(tmp)] = tmp
 
         self.loopcount = 0
 
@@ -225,6 +226,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
             w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            #w = 1.0
             #w = 1.0/(self.d.ravel()/2.0+1)
             #w = weights
             # w = np.exp(-(self.d.ravel()*weights/2)**2)
@@ -267,6 +269,8 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             if last_step:
                 S[:,(s_size-1)] = (fnew - self.f)
                 n_search = s_size
+
+            self.S = S
 
             #set the current estimate to out new estimate
             self.f[:] = fnew
@@ -482,7 +486,12 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         w = 1.0/np.maximum(d, 1e-6)
 
+        #w = np.ones_like(d) 
+
+        #w = np.exp(-((d+1)/100.))
+
         w = w/w.sum(1)[:,None]
+        #w = w/w.sum(1).mean()
 
         #print(d, d/d.sum(1)[:,None], w)
         assert(not np.any(np.isnan(w)))
@@ -707,9 +716,20 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
     #     return p.ravel()
 
+    def _neighbour_centroids(self):
+        vnn = self.mesh._halfedges['vertex'][self.mesh.vertex_neighbors]
+        mask = self.mesh.vertex_neighbors > -1
+        ms= mask.sum(1)
+        vc = (self.mesh.vertices[vnn,:]*mask[:,:,None]).sum(1)/ms[:,None]
+
+        vc[ms==0,:] = self.mesh.vertices[ms==0,:]
+
+        return vc   
+
     def _defaults(self, idx=0):
         if idx == 0:
-            return 0
+            #return 0
+            return self._neighbour_centroids().ravel()
         
         else:
             # hard coded shrink-wrapping defaults - basically everything propagated in along it's normal

@@ -14,7 +14,7 @@ class ShrinkwrapMembrane(ModuleBase):
 
     max_iters = Int(100)
     curvature_weight = Float(10.0)
-    shrink_weight = Float(1.0)
+    shrink_weight = Float(0)
     #attraction_weight = Float(1)
     #curvature_weight = Float(1)
     # search_rad = Float(100.0)
@@ -129,6 +129,10 @@ class ImageShrinkwrapMembrane(ModuleBase):
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
                                         #   search_rad=self.search_rad)
+
+        # try and close holes in the mesh before we start
+        mesh.repair()
+        mesh.remesh()
 
         namespace[self.output] = mesh
 
