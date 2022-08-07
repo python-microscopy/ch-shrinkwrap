@@ -19,6 +19,7 @@ from PYME.experimental.isosurface import distance_to_mesh
 # from PYME.IO.tabular import HDFSource
 
 import os
+import sys
 import time
 import math
 import scipy.spatial
@@ -32,6 +33,9 @@ from functools import partial
 import uuid
 
 from tables.exceptions import HDF5ExtError
+
+if sys.platform == 'darwin':
+    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
     """
