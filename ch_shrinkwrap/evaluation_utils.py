@@ -199,24 +199,25 @@ def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, d
                             mean_photon_count=mean_photon_count, 
                             bg_photon_count=bg_photon_count,
                             resample=True)
+
     # find the precision of each simulated point
     cap_sigma = test_shape._sigma
     
     # simualte clusters at each of the points
-    cap_points, cap_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
-                                           mean_photon_count=mean_photon_count, 
-                                           bg_photon_count=bg_photon_count)
+    jittered_points, jittered_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
+                                                     mean_photon_count=mean_photon_count, 
+                                                     bg_photon_count=bg_photon_count)
 
     if noise_fraction > 0:
         # set up bounding box of simulation to decide where to put background
         no, scale = noise_fraction, 1.2
-        bbox = [np.min(cap_points[:,0]), np.min(cap_points[:,1]), 
-                np.min(cap_points[:,2]), np.max(cap_points[:,0]),
-                np.max(cap_points[:,1]), np.max(cap_points[:,2])]
+        bbox = [np.min(jittered_points[:,0]), np.min(jittered_points[:,1]), 
+                np.min(jittered_points[:,2]), np.max(jittered_points[:,0]),
+                np.max(jittered_points[:,1]), np.max(jittered_points[:,2])]
         bbox = [scale*x for x in bbox]
         xl, yl, zl, xu, yu, zu = bbox
         xn, yn, zn = xu-xl, yu-yl, zu-zl
-        ln = int(no*len(cap_points)/(1.0-no))
+        ln = int(no*len(jittered_points)/(1.0-no))
 
         # simulate background points random uniform over the bounding box
         noise_points = np.random.rand(ln,3)*(np.array([xn,yn,zn])[None,:]) \
@@ -227,16 +228,16 @@ def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, d
                                     bg_photon_count=bg_photon_count)
         
         # simulate clusters at each of the random noise points
-        noise_points, noise_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
-                                                   mean_photon_count=mean_photon_count,
-                                                   bg_photon_count=bg_photon_count)
+        noised_points, noised_sigma = smlmify_points(noise_points, noise_sigma, psf_width=psf_width, 
+                                                     mean_photon_count=mean_photon_count,
+                                                     bg_photon_count=bg_photon_count)
         
         # stack the regular and noise points
-        points = np.vstack([cap_points,noise_points])
-        sigma = np.vstack([cap_sigma,noise_sigma])
+        points = np.vstack([jittered_points,noised_points])
+        sigma = np.vstack([jittered_sigma,noised_sigma])
     else:
-        points = cap_points
-        sigma = cap_sigma
+        points = jittered_points
+        sigma = jittered_sigma
 
     return points, sigma
 
