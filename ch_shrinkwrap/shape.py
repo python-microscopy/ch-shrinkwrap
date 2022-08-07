@@ -43,8 +43,8 @@ class Shape:
         self._sigma = util.loc_error(self._points.shape, model, **kw)
         return self._sigma*np.random.randn(*self._sigma.shape)
     
-    def points(self, density=1, p=0.1, resample=False, noise='exponential', psf_width=280.0, mean_photon_count=600.0, 
-               bg_photon_count=20.0, return_normals=False):
+    def points(self, density=1, p=0.1, resample=False, noise='exponential', psf_width=280.0, mean_photon_count=600, 
+               bg_photon_count=20, return_normals=False):
         """
         Monte-Carlo sampling of uniform points on the Shape surface.
         
@@ -63,7 +63,7 @@ class Shape:
             self._density = density
             self._points = points_from_sdf(self.sdf, r_max=self._radius, centre=self.centroid, 
                                            dx_min=(1.0/self._density)**(1.0/3.0), p=p).T
-            if noise:
+            if noise and psf_width is not None:
                 self._points += self.__noise(noise, psf_width=psf_width, mean_photon_count=mean_photon_count, 
                                              bg_photon_count=bg_photon_count)
             if return_normals:

@@ -14,23 +14,17 @@ from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 from ch_shrinkwrap import util
 from ch_shrinkwrap import shape
 
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union, Optional
 
 import numpy.typing as npt
 
 import os
 import sys
-import time
+import itertools
 import scipy.spatial
 import numpy as np
 
-import itertools
-import yaml
-import time
-from functools import partial
-import uuid
-
-from tables.exceptions import HDF5ExtError
+from ch_shrinkwrap.sdf import sdf_normals
 
 if sys.platform == 'darwin':
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -164,9 +158,9 @@ def average_squared_distance(points0 : npt.ArrayLike, points1: npt.ArrayLike) ->
     return points0_mse, points1_mse
 
 def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, density : float = 1, 
-                                        p : float = 0.0001, psf_width : Union[float, Tuple] = 250.0, 
-                                        mean_photon_count : float = 300, bg_photon_count : float = 20.0,
-                                        noise_fraction : float = 0.1) -> Tuple[npt.ArrayLike, npt.ArrayLike]:
+                                        p : float = 0.0001, psf_width : Union[float, Tuple, None] = 250.0, 
+                                        mean_photon_count : int = 300, bg_photon_count : int = 20.0,
+                                        noise_fraction : float = 0.1) -> Tuple[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike]:
     """
     Generate an SMLM point cloud from a Shape object. 
     
@@ -182,13 +176,12 @@ def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, d
         Likelihood that a fluorophore is detected.
     psf_width : float or tuble
         Width of the microscope point spread function along (x,y,z)
-    mean_photon_count : float
+    mean_photon_count : int
         Average number of photons within a PSF
+    bg_photon_count : int
+        Average number of photons in an empty pixel.
     noise_fraction : float
         Fraction of total points that will be noise
-    save_fn : str
-        Complete path and name of the .txt file describing
-        where to save this simulation 
     """
 
 
@@ -202,22 +195,26 @@ def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, d
 
     # find the precision of each simulated point
     cap_sigma = test_shape._sigma
+
+    if psf_width is None:
+        normals = sdf_normals(cap_points.T, test_shape.sdf).T
+        return cap_points, normals, cap_sigma
     
-    # simualte clusters at each of the points
-    jittered_points, jittered_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
+    # simulate clusters at each of the points
+    cap_points, cap_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
                                                      mean_photon_count=mean_photon_count, 
                                                      bg_photon_count=bg_photon_count)
 
     if noise_fraction > 0:
         # set up bounding box of simulation to decide where to put background
         no, scale = noise_fraction, 1.2
-        bbox = [np.min(jittered_points[:,0]), np.min(jittered_points[:,1]), 
-                np.min(jittered_points[:,2]), np.max(jittered_points[:,0]),
-                np.max(jittered_points[:,1]), np.max(jittered_points[:,2])]
+        bbox = [np.min(cap_points[:,0]), np.min(cap_points[:,1]), 
+                np.min(cap_points[:,2]), np.max(cap_points[:,0]),
+                np.max(cap_points[:,1]), np.max(cap_points[:,2])]
         bbox = [scale*x for x in bbox]
         xl, yl, zl, xu, yu, zu = bbox
         xn, yn, zn = xu-xl, yu-yl, zu-zl
-        ln = int(no*len(jittered_points)/(1.0-no))
+        ln = int(no*len(cap_points)/(1.0-no))
 
         # simulate background points random uniform over the bounding box
         noise_points = np.random.rand(ln,3)*(np.array([xn,yn,zn])[None,:]) \
@@ -233,16 +230,19 @@ def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, d
                                                      bg_photon_count=bg_photon_count)
         
         # stack the regular and noise points
-        points = np.vstack([jittered_points,noised_points])
-        sigma = np.vstack([jittered_sigma,noised_sigma])
+        points = np.vstack([cap_points,noised_points])
+        sigma = np.vstack([cap_sigma,noised_sigma])
     else:
-        points = jittered_points
-        sigma = jittered_sigma
+        points = cap_points
+        sigma = cap_sigma
 
-    return points, sigma
+    normals = sdf_normals(points.T, test_shape.sdf).T
 
-def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_photon_count=20.0,
-                   max_points_per_cluster=10, max_points=None):
+    return points, normals, sigma
+
+def smlmify_points(points : npt.ArrayLike, sigma : npt.ArrayLike, psf_width : Union[float, Tuple, None] = 250.0, 
+                   mean_photon_count : int = 300, bg_photon_count : int = 20, max_points_per_cluster : int = 10, 
+                   max_points : Optional[int] = None) -> Tuple[npt.ArrayLike, npt.ArrayLike]:
     # simulate clusters of points around each noise point
     noise_points = np.vstack([np.random.normal(points, sigma) for i in range(max_points_per_cluster)])
     
@@ -258,3 +258,92 @@ def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_p
                                  bg_photon_count=bg_photon_count)
     
     return noise_points, noise_sigma
+
+def testing_parameters(test_d : dict) -> Tuple[dict, dict]:
+    """Expand YAML dict to flat list"""
+
+    # System
+    psf_widths = list(itertools.product(test_d['system']['psf_width_x'],
+                                   test_d['system']['psf_width_y'],
+                                   test_d['system']['psf_width_z']))
+    mean_photon_counts = test_d['system']['mean_photon_count']
+    bg_photon_counts = test_d['system']['bg_photon_count']
+
+    # Shape
+    shape_type = test_d['shape']['type']
+    shape_params = test_d['shape']['parameters']
+
+    # Point cloud
+    cloud_densities = test_d['point_cloud']['density']
+    cloud_p = test_d['point_cloud']['p']
+    cloud_noise_fraction = test_d['point_cloud']['noise_fraction']
+
+    # Dual marching cubes
+    march_density = test_d['dual_marching_cubes']['threshold_density']
+    march_points = test_d['dual_marching_cubes']['n_points_min']
+
+    densities = list(zip(cloud_densities, cloud_p, march_density, march_points))
+
+    # Shrinkwrapping
+    sw_iters = test_d['shrinkwrapping']['max_iters']
+    sw_curv = test_d['shrinkwrapping']['curvature_weight']
+    sw_remesh = test_d['shrinkwrapping']['remesh_frequency']
+    sw_punch = test_d['shrinkwrapping']['punch_frequency']
+    sw_hole_rad = test_d['shrinkwrapping']['min_hole_radius']
+    sw_neck_iter = test_d['shrinkwrapping']['neck_first_iter']
+    sw_neck_low = test_d['shrinkwrapping']['neck_threshold_low']
+    sw_neck_high = test_d['shrinkwrapping']['neck_threshold_high']
+
+    # SPR
+    spr_spn = test_d['screened_poisson']['samplespernode']
+    spr_weight = test_d['screened_poisson']['pointweight']
+    spr_iters = test_d['screened_poisson']['iters']
+
+    # common parameters
+    param_list = [psf_widths, mean_photon_counts, bg_photon_counts,
+                  shape_type, shape_params, densities, 
+                  cloud_noise_fraction]
+
+    # shrinkwrapping-specific parameters
+    sw_param_list = param_list + [sw_iters, sw_curv, sw_remesh,
+                     sw_punch, sw_hole_rad, sw_neck_iter,
+                     sw_neck_low, sw_neck_high]
+
+    # spr-specific parameters
+    spr_param_list = param_list + [spr_spn, spr_weight, spr_iters]
+
+    sw_list = itertools.product(*sw_param_list)
+    spr_list = itertools.product(*spr_param_list)
+
+    # Re-cast to dictionary 
+    param_keys = ['psf_width', 'mean_photon_count', 'bg_photon_count',
+                  'shape_name', 'shape_params', 'density',
+                  'p', 'threshold_density', 'n_points_min',
+                  'noise_fraction']
+
+    sw_keys = param_keys + ['max_iter', 'curvature_weight', 'remesh_frequency',
+                     'punch_frequency', 'min_hole_radius', 'neck_first_iter',
+                     'neck_threshold_low', 'neck_threshold_high']
+
+    spr_keys = param_keys + ['samplespernode', 'pointweight', 'iters']
+
+    def to_dict(sw_list, sw_keys):
+        sw_dicts = []
+        for k, it in enumerate(sw_list):
+            sw_dicts.append({})
+            i = 0
+            for el in it: 
+                if i == 5:
+                    # densities
+                    for j in range(4):
+                        sw_dicts[k][sw_keys[i]] = el[j]
+                        i += 1
+                else:
+                    sw_dicts[k][sw_keys[i]] = el
+                    i += 1
+        return sw_dicts
+
+    sw_dicts = to_dict(sw_list, sw_keys)
+    spr_dicts = to_dict(spr_list, spr_keys)
+
+    return sw_dicts, spr_dicts
