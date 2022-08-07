@@ -24,7 +24,10 @@ import time
 import math
 import scipy.spatial
 import numpy as np
-import pymeshlab as ml
+try:
+    import pymeshlab as ml
+except ModuleNotFoundError:
+    pass
 
 import itertools
 import yaml
@@ -39,53 +42,9 @@ if sys.platform == 'darwin':
 
 def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
     """
-    Generate random uniform sampling of points on a mesh.
-
-    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
-        Mesh representation of an object.
-    dx_min : float
-        The target side length of a voxel. Sets maximum sampling rate.
-    p : float
-        Monte-Carlo acceptance probability.
-    """
-
-
-    # Create a list of face centroids for search
-    
-    face_centers = mesh._vertices['position'][mesh.faces].mean(1)
-    tree = scipy.spatial.cKDTree(face_centers, compact_nodes=False)
-    def mesh_sdf(pts):
-        return distance_to_mesh(pts.T, mesh, smooth=False, tree=tree)
-    
-    xl, yl, zl, xu, yu, zu = mesh.bbox
-    diag = math.sqrt((xu-xl)*(xu-xl)+(yu-yl)*(yu-yl)+(zu-zl)*(zu-zl))
-    centre = ((xl+xu)/2, (yl+yu)/2, (zl+zu)/2)
-
-    # OK to leave this at 5 since mesh edge lengths never drop below this
-    d = points_from_sdf(mesh_sdf, diag/2, centre, dx_min=dx_min, p=p)
-
-    if return_normals:
-        # TODO: This repeats a fair bit of distance_to_mesh
-
-        # Create a list of face centroids for search
-        face_centers = mesh._vertices['position'][mesh.faces].mean(1)
-
-        # Construct a kdtree over the face centers
-        tree = scipy.spatial.cKDTree(face_centers)
-
-        _, _faces = tree.query(d.T, k=1)
-
-        normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
-
-        return d.T, normals
-
-    return d.T
-
-def points_from_mesh2(mesh, dx_min=5, p=1.0, return_normals=False):
-    """
     Generate uniform sampling of points on a mesh.
 
-    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
+    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh or PYME.experimental._triangle_mesh.TriangleMesh
         Mesh representation of an object.
     dx_min : float
         The target side length of a voxel. Sets maximum sampling rate.
@@ -173,98 +132,6 @@ def points_from_mesh2(mesh, dx_min=5, p=1.0, return_normals=False):
 
     return d[subsamp]
 
-def sign(x0, y0, x1, y1, x2, y2):
-    return (x0-x2)*(y1-y2)-(x1-x2)*(y0-y2)
-
-def points_from_mesh3(mesh, dx_min=1, p=0.1, return_normals=False):
-    """
-    Generate uniform sampling of points on a mesh.
-
-    mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh
-        Mesh representation of an object.
-    dx_min : float
-        The target side length of a voxel. Sets maximum sampling rate.
-    p : float
-        Monte-Carlo acceptance probability.
-    """
-
-    # find triangles and normals
-    tris = mesh._vertices['position'][mesh.faces]  # (N_faces, (v0,v1,v2), (x,y,z))
-    #norms = mesh._faces['normal'][mesh._faces['halfedge'] != -1]  # (N_faces, (x,y,z))
-    norms = np.cross((tris[:,2,:]-tris[:,1,:]),(tris[:,0,:]-tris[:,1,:]))  # (N_faces, (x,y,z))
-    nn = np.linalg.norm(norms,axis=1)
-    norms = norms/nn[:,None]
-
-    # construct orthogonal vectors to form basis of triangle plane
-    v0 = tris[:,1,:]-tris[:,0,:]     # (N_faces, (x,y,z))
-    e0n = np.linalg.norm(v0,axis=1)  # (N_faces,)
-    e0 = v0/e0n[:,None]              # (N_faces, (x,y,z))
-    e1 = np.cross(norms,e0,axis=1)   # (N_faces, (x,y,z))
-
-    # Decompose triangle positions into multiples of e0 and e1
-    x0 = (tris[:,0,:]*e0).sum(1)              # (N_faces,)
-    y0 = (tris[:,0,:]*e1).sum(1)
-    x1 = (tris[:,1,:]*e0).sum(1) 
-    y1 = (tris[:,1,:]*e1).sum(1) 
-    x2 = (tris[:,2,:]*e0).sum(1) 
-    y2 = (tris[:,2,:]*e1).sum(1)
-
-    # Compute sensible grid bounds
-    x0x1x2 = np.vstack([x0,x1,x2]).T  # (N_faces, 3)
-    y0y1y2 = np.vstack([y0,y1,y2]).T
-    xl = np.min(x0x1x2, axis=1)       # (N_faces,)
-    xu = np.max(x0x1x2, axis=1)
-    yl = np.min(y0y1y2, axis=1)
-    yu = np.max(y0y1y2, axis=1)
-
-    # For each triangle, find the grid points that fall inside the triangle
-    d = []
-    for i in range(tris.shape[0]):
-        x = np.arange(xl[i]-x0[i]-dx_min/2, xu[i]-x0[i], dx_min)  # normalize coordinates to vertex 0
-        y = np.arange(yl[i]-y0[i]-dx_min/2, yu[i]-y0[i], dx_min)
-        X, Y = np.meshgrid(x,y)
-
-        x0n = x0[i]-x0[i]
-        y0n = y0[i]-y0[i]
-        x1n = x1[i]-x0[i]
-        y1n = y1[i]-y0[i]
-        x2n = x2[i]-x0[i]
-        y2n = y2[i]-y0[i]
-
-        # https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
-        d1 = sign(X, Y, x0n, y0n, x1n, y1n)
-        d2 = sign(X, Y, x1n, y1n, x2n, y2n)
-        d3 = sign(X, Y, x2n, y2n, x0n, y0n)
-
-        has_neg = (d1 < 0) | (d2 < 0) | (d3 < 0)
-        has_pos = (d1 > 0) | (d2 > 0) | (d3 > 0)
-
-        X_mask = ~(has_neg & has_pos)
-
-        pos = X[X_mask].ravel()[:,None]*e0[i,None,:] + Y[X_mask].ravel()[:,None]*e1[i,None,:] + tris[i,0,:]
-        d.append(pos)
-
-    d = np.vstack(d)
-
-    subsamp = np.random.choice(np.arange(d.shape[0]), size=int(p*d.shape[0]), replace=False)
-
-    if return_normals:
-        # TODO: This repeats a fair bit of distance_to_mesh
-
-        # Create a list of face centroids for search
-        face_centers = mesh._vertices['position'][mesh.faces].mean(1)
-
-        # Construct a kdtree over the face centers
-        tree = scipy.spatial.cKDTree(face_centers)
-
-        _, _faces = tree.query(d.T, k=1)
-
-        normals = mesh._faces['normal'][mesh._faces['halfedge'] != -1][_faces]
-
-        return d[subsamp], normals[subsamp]
-
-    return d[subsamp]
-    
 def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=True):
     """
     Find pairs between point sets omega (o) and m s.t.
@@ -410,7 +277,7 @@ def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
 def test_points_mesh_stats(points, normals, mesh, dx_min=1, p=1.0, hausdorff=True):
     # Generate a set of test points from this mesh
     #start = time.time()
-    mesh_points, mesh_normals = points_from_mesh2(mesh, 
+    mesh_points, mesh_normals = points_from_mesh(mesh, 
                                                   dx_min=dx_min, 
                                                   p=p, return_normals=True)
     #stop = time.time()

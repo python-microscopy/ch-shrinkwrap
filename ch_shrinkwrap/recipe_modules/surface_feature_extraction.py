@@ -70,3 +70,28 @@ class SkeletonizeMembrane(ModuleBase):
         else:
             # return mesoskeleton mesh
             namespace[self.output] = mesh
+
+@register_module('PointsFromMesh')
+class PointsFromMesh(ModuleBase):
+    input = Input('membrane0')
+    output = Output('membrane0_localizations')
+
+    dx_min = Float(5)
+    p = Float(1.0)
+    return_normals = Bool(True)
+
+    def execute(self, namespace):
+        from ch_shrinkwrap.evaluation_utils import points_from_mesh
+        from PYME.IO.tabular import DictSource
+        
+        points, normals = points_from_mesh(namespace[self.input], dx_min=self.dx_min, p=self.p, 
+                                           return_normals=self.return_normals)
+
+        ds = DictSource({'x': points[:,0],
+                         'y': points[:,1],
+                         'z': points[:,2],
+                         'xn': normals[:,0],
+                         'yn': normals[:,1],
+                         'zn': normals[:,2]})
+
+        namespace[self.output] = ds
