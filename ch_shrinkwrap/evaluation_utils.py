@@ -260,7 +260,8 @@ def smlmify_points(points : npt.ArrayLike, sigma : npt.ArrayLike, psf_width : Un
     return noise_points, noise_sigma
 
 def testing_parameters(test_d : dict) -> Tuple[dict, dict]:
-    """Expand YAML dict to flat list"""
+    """Expand YAML dict to flat list. This YAML dict is defined in README.md and there is
+    an example at ch_shrinkwrap/test_example.yaml. """
 
     # System
     psf_widths = list(itertools.product(test_d['system']['psf_width_x'],
