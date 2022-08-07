@@ -6,6 +6,11 @@ likelihood. Curvature likelihood is based on the Canham-Helfrich energy
 functional, with stiffness coefficients of lipid bilayers extracted from 
 the literature.
 
+## Requirements
+
+- python-microscopy
+- pymeshlab
+
 ## Installation
 
 ch_shrinkwrap is a plugin for the [PYthon Microscopy Environment](https://python-microscopy.org/). 

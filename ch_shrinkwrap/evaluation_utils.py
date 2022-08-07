@@ -14,20 +14,15 @@ from ch_shrinkwrap import _membrane_mesh as membrane_mesh
 from ch_shrinkwrap import util
 from ch_shrinkwrap import shape
 
-from PYME.simulation.locify import points_from_sdf
-from PYME.experimental.isosurface import distance_to_mesh
-# from PYME.IO.tabular import HDFSource
+from typing import Optional, Tuple, Union
+
+import numpy.typing as npt
 
 import os
 import sys
 import time
-import math
 import scipy.spatial
 import numpy as np
-try:
-    import pymeshlab as ml
-except ModuleNotFoundError:
-    pass
 
 import itertools
 import yaml
@@ -40,16 +35,23 @@ from tables.exceptions import HDF5ExtError
 if sys.platform == 'darwin':
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
+def points_from_mesh(mesh, dx_min: float = 5, p: float = 1.0,
+                     return_normals: bool = False) -> Union[npt.ArrayLike, 
+                                                            Tuple[npt.ArrayLike, npt.ArrayLike]]:
     """
     Generate uniform sampling of points on a mesh.
 
+    Parameters
+    ----------
     mesh : ch_shrinkwrap._membrane_mesh.MembraneMesh or PYME.experimental._triangle_mesh.TriangleMesh
         Mesh representation of an object.
     dx_min : float
         The target side length of a voxel. Sets maximum sampling rate.
     p : float
         Monte-Carlo acceptance probability.
+
+    Returns
+    -------
     """
 
     # find triangles and normals
@@ -132,220 +134,54 @@ def points_from_mesh(mesh, dx_min=5, p=1.0, return_normals=False):
 
     return d[subsamp]
 
-def construct_ordered_pairs(o, m, no, nm, dx_max=1, k=10, special_case=True):
+def average_squared_distance(points0 : npt.ArrayLike, points1: npt.ArrayLike) -> Tuple[float, float]:
     """
-    Find pairs between point sets omega (o) and m s.t.
-
-    For (ox, oa), if oa \in o then ox = \Phi(oa) \in m 
-    where \Phi(oa) = oa + d*N(oa) where d is the signed
-    distance along the normal N(oa) of the point oa.
-
-    For (ma, mx), if mx \in m then ma = \Psi(mx) \in o
-    where \Psi(mx) = mx + g*N(mx) where g is the signed
-    distance along the normal N(mx) of the point mx.
-
-    See section 6 of Berger et al.
+    Return the average squared distances between nearest neighbor correspondences of two point clouds.
 
     Parameters
     ----------
-    o : np.array
-        N x 3 point data set
-    m : np.array
-        M x 3 point data set
-    no : np.array
-        N x 3 array of normals for o
-    nm : np.array
-        M x 3 array of normals for m
-    dx_max : float
-        Maximum distance \Phi or \Psi can be from an 
-        actual data point (sampling rate of uniformly
-        sampled point set)
-    k : int
-        Up to how many nearest neighbors should we consider?
-        
+    points0 : np.array
+        Point cloud
+    points1 : np.array
+        Point cloud
+
     Returns
     -------
-        ox : np.array
-            Indices of x in the omega set
-        oa : np.array
-            alpha in the omega set
-        mx : np.array
-            x in the M set
-        ma : np.array
-            alpha in the M set
+    points0 : float
+        Average squared distance of points1 from points0
+    points1 : float 
+        Average squared distance of points0 from points1
     """
+    points0_tree = scipy.spatial.cKDTree(points0)
+    points1_tree = scipy.spatial.cKDTree(points1)
 
-    # construct a kdtree 
-    otree = scipy.spatial.cKDTree(o)
-    mtree = scipy.spatial.cKDTree(m)
+    points0_err, _ = points0_tree.query(points1, k=1)
+    points1_err, _ = points1_tree.query(points0, k=1)
 
-    # Get the closest point for each m
-    # and vice versa
-    om, oi = otree.query(m, 1)  # (M,)  # for x in M, find alpha in o
-    mo, mi = mtree.query(o, 1)  # (N,)  # for alpha in o, find x in M
+    points0_mse = np.nansum(points0_err**2)/len(points0_err)
+    points1_mse = np.nansum(points1_err**2)/len(points1_err)
 
-    # Find the dot product of normal and the vector from
-    # each set to the other set
-    mdot = (nm*(o[oi]-m)).sum(1) # (M,)  # candidate mapping psi(x)
-    odot = (no*(m[mi]-o)).sum(1) # (N,)  # candidate mapping phi(alpha)
+    return points0_mse, points1_mse
 
-    # If the dot product is larger than if the vectors o[oi]-m and m+g*N(m)
-    # were displaced tip to tip by dx_max, keep them (o[oi]-m is within
-    # dx_max of m+g*N(m))
-    mop = om - dx_max*dx_max/(2*om)
-    omp = mo - dx_max*dx_max/(2*mo)
-    mdot_bool = np.abs(mdot) > mop
-    odot_bool = np.abs(odot) > omp
-    mdot_idxs = np.flatnonzero(mdot_bool) 
-    odot_idxs = np.flatnonzero(odot_bool)
-
-    # Clean up duplicates
-    ox, ox_inds = np.unique(mi[odot_idxs], return_index=True)
-    oa = odot_idxs[ox_inds]
-    ma, ma_inds = np.unique(oi[mdot_idxs], return_index=True)
-    mx = mdot_idxs[ma_inds]
-
-    if special_case:
-        #########
-        # For any points that don't pass the check, expand the 
-        # search. Find the closest point that does pass the check.
-        m2, o2 = m[~mdot_bool], o[~odot_bool]
-        om2, oi2 = otree.query(m2, k)
-        mo2, mi2 = mtree.query(o2, k)
-
-        mdot2 = ((nm[~mdot_bool])[:,None,:]*(o[oi2]-m2[:,None,:])).sum(2) # (M,k)  # candidate mapping psi(x)
-        odot2 = ((no[~odot_bool])[:,None,:]*(m[mi2]-o2[:,None,:])).sum(2) # (N,k)  # candidate mapping phi(alpha)
-        mop2 = om2 - dx_max*dx_max/(2*om2+1e6)
-        omp2 = mo2 - dx_max*dx_max/(2*mo2+1e6)
-        mdot_bool2 = np.abs(mdot2) > mop2
-        odot_bool2 = np.abs(odot2) > omp2
-
-        mdot_idxs2 = mi2[np.arange(len(mi2)),np.argmax(odot_bool2, axis=1)].squeeze()
-        odot_idxs2 = oi2[np.arange(len(oi2)),np.argmax(mdot_bool2, axis=1)].squeeze()
-
-        # Throw way indices that did not meet the condition anywhere
-        mdot_idxs2 = mdot_idxs2[np.sum(odot_bool2, axis=1)>0]
-        odot_idxs2 = odot_idxs2[np.sum(mdot_bool2, axis=1)>0]
-
-        # Then, add that point and its closest point in
-        # this set to the correspondence set. See Figure 10 of 
-        # Berger et al.
-        _, oi3 = otree.query(m[mdot_idxs2], 1)
-        _, mi3 = mtree.query(o[odot_idxs2], 1)
-
-        # Clean up duplicates
-        ox2, ox_inds2 = np.unique(mi3, return_index=True)
-        oa2 = odot_idxs2[ox_inds2]
-        ma2, ma_inds2 = np.unique(oi3, return_index=True)
-        mx2 = mdot_idxs2[ma_inds2]
-
-        #####
-
-        # Intersection
-
-        # One more unique call, as the special case may create a second mapping on an 
-        # already existing mapping.
-        oa2_inds = np.isin(oa2,oa)  # defined by mapping from a to x, throw away accordingly
-        mx2_inds = np.isin(mx2,mx)
-
-        # Stack them
-        ox = np.hstack([ox, ox2[~oa2_inds]])
-        oa = np.hstack([oa, oa2[~oa2_inds]])
-        mx = np.hstack([mx, mx2[~mx2_inds]])
-        ma = np.hstack([ma, ma2[~mx2_inds]])
-
-    return ox, oa, mx, ma
-
-def mean_and_hausdorff_distance_from_ordered_pairs(o, m, ox, oa, mx, ma):
-    dist_o = np.linalg.norm(o[oa] - m[ox], axis=1)
-    dist_m = np.linalg.norm(o[ma] - m[mx], axis=1)
-
-    hausdorff = max(np.max(dist_o), np.max(dist_m))
-    mean = 0.5*(np.mean(dist_o) + np.mean(dist_m))
-
-    return hausdorff, mean
-
-def mean_and_hausdorff_smoothness_from_ordered_pairs(no, nm, ox, oa, mx, ma):
-    angle_o = np.arccos((no[oa]*nm[ox]).sum(1))
-    angle_m = np.arccos((no[ma]*nm[mx]).sum(1))
-
-    hausdorff = max(np.max(angle_o), np.max(angle_m))
-    mean = 0.5*(np.mean(angle_o) + np.mean(angle_m))
-
-    return hausdorff, mean
-
-def test_points_mesh_stats(points, normals, mesh, dx_min=1, p=1.0, hausdorff=True):
-    # Generate a set of test points from this mesh
-    #start = time.time()
-    mesh_points, mesh_normals = points_from_mesh(mesh, 
-                                                  dx_min=dx_min, 
-                                                  p=p, return_normals=True)
-    #stop = time.time()
-    #print(f'Mesh point generation in {stop-start} s.')
-    
-    #start = time.time()
-    test_tree = scipy.spatial.cKDTree(points)
-    #stop = time.time()
-    #print(f'Points kdtree {stop-start} s.')
-    #start = time.time()
-    mesh_tree = scipy.spatial.cKDTree(mesh_points)
-    #stop = time.time()
-    #print(f'Mesh kdtree {stop-start} s.')
-    #start = time.time()
-    
-    test_err, _ = test_tree.query(mesh_points, k=1)
-    #stop = time.time()
-    #print(f'Mesh query {stop-start} s.')
-    #start = time.time()
-    mesh_err, _ = mesh_tree.query(points, k=1)
-    #stop = time.time()
-    #print(f'Points query {stop-start} s.')    
-
-    test_mse = np.nansum(test_err**2)/len(test_err)
-    mesh_mse = np.nansum(mesh_err**2)/len(mesh_err)
-
-    if hausdorff:
-        #start = time.time()
-        # Compute ordered points between this mesh and test_points
-        ox, oa, mx, ma = construct_ordered_pairs(points, mesh_points, 
-                                                normals, mesh_normals, 
-                                                dx_max=dx_min)
-        #stop = time.time()
-        #print(f'Ordered [aors] {stop-start} s.')
-        #start = time.time()
-        
-        # print(test_points.shape[0], mesh_points.shape[0], ox.shape[0], mx.shape[0])
-
-        # Compute hausdorff and mean distance (nm) and smoothness (rad)
-        hd, md = mean_and_hausdorff_distance_from_ordered_pairs(points, mesh_points, ox, oa, mx, ma)
-        #stop = time.time()
-        #print(f'HdMd {stop-start} s.')
-        #start = time.time()
-    
-        ha, aa = mean_and_hausdorff_smoothness_from_ordered_pairs(normals, mesh_normals, ox, oa, mx, ma)
-        #stop = time.time()
-        #print(f'HaAa {stop-start} s.')
-    
-        return test_mse, mesh_mse, hd, md, ha, aa
-    else:
-
-        return test_mse, mesh_mse
-
-
-def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_width=250.0, 
-                                        mean_photon_count=300, bg_photon_count=20.0,
-                                        noise_fraction=0.1, save_fn=None, **kw):
+def generate_smlm_pointcloud_from_shape(shape_name : str, shape_params : dict, density : float = 1, 
+                                        p : float = 0.0001, psf_width : Union[float, Tuple] = 250.0, 
+                                        mean_photon_count : float = 300, bg_photon_count : float = 20.0,
+                                        noise_fraction : float = 0.1) -> Tuple[npt.ArrayLike, npt.ArrayLike]:
     """
     Generate an SMLM point cloud from a Shape object. 
     
     Parameters
     ----------
+    shape_name : str
+        Name of shape
+    shape_params : dict
+        Arguments to feed to shape
     density : float
         Fluorophores per nm.
     p : float
         Likelihood that a fluorophore is detected.
-    psf_width : float
-        Width of the microscope point spread function
+    psf_width : float or tuble
+        Width of the microscope point spread function along (x,y,z)
     mean_photon_count : float
         Average number of photons within a PSF
     noise_fraction : float
@@ -354,6 +190,9 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         Complete path and name of the .txt file describing
         where to save this simulation 
     """
+
+
+    test_shape = getattr(shape, shape_name)(**shape_params)
 
     # simulate the points
     cap_points = test_shape.points(density=density, p=p, psf_width=psf_width, 
@@ -366,8 +205,7 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
     # simualte clusters at each of the points
     cap_points, cap_sigma = smlmify_points(cap_points, cap_sigma, psf_width=psf_width, 
                                            mean_photon_count=mean_photon_count, 
-                                           bg_photon_count=bg_photon_count,
-                                           **kw)
+                                           bg_photon_count=bg_photon_count)
 
     if noise_fraction > 0:
         # set up bounding box of simulation to decide where to put background
@@ -396,39 +234,11 @@ def generate_smlm_pointcloud_from_shape(test_shape, density=1, p=0.0001, psf_wid
         # stack the regular and noise points
         points = np.vstack([cap_points,noise_points])
         sigma = np.vstack([cap_sigma,noise_sigma])
-        s = np.sqrt((sigma*sigma).sum(1))
     else:
         points = cap_points
         sigma = cap_sigma
-        s = np.sqrt((sigma*sigma).sum(1))
 
-    # pass metadata associated with this simulation
-    md = {'shape': test_shape.__str__(), 'density': density, 'p': p, 'psf_width': psf_width, 
-          'mean_photon_count': mean_photon_count, 'bg_photon_count': bg_photon_count,
-          'noise_fraction': noise_fraction}
-    
-    if save_fn is not None:
-        import os
-        _, ext = os.path.splitext(save_fn)
-        if ext == '.txt':
-            ds = np.vstack([points.T,s]).T
-            np.savetxt(save_fn, ds, header="x y z sigma")
-        elif ext == '.hdf':
-            from PYME.IO.tabular import ColumnSource
-            ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], sigma_z=sigma[:,2])
-            for i in range(3):
-                # Make a few attempts to save the file
-                try:
-                    ds.to_hdf(save_fn)
-                    break
-                except HDF5ExtError:
-                    print(f"Save of {save_fn} failed, attempt {i+1}/3.")
-                    time.sleep(0.01)
-        else:
-            raise UserWarning('File type unrecognized. File was not saved.')
-        md['filename'] = save_fn
-        
-    return ds, md
+    return points, sigma
 
 def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_photon_count=20.0,
                    max_points_per_cluster=10, max_points=None):
@@ -447,162 +257,6 @@ def smlmify_points(points, sigma, psf_width=250.0, mean_photon_count=300.0, bg_p
                                  bg_photon_count=bg_photon_count)
     
     return noise_points, noise_sigma
-
-def generate_coarse_isosurface(ds, samples_per_node=1,
-                               threshold_density=2e-5, smooth_curvature=True, 
-                               repair=False, remesh=True, cull_inner_surfaces=True, 
-                               keep_largest=True, save_fn=None):
-    from PYME.experimental.octree import gen_octree_from_points
-    from PYME.experimental import dual_marching_cubes
-    from PYME.experimental import _triangle_mesh as triangle_mesh
-    
-    ot = gen_octree_from_points(ds)
-    
-    dmc = dual_marching_cubes.PiecewiseDualMarchingCubes(threshold_density)
-    dmc.set_octree(ot.truncate_at_n_points(samples_per_node))
-    tris = dmc.march(dual_march=False)
-    
-    surf = triangle_mesh.TriangleMesh.from_np_stl(tris, 
-                                                  smooth_curvature=smooth_curvature)
-    
-    if repair:
-        surf.repair()
-
-    if remesh:
-        surf.remesh()
-
-    if keep_largest:
-        surf.keep_largest_connected_component()
-    elif cull_inner_surfaces:
-        surf.remove_inner_surfaces()
-        
-    md = {'samples_per_node': samples_per_node, 'threshold_density': threshold_density,
-          'smooth_curvature': smooth_curvature, 'repair': repair, 'remesh': remesh, 
-          'cull_inner_surfaces': cull_inner_surfaces}
-    
-    if save_fn is not None:
-        surf.to_stl(save_fn)
-        md['filename'] = save_fn
-        
-    return surf, md
-
-def screened_poisson(points, k=10, smoothiter=0,
-                     flipflag=False, viewpos=[0,0,0], depth=8, fulldepth=5,
-                     cgdepth=0, scale=1.1, samplespernode=1.5, pointweight=4, 
-                     iters=8, confidence=False, preclean=False, save_fn=None):
-    """
-    Run screened poisson reconstruction on a set of points, using meshlab.
-    
-    For more information on these parameters, see meshlab.
-    
-    Parameters
-    ----------
-    points : np.array
-        (M,3) array 
-    see meshlab
-    
-    Returns
-    -------
-    str
-        File path to STL of reconstruction
-        
-    """
-
-    mesh = ml.Mesh(points)
-
-    ms = ml.MeshSet()  # create a mesh
-    ms.add_mesh(mesh)
-
-    start = time.time()
-    # compute normals
-    ms.compute_normals_for_point_sets(k=k,  # number of neighbors
-                                      smoothiter=smoothiter,
-                                      flipflag=flipflag,
-                                      viewpos=viewpos)
-    # run SPR
-    ms.surface_reconstruction_screened_poisson(visiblelayer=False,
-                                               depth=depth,
-                                               fulldepth=fulldepth,
-                                               cgdepth=cgdepth,
-                                               scale=scale,
-                                               samplespernode=samplespernode,
-                                               pointweight=pointweight,
-                                               iters=iters,
-                                               confidence=confidence,
-                                               preclean=preclean)
-    stop = time.time()
-    duration = stop-start
-
-    md = {'type': 'spr', 'k': int(k), 'smoothiter': bool(smoothiter), 'flipflag': bool(flipflag), 'viewpos': list(viewpos),
-          'depth': int(depth), 'fulldepth': int(fulldepth), 'cgdepth': int(cgdepth), 'scale': float(scale),
-          'samplespernode': float(samplespernode), 'pointweight': float(pointweight), 'iters': int(iters),
-          'confidence': bool(confidence), 'preclean': bool(preclean), 'duration': float(duration)}
-
-    if save_fn is not None:
-        ms.save_current_mesh(file_name=save_fn, unify_vertices=True)
-        md['filename'] = save_fn
-    
-    return (ms.current_mesh().vertex_matrix(), ms.current_mesh().face_matrix()), md
-
-def test_shrinkwrap(mesh, ds, max_iters, step_size, search_rad, remesh_every, search_k, save_folder=None):
-    points = np.vstack([ds['x'], ds['y'], ds['z']]).T
-    # sigma = ds['sigma']
-    sigma = np.vstack([ds['sigma_x'],ds['sigma_y'],ds['sigma_z']]).T
-    
-    failed_count = 0
-    md = []
-    for it in max_iters:
-        for lam in step_size:
-            for sr in search_rad:
-                for re in remesh_every:
-                    for k in search_k:
-                        # Copy the mesh over
-                        mesh = membrane_mesh.MembraneMesh(mesh=mesh)
-
-                        # set params
-                        mesh.max_iter = it
-                        mesh.step_size = lam
-                        mesh.search_k = k
-                        mesh.search_rad = sr
-                        mesh.remesh_frequency = re
-                        mesh.delaunay_remesh_frequency = 0
-                        mesh.neck_first_iter = 0
-
-                        try:
-                            start = time.time()
-                            mesh.shrink_wrap(points, sigma, method='conjugate_gradient')
-                            stop = time.time()
-                            duration = stop-start
-                            mmd = ({'type': 'shrinkwrap', 'iterations': int(it), 'remesh_every': int(re), 'lambda': float(lam), 
-                            'search_k': int(k), 'search_rad': float(sr), 'ntriangles': int(mesh.faces.shape[0]), 'duration': float(duration)})
-                            if save_folder is not None:
-                                wrap_fp = unique_filename(save_folder, 'sw_mesh', 'stl')
-                                mesh.to_stl(wrap_fp)
-                                mmd['filename'] = wrap_fp
-                            md.append({'mesh': mmd})
-                        except:
-                            failed_count += 1
-    print(f'{failed_count} shrinkwrapped meshes failed.')
-    return md
-
-def test_spr(ds, max_iters, search_k, depth, samplespernode, pointweight, save_folder=None):
-    points = np.vstack([ds['x'], ds['y'], ds['z']]).T
-    md = []
-    failed_count = 0
-    for it in max_iters:
-        for k in search_k:
-            for d in depth:
-                for spn in samplespernode:
-                    for wt in pointweight:
-                        try:
-                            wrap_fp = unique_filename(save_folder, 'spr_mesh', 'stl')
-                            _, mmd = screened_poisson(points, k=k, depth=d, samplespernode=spn, pointweight=wt,
-                                                        iters=it, save_fn=wrap_fp)
-                            md.append({'mesh': mmd})
-                        except:
-                            failed_count += 1
-    print(f'{failed_count} SPR meshes failed.')
-    return md
 
 def compute_mesh_metrics(yaml_file, test_shape, dx_min=1, p=1.0, psf_width=250.0, 
                          mean_photon_count=300.0, bg_photon_count=20.0):
