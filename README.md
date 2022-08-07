@@ -97,7 +97,7 @@ ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
 - parameters : dict
     The arguments passed to `__init__` for a shape of class type. 
 
-### Point cloud {#cloud}
+### Point cloud
 
 The parameters define the sampling of the point cloud and the amount of background noise 
 added to the point cloud. See ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
@@ -120,7 +120,7 @@ PYME.experimental.recipes.surface_fitting_DualMarchingCubes.
 
 Note that, unlike the rest of the parameters in this file, which vary independently of
 one another, `threshold_density` and `n_points_min` vary together along with 
-[Point Cloud](#cloud)'s `p` and `density`.
+[Point Cloud](#point-cloud)'s `p` and `density`.
 
 - threshold_density : float
     The point cloud density at which a surface divides signal from background with a
