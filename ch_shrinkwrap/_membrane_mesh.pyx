@@ -871,29 +871,30 @@ cdef class MembraneMesh(TriangleMesh):
         # Give each face its own component
         self._faces['component'][candidates] = range(len(candidates))
         
-        for c in candidates:
-            # Assign each face the minimum component of it and the face of its twin edge
-            e0 = self._faces['halfedge'][c]
-            e1 = self._halfedges['next'][e0]
-            e2 = self._halfedges['prev'][e0]
-        
-            c0, c1, c2 = 1e6, 1e6, 1e6
-            if self._halfedges['twin'][e0] != -1:
-                c0 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]]
-            if self._halfedges['twin'][e1] != -1:
-                c1 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]]
-            if self._halfedges['twin'][e2] != -1:
-                c2 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]]
-
-            new_component = np.min([self._faces['component'][c], c0, c1, c2])
+        for _ in range(2):
+            for c in candidates:
+                # Assign each face the minimum component of it and the face of its twin edge
+                e0 = self._faces['halfedge'][c]
+                e1 = self._halfedges['next'][e0]
+                e2 = self._halfedges['prev'][e0]
             
-            self._faces['component'][c] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e0]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e1]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e2]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]] = new_component
+                c0, c1, c2 = 1e6, 1e6, 1e6
+                if self._halfedges['twin'][e0] != -1:
+                    c0 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]]
+                if self._halfedges['twin'][e1] != -1:
+                    c1 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]]
+                if self._halfedges['twin'][e2] != -1:
+                    c2 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]]
+
+                new_component = np.min([self._faces['component'][c], c0, c1, c2])
+                
+                self._faces['component'][c] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e0]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e1]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e2]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]] = new_component
             
         return self._faces['component'][candidates]
 
@@ -956,6 +957,7 @@ cdef class MembraneMesh(TriangleMesh):
                     if used_components[pair_component_idx]:
                         continue
                     self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
+                    used_components[i] = True
                     used_components[pair_component_idx] = True
                     break
             else:
@@ -998,20 +1000,56 @@ cdef class MembraneMesh(TriangleMesh):
                         continue
                     
                     # we have paired faces in two different components, extract their boundaries
-                    boundary0 = self._holepunch_component_boundary(component_cands)
-                    boundary1 = self._holepunch_component_boundary(candidates[component == component[pair_idx]])
+                    paired_component_cands = candidates[component == component[pair_idx]]
+                    inner_boundary0 = self._holepunch_component_boundary(component_cands)
+                    inner_boundary1 = self._holepunch_component_boundary(paired_component_cands)
 
                     # Find the closest position to the first position in boundary 0
-                    position0 = self._vertices['position'][self._halfedges['vertex'][boundary0[0]]]
-                    positions1 = self._vertices['position'][self._halfedges['vertex'][boundary1]]
+                    position0 = self._vertices['position'][self._halfedges['vertex'][inner_boundary0[0]]]
+                    positions1 = self._vertices['position'][self._halfedges['vertex'][inner_boundary1]]
                     min_idx = np.argmin((positions1 - position0)**2)
                     
                     # roll positions 1 back by min_idx, so the closest vertices are the starting points
-                    boundary1 = np.roll(boundary1, -min_idx)
+                    inner_boundary1 = np.roll(inner_boundary1, -min_idx)
 
-                    print(boundary0)
-                    print(boundary1)
+                    boundary0 = np.zeros_like(inner_boundary0)
+                    boundary1 = np.zeros_like(inner_boundary1)
 
+                    for j, edge in enumerate(inner_boundary0):
+                        twin = self._chalfedges[edge].twin
+                        boundary0[j] = twin
+                        # reassign vertex so its halfedge will still exist
+                        self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
+                        # Disconnect the halfedges
+                        self._chalfedges[twin].twin = -1
+                    for j, edge in enumerate(inner_boundary1):
+                        twin = self._chalfedges[edge].twin
+                        boundary1[j] = twin
+                        # reassign vertex so its halfedge will still exist
+                        self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
+                        # Disconnect the halfedges
+                        self._chalfedges[twin].twin = -1
+                    for face in component_cands:
+                        self._face_delete(face)
+                    for face in paired_component_cands:
+                        self._face_delete(face)
+
+                    self._clear_flags()
+                    self.face_normals
+                    self.vertex_normals
+
+                    boundary_polygons = np.hstack([boundary0, boundary1[::-1]])
+                    n_edges = boundary_polygons.shape[0]
+
+                    new_faces = self.new_faces(int(n_edges-2))
+                    new_edges = self.new_edges(int(3*(n_edges-3)+3))
+
+                    self._zig_zag_triangulation(np.atleast_2d(boundary_polygons), 
+                                                <np.int32_t *> np.PyArray_DATA(new_edges), 
+                                                <np.int32_t *> np.PyArray_DATA(new_faces), 
+                                                0, n_edges, live_update=True)
+
+                    used_components[i] = True
                     used_components[pair_component_idx] = True
                     break
             else:
@@ -1083,7 +1121,7 @@ cdef class MembraneMesh(TriangleMesh):
         chi = self._holepunch_component_euler_characteristic(empty_cands, component)
 
         # Punch holes between place patches (cut tubes is currently disabled)
-        self._holepunch_update_topology(empty_cands, empty_pairs, component, chi)
+        self._holepunch_update_topology2(empty_cands, empty_pairs, component, chi)
 
     def remove_necks(self, neck_curvature_threshold_low=-1e-4, neck_curvature_threshold_high=1e-2):
         """
