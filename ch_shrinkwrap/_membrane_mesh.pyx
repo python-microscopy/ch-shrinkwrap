@@ -1042,19 +1042,20 @@ cdef class MembraneMesh(TriangleMesh):
                     # Reverse the boundaries so they run in the correct order
                     boundary0 = find_outer_boundary(inner_boundary0)
                     boundary1 = find_outer_boundary(inner_boundary1)
+                    boundary_polygons = np.hstack([boundary0, boundary1])
 
                     # Add one square to connect the separated boundaries
                     # (TODO: This could be done with a single triangle)
                     n_faces, n_edges = self.new_faces(2), self.new_edges(6)
                     n_face_idx, n_edge_idx = 0, 0
-                    self._holepunch_insert_square(boundary0[0], boundary1[0],
+                    self._holepunch_insert_square(inner_boundary0[0], inner_boundary1[0],
                                                   <np.int32_t *> np.PyArray_DATA(n_edges), 
                                                   <np.int32_t *> np.PyArray_DATA(n_faces), 
                                                   n_edge_idx, n_face_idx)
 
                     # Update the boundary to include two new edges
-                    boundary_polygons[0] = n_edges[5]
-                    boundary_polygons[len(boundary0)] = n_edges[2]
+                    boundary_polygons[0] = n_edges[2]
+                    boundary_polygons[len(boundary0)] = n_edges[5]
 
                     # Delete faces
                     for face in component_cands:
@@ -1064,7 +1065,6 @@ cdef class MembraneMesh(TriangleMesh):
 
                     # Delete any vertices that were in the faces, but aren't in the
                     # outer boundaries
-                    boundary_polygons = np.hstack([boundary0, boundary1])
                     boundary_vertices = self._halfedges['vertex'][boundary_polygons]
                     remaining_vertices = set(face_vertices) - set(boundary_vertices)
                     for vertex in remaining_vertices:
