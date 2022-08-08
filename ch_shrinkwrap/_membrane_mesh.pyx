@@ -963,6 +963,95 @@ cdef class MembraneMesh(TriangleMesh):
             
             # Mark this component as used
             used_components[i] = True
+    
+    def _holepunch_update_topology2(self, candidates, candidate_pairs, component, euler):
+        unique_components = np.unique(component)
+        used_components = np.zeros_like(unique_components, dtype=bool)
+        for i, c in enumerate(unique_components):
+            if used_components[i]:
+                # We've already used this in a different hole punch
+                continue
+            component_idxs = component==c
+            component_cands = candidates[component_idxs]
+            if euler[i] == 0:
+                # TODO: Currently disabled due to problems with repair() after _face_delete
+
+                # This is topologically a cylinder
+                
+                # 1. Delete all faces in this component
+                # for face in component_cands:
+                #     self._face_delete(face)
+                    
+                # 2. Patch holes in the resulting boundaries
+                # self.repair()
+                pass
+                
+            elif euler[i] == 1:
+                # This is topologically a plane. If there is a pair in another
+                # component, punch a hole and remove both components from consideration.
+                component_cand_pairs = candidate_pairs[component_idxs]
+                for j, pair_idx in enumerate(component_cand_pairs):
+                    if component[pair_idx] == c:
+                        continue
+                    pair_component_idx = np.argmax(unique_components==component[pair_idx])
+                    if used_components[pair_component_idx]:
+                        continue
+                    
+                    # we have paired faces in two different components, extract their boundaries
+                    boundary0 = self._holepunch_component_boundary(component_cands)
+                    boundary1 = self._holepunch_component_boundary(candidates[component == component[pair_idx]])
+
+                    # Find the closest position to the first position in boundary 0
+                    position0 = self._vertices['position'][self._halfedges['vertex'][boundary0[0]]]
+                    positions1 = self._vertices['position'][self._halfedges['vertex'][boundary1]]
+                    min_idx = np.argmin((positions1 - position0)**2)
+                    
+                    # roll positions 1 back by min_idx, so the closest vertices are the starting points
+                    boundary1 = np.roll(boundary1, -min_idx)
+
+                    print(boundary0)
+                    print(boundary1)
+
+                    used_components[pair_component_idx] = True
+                    break
+            else:
+                print(f"Component {c} has Euler characteristic {euler[i]}. I don't know what to do with this.")
+            
+            # Mark this component as used
+            used_components[i] = True
+
+    def _holepunch_component_boundary(self, candidates):
+        """Take a list of face indices and return the halfedges forming the boundary of this component."""
+
+        cdef int j
+        cdef np.int32_t edge, twin_vertex
+
+        e0 = self._faces['halfedge'][candidates]
+        e1 = self._halfedges['next'][e0]
+        e2 = self._halfedges['prev'][e0]
+
+        he = np.hstack([e0,e1,e2])
+
+        boundary_edges = list(set(he) - set(self._halfedges['twin'][he]))
+        ordered_boundary = np.zeros((len(boundary_edges),), dtype='i4')
+
+        # Now order them by finding pivot vertices
+        edge = boundary_edges.pop()
+        ordered_boundary[0] = edge
+        twin_vertex = self._chalfedges[self._chalfedges[edge].twin].vertex
+        j = 1
+        failsafe = 100 + ordered_boundary.shape[0]
+        while (j < ordered_boundary.shape[0]) and (failsafe > 0):
+            for i, e in enumerate(boundary_edges):
+                if self._chalfedges[e].vertex == twin_vertex:
+                    edge = boundary_edges.pop(i)
+                    ordered_boundary[j] = edge
+                    twin_vertex = self._chalfedges[self._chalfedges[edge].twin].vertex
+                    j += 1
+                    break
+            failsafe -= 1
+
+        return ordered_boundary
 
     def punch_holes(self, pts, eps=10.0):
         """
