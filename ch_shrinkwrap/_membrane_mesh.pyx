@@ -658,6 +658,91 @@ cdef class MembraneMesh(TriangleMesh):
         self.face_normals
         self.vertex_neighbors
 
+    def _holepunch_punch_hole2(self, np.ndarray component_cands, np.ndarray paired_component_cands):
+        inner_boundary0 = self._holepunch_component_boundary(component_cands)
+        inner_boundary1 = self._holepunch_component_boundary(paired_component_cands)
+
+        # Find the closest position to the first position in boundary 0
+        position0 = self._vertices['position'][self._halfedges['vertex'][inner_boundary0[0]]]
+        positions1 = self._vertices['position'][self._halfedges['vertex'][inner_boundary1]]
+        min_idx = np.argmin((positions1 - position0)**2)
+        
+        # roll positions 1 back by min_idx+1, so the closest vertex to inner_boundary[0]
+        # is inner_boundary1[0].prev's vertex
+        inner_boundary1 = np.roll(inner_boundary1, -min_idx-1)
+
+        # Store all vertices used by these faces, for later
+        def face_vertices(candidates):
+            e0 = self._faces['halfedge'][candidates]
+            e1 = self._halfedges['next'][e0]
+            e2 = self._halfedges['prev'][e0]
+            v0 = self._halfedges['vertex'][e0]
+            v1 = self._halfedges['vertex'][e1]
+            v2 = self._halfedges['vertex'][e2]
+
+            return np.hstack([v0, v1, v2])
+        face_vertices = np.hstack([face_vertices(component_cands),
+                                    face_vertices(paired_component_cands)])
+
+        # Convert the inner boundary to the outer boundary, which will be
+        # left after face deletion 
+        def find_outer_boundary(inner_boundary):
+            boundary = np.zeros_like(inner_boundary)
+            for j, edge in enumerate(inner_boundary):
+                twin = self._chalfedges[edge].twin
+                boundary[j] = twin
+                # reassign vertex so its halfedge will still exist
+                self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
+                # Disconnect the halfedges
+                self._chalfedges[twin].twin = -1
+            return boundary
+    
+        # Reverse the boundaries so they run in the correct order
+        boundary0 = find_outer_boundary(inner_boundary0)
+        boundary1 = find_outer_boundary(inner_boundary1)
+        boundary_polygons = np.hstack([boundary0, boundary1])
+
+        # Add one square to connect the separated boundaries
+        # (TODO: This could be done with a single triangle)
+        n_faces, n_edges = self.new_faces(2), self.new_edges(6)
+        n_face_idx, n_edge_idx = 0, 0
+        self._holepunch_insert_square(inner_boundary0[0], inner_boundary1[0],
+                                        <np.int32_t *> np.PyArray_DATA(n_edges), 
+                                        <np.int32_t *> np.PyArray_DATA(n_faces), 
+                                        n_edge_idx, n_face_idx)
+
+        # Update the boundary to include two new edges
+        boundary_polygons[0] = n_edges[2]
+        boundary_polygons[len(boundary0)] = n_edges[5]
+
+        # Delete faces
+        for face in component_cands:
+            self._face_delete(self._cfaces[face].halfedge)
+        for face in paired_component_cands:
+            self._face_delete(self._cfaces[face].halfedge)
+
+        # Delete any vertices that were in the faces, but aren't in the
+        # outer boundaries
+        boundary_vertices = self._halfedges['vertex'][boundary_polygons]
+        remaining_vertices = set(face_vertices) - set(boundary_vertices)
+        for vertex in remaining_vertices:
+            self._vertex_delete(vertex)
+
+        # Zipper the boundary
+        n_edges = boundary_polygons.shape[0]
+
+        new_faces = self.new_faces(int(n_edges-2))
+        new_edges = self.new_edges(int(3*(n_edges-3)+3))
+
+        self._zig_zag_triangulation(np.atleast_2d(boundary_polygons), 
+                                    <np.int32_t *> np.PyArray_DATA(new_edges), 
+                                    <np.int32_t *> np.PyArray_DATA(new_faces), 
+                                    0, n_edges, live_update=True)
+
+        self._clear_flags()
+        self.face_normals
+        self.vertex_neighbors
+
     cdef _holepunch_insert_square(self, np.int32_t edge0, np.int32_t edge1, 
                     np.int32_t * new_edges,
                     np.int32_t * new_faces,
@@ -956,131 +1041,11 @@ cdef class MembraneMesh(TriangleMesh):
                     pair_component_idx = np.argmax(unique_components==component[pair_idx])
                     if used_components[pair_component_idx]:
                         continue
-                    self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
-                    used_components[i] = True
-                    used_components[pair_component_idx] = True
-                    break
-            else:
-                print(f"Component {c} has Euler characteristic {euler[i]}. I don't know what to do with this.")
-            
-            # Mark this component as used
-            used_components[i] = True
-    
-    def _holepunch_update_topology2(self, candidates, candidate_pairs, component, euler):
-        unique_components = np.unique(component)
-        used_components = np.zeros_like(unique_components, dtype=bool)
-        for i, c in enumerate(unique_components):
-            if used_components[i]:
-                # We've already used this in a different hole punch
-                continue
-            component_idxs = component==c
-            component_cands = candidates[component_idxs]
-            if euler[i] == 0:
-                # TODO: Currently disabled due to problems with repair() after _face_delete
-
-                # This is topologically a cylinder
-                
-                # 1. Delete all faces in this component
-                # for face in component_cands:
-                #     self._face_delete(face)
-                    
-                # 2. Patch holes in the resulting boundaries
-                # self.repair()
-                pass
-                
-            elif euler[i] == 1:
-                # This is topologically a plane. If there is a pair in another
-                # component, punch a hole and remove both components from consideration.
-                component_cand_pairs = candidate_pairs[component_idxs]
-                for j, pair_idx in enumerate(component_cand_pairs):
-                    if component[pair_idx] == c:
-                        continue
-                    pair_component_idx = np.argmax(unique_components==component[pair_idx])
-                    if used_components[pair_component_idx]:
-                        continue
-                    
-                    # we have paired faces in two different components, extract their boundaries
                     paired_component_cands = candidates[component == component[pair_idx]]
-                    inner_boundary0 = self._holepunch_component_boundary(component_cands)
-                    inner_boundary1 = self._holepunch_component_boundary(paired_component_cands)
 
-                    # Find the closest position to the first position in boundary 0
-                    position0 = self._vertices['position'][self._halfedges['vertex'][inner_boundary0[0]]]
-                    positions1 = self._vertices['position'][self._halfedges['vertex'][inner_boundary1]]
-                    min_idx = np.argmin((positions1 - position0)**2)
+                    # self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
+                    self._holepunch_punch_hole2(component_cands, paired_component_cands)
                     
-                    # roll positions 1 back by min_idx+1, so the closest vertex to inner_boundary[0]
-                    # is inner_boundary1[0].prev's vertex
-                    inner_boundary1 = np.roll(inner_boundary1, -min_idx-1)
-
-                    # Store all vertices used by these faces, for later
-                    def face_vertices(candidates):
-                        e0 = self._faces['halfedge'][candidates]
-                        e1 = self._halfedges['next'][e0]
-                        e2 = self._halfedges['prev'][e0]
-                        v0 = self._halfedges['vertex'][e0]
-                        v1 = self._halfedges['vertex'][e1]
-                        v2 = self._halfedges['vertex'][e2]
-
-                        return np.hstack([v0, v1, v2])
-                    face_vertices = np.hstack([face_vertices(component_cands),
-                                               face_vertices(paired_component_cands)])
-
-                    # Convert the inner boundary to the outer boundary, which will be
-                    # left after face deletion 
-                    def find_outer_boundary(inner_boundary):
-                        boundary = np.zeros_like(inner_boundary)
-                        for j, edge in enumerate(inner_boundary):
-                            twin = self._chalfedges[edge].twin
-                            boundary[j] = twin
-                            # reassign vertex so its halfedge will still exist
-                            self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
-                            # Disconnect the halfedges
-                            self._chalfedges[twin].twin = -1
-                        return boundary
-                
-                    # Reverse the boundaries so they run in the correct order
-                    boundary0 = find_outer_boundary(inner_boundary0)
-                    boundary1 = find_outer_boundary(inner_boundary1)
-                    boundary_polygons = np.hstack([boundary0, boundary1])
-
-                    # Add one square to connect the separated boundaries
-                    # (TODO: This could be done with a single triangle)
-                    n_faces, n_edges = self.new_faces(2), self.new_edges(6)
-                    n_face_idx, n_edge_idx = 0, 0
-                    self._holepunch_insert_square(inner_boundary0[0], inner_boundary1[0],
-                                                  <np.int32_t *> np.PyArray_DATA(n_edges), 
-                                                  <np.int32_t *> np.PyArray_DATA(n_faces), 
-                                                  n_edge_idx, n_face_idx)
-
-                    # Update the boundary to include two new edges
-                    boundary_polygons[0] = n_edges[2]
-                    boundary_polygons[len(boundary0)] = n_edges[5]
-
-                    # Delete faces
-                    for face in component_cands:
-                        self._face_delete(self._cfaces[face].halfedge)
-                    for face in paired_component_cands:
-                        self._face_delete(self._cfaces[face].halfedge)
-
-                    # Delete any vertices that were in the faces, but aren't in the
-                    # outer boundaries
-                    boundary_vertices = self._halfedges['vertex'][boundary_polygons]
-                    remaining_vertices = set(face_vertices) - set(boundary_vertices)
-                    for vertex in remaining_vertices:
-                        self._vertex_delete(vertex)
-
-                    # Zipper the boundary
-                    n_edges = boundary_polygons.shape[0]
-
-                    new_faces = self.new_faces(int(n_edges-2))
-                    new_edges = self.new_edges(int(3*(n_edges-3)+3))
-
-                    self._zig_zag_triangulation(np.atleast_2d(boundary_polygons), 
-                                                <np.int32_t *> np.PyArray_DATA(new_edges), 
-                                                <np.int32_t *> np.PyArray_DATA(new_faces), 
-                                                0, n_edges, live_update=True)
-
                     used_components[i] = True
                     used_components[pair_component_idx] = True
                     break
@@ -1089,10 +1054,6 @@ cdef class MembraneMesh(TriangleMesh):
             
             # Mark this component as used
             used_components[i] = True
-
-        self._clear_flags()
-        self.face_normals
-        self.vertex_normals
 
     def _holepunch_component_boundary(self, candidates):
         """Take a list of face indices and return the halfedges forming the boundary of this component
@@ -1142,7 +1103,10 @@ cdef class MembraneMesh(TriangleMesh):
             Distance to closest point
         """
         # Find all mesh faces that have no points within eps of their face center
-        hc = self._holepunch_find_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
+        hc = self._holepunch_find_candidate_faces(pts, eps=eps)  # TODO: 5.0 is empirical
+
+        if len(hc) < 1:
+            return
 
         # Pair these faces by matching each face to its closest face in mean normal space
         # with an opposing normal. Allows many-to-one.
@@ -1152,6 +1116,9 @@ cdef class MembraneMesh(TriangleMesh):
         # only. Restores one-to-one face matching.
         empty_cands, empty_pairs = self._holepunch_empty_prism_candidate_faces(pts, cands, pairs, eps=eps)
 
+        if len(empty_cands) < 1:
+            return
+
         # Group the remaining faces by edge connectivity.
         component = self._holepunch_connect_candidates(empty_cands)
 
@@ -1159,7 +1126,7 @@ cdef class MembraneMesh(TriangleMesh):
         chi = self._holepunch_component_euler_characteristic(empty_cands, component)
 
         # Punch holes between place patches (cut tubes is currently disabled)
-        self._holepunch_update_topology2(empty_cands, empty_pairs, component, chi)
+        self._holepunch_update_topology(empty_cands, empty_pairs, component, chi)
 
     def remove_necks(self, neck_curvature_threshold_low=-1e-4, neck_curvature_threshold_high=1e-2):
         """
