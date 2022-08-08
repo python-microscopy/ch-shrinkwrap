@@ -1012,33 +1012,53 @@ cdef class MembraneMesh(TriangleMesh):
                     # roll positions 1 back by min_idx, so the closest vertices are the starting points
                     inner_boundary1 = np.roll(inner_boundary1, -min_idx)
 
-                    boundary0 = np.zeros_like(inner_boundary0)
-                    boundary1 = np.zeros_like(inner_boundary1)
+                    # Store all vertices used by these faces, for later
+                    def face_vertices(candidates):
+                        e0 = self._faces['halfedge'][candidates]
+                        e1 = self._halfedges['next'][e0]
+                        e2 = self._halfedges['prev'][e0]
+                        v0 = self._halfedges['vertex'][e0]
+                        v1 = self._halfedges['vertex'][e1]
+                        v2 = self._halfedges['vertex'][e2]
 
-                    for j, edge in enumerate(inner_boundary0):
-                        twin = self._chalfedges[edge].twin
-                        boundary0[j] = twin
-                        # reassign vertex so its halfedge will still exist
-                        self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
-                        # Disconnect the halfedges
-                        self._chalfedges[twin].twin = -1
-                    for j, edge in enumerate(inner_boundary1):
-                        twin = self._chalfedges[edge].twin
-                        boundary1[j] = twin
-                        # reassign vertex so its halfedge will still exist
-                        self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
-                        # Disconnect the halfedges
-                        self._chalfedges[twin].twin = -1
+                        return np.hstack([v0, v1, v2])
+                    face_vertices = np.hstack([face_vertices(component_cands),
+                                               face_vertices(paired_component_cands)])
+
+                    # Convert the inner boundary to the outer boundary, which will be
+                    # left after face deletion 
+                    def find_outer_boundary(inner_boundary):
+                        boundary = np.zeros_like(inner_boundary)
+                        for j, edge in enumerate(inner_boundary):
+                            twin = self._chalfedges[edge].twin
+                            boundary[j] = twin
+                            # reassign vertex so its halfedge will still exist
+                            self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
+                            # Disconnect the halfedges
+                            self._chalfedges[twin].twin = -1
+                        return boundary
+                
+                    boundary0 = find_outer_boundary(inner_boundary0)
+                    boundary1 = find_outer_boundary(inner_boundary1)
+
+                    # Delete faces
                     for face in component_cands:
-                        self._face_delete(face)
+                        self._face_delete(self._cfaces[face].halfedge)
                     for face in paired_component_cands:
-                        self._face_delete(face)
+                        self._face_delete(self._cfaces[face].halfedge)
+
+                    # Delete any vertices that were in the faces, but aren't in the
+                    # outer boundaries
+                    boundary_polygons = np.hstack([boundary0, boundary1])
+                    boundary_vertices = self._halfedges['vertex'][boundary_polygons]
+                    remaining_vertices = set(face_vertices) - set(boundary_vertices)
+                    for vertex in remaining_vertices:
+                        self._vertex_delete(vertex)
 
                     self._clear_flags()
                     self.face_normals
                     self.vertex_normals
 
-                    boundary_polygons = np.hstack([boundary0, boundary1[::-1]])
                     n_edges = boundary_polygons.shape[0]
 
                     new_faces = self.new_faces(int(n_edges-2))
