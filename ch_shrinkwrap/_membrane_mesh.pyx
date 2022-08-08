@@ -635,7 +635,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._holepunch_insert_square(self._chalfedges[self._cfaces[face0].halfedge].next, 
                             self._chalfedges[self._cfaces[face1].halfedge].prev,  
-                            <np.int32_t *> np.PyArray_DATA(n_edges), 
+                            <np.int32_t *> np.PyArray_DATA(n_edges),
                             <np.int32_t *> np.PyArray_DATA(n_faces), 
                             n_edge_idx, n_face_idx)
 
@@ -1009,8 +1009,9 @@ cdef class MembraneMesh(TriangleMesh):
                     positions1 = self._vertices['position'][self._halfedges['vertex'][inner_boundary1]]
                     min_idx = np.argmin((positions1 - position0)**2)
                     
-                    # roll positions 1 back by min_idx, so the closest vertices are the starting points
-                    inner_boundary1 = np.roll(inner_boundary1, -min_idx)
+                    # roll positions 1 back by min_idx+1, so the closest vertex to inner_boundary[0]
+                    # is inner_boundary1[0].prev's vertex
+                    inner_boundary1 = np.roll(inner_boundary1, -min_idx-1)
 
                     # Store all vertices used by these faces, for later
                     def face_vertices(candidates):
@@ -1038,8 +1039,22 @@ cdef class MembraneMesh(TriangleMesh):
                             self._chalfedges[twin].twin = -1
                         return boundary
                 
+                    # Reverse the boundaries so they run in the correct order
                     boundary0 = find_outer_boundary(inner_boundary0)
                     boundary1 = find_outer_boundary(inner_boundary1)
+
+                    # Add one square to connect the separated boundaries
+                    # (TODO: This could be done with a single triangle)
+                    n_faces, n_edges = self.new_faces(2), self.new_edges(6)
+                    n_face_idx, n_edge_idx = 0, 0
+                    self._holepunch_insert_square(boundary0[0], boundary1[0],
+                                                  <np.int32_t *> np.PyArray_DATA(n_edges), 
+                                                  <np.int32_t *> np.PyArray_DATA(n_faces), 
+                                                  n_edge_idx, n_face_idx)
+
+                    # Update the boundary to include two new edges
+                    boundary_polygons[0] = n_edges[5]
+                    boundary_polygons[len(boundary0)] = n_edges[2]
 
                     # Delete faces
                     for face in component_cands:
@@ -1055,10 +1070,7 @@ cdef class MembraneMesh(TriangleMesh):
                     for vertex in remaining_vertices:
                         self._vertex_delete(vertex)
 
-                    self._clear_flags()
-                    self.face_normals
-                    self.vertex_normals
-
+                    # Zipper the boundary
                     n_edges = boundary_polygons.shape[0]
 
                     new_faces = self.new_faces(int(n_edges-2))
@@ -1078,8 +1090,14 @@ cdef class MembraneMesh(TriangleMesh):
             # Mark this component as used
             used_components[i] = True
 
+        self._clear_flags()
+        self.face_normals
+        self.vertex_normals
+
     def _holepunch_component_boundary(self, candidates):
-        """Take a list of face indices and return the halfedges forming the boundary of this component."""
+        """Take a list of face indices and return the halfedges forming the boundary of this component
+        in the order of the external boundary (as if we are traversing around the boundary in the
+        direction opposite its halfedge flow)."""
 
         cdef int j
         cdef np.int32_t edge, twin_vertex
