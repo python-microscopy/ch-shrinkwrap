@@ -104,6 +104,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._initialize_curvature_vectors()
         
         self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc', 'point_influence']) #, 'puncture_candidates'])
+        self.vertex_vector_properties.extend(['S0', 'S1', 'S2', 'S3'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -1138,11 +1139,15 @@ cdef class MembraneMesh(TriangleMesh):
         TODO: Improve neck selection by looking at, e.g. point_influence as well. 
         """
 
+        #print(self.curvature_gaussian)
+        self._populate_curvature_grad()
+
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
         self.unsafe_remove_vertices(verts)
         self.repair()
         #self.repair()
         self.remesh()
+        self.remove_inner_surfaces()
 
     # End topology functions
     ##########################
@@ -1303,7 +1308,9 @@ cdef class MembraneMesh(TriangleMesh):
         neck_first_iter = getattr(self, 'neck_first_iter', -1)
 
 
-        if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
+        if np.isscalar(sigma):
+            s = float(sigma)
+        elif (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
             print("Not this case???")
             print(points.shape, sigma.shape)
             s = 1.0/np.repeat(sigma,points.shape[1])
@@ -1324,29 +1331,42 @@ cdef class MembraneMesh(TriangleMesh):
 
         j = 0
 
+        if self.shrink_weight > 0:
+            lams = [step_size*self.kc/2.0, self.shrink_weight]
+        else:
+            lams  = [step_size*self.kc/2.0,]
+
         while j < max_iter:
-            n = self._halfedges['vertex'][self._vertices['neighbors']]
-            n_idxs = self._vertices['neighbors'] == -1
-            n[n_idxs] = -1
-            fn = self._halfedges['face'][self._vertices['neighbors']]
-            fn[n_idxs] = -1
-            faces = self._faces['halfedge']
-            v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
-            v1 = self._halfedges['vertex'][faces]
-            v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
-            faces_by_vertex = np.vstack([v0, v1, v2]).T
-            self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            # n = self._halfedges['vertex'][self._vertices['neighbors']]
+            # n_idxs = self._vertices['neighbors'] == -1
+            # n[n_idxs] = -1
+            
+            # fn = self._halfedges['face'][self._vertices['neighbors']]
+            # fn[n_idxs] = -1
+            
+            # faces = self._faces['halfedge']
+            # v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
+            # v1 = self._halfedges['vertex'][faces]
+            # v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
+            # faces_by_vertex = np.vstack([v0, v1, v2]).T
+            
+            # self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            #                         search_k=self.search_k, search_rad=self.search_rad,
+            #                         shield_sigma=self._mean_edge_length/2.0)
+
+            self.cg = ShrinkwrapMeshConjGrad(self, points, 
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
+
             n_it = min(max_iter - j, rf)
-            vp = self.cg.search(points,lams=step_size*self.kc/2.0,num_iters=n_it,
-                           weights=s)
+            vp = self.cg.search(points,lams=lams,num_iters=n_it,
+                           sigma_inv=s, weights=weights)
 
             j += n_it
 
-            k = (self._vertices['halfedge'] != -1)
-            self._vertices['position'][k] = vp[k]
+            #k = (self._vertices['halfedge'] != -1)
+            #self._vertices['position'][k] = vp[k]
 
             # self._faces['normal'][:] = -1
             # self._vertices['neighbors'][:] = -1
@@ -1388,6 +1408,23 @@ cdef class MembraneMesh(TriangleMesh):
     def _S0(self):
         """ Search direction to minimise data misfit"""
         return self.cg.Ahfunc(self.cg.res).reshape(self.vertices.shape)
+
+
+    @property
+    def S0(self):
+        return self.cg.S[:,0].reshape(self.vertices.shape)
+
+    @property
+    def S1(self):
+        return self.cg.S[:,1].reshape(self.vertices.shape)
+
+    @property
+    def S2(self):
+        return self.cg.S[:,2].reshape(self.vertices.shape)
+
+    @property
+    def S3(self):
+        return self.cg.S[:,3].reshape(self.vertices.shape)
 
     @property
     def point_dis(self):
