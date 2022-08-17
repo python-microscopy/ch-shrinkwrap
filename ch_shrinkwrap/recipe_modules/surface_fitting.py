@@ -1,7 +1,8 @@
-from PYME.IO import tabular, image, MetaDataHandler
-from PYME.recipes.base import register_module, ModuleBase
-from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
+
+from PYME.recipes.base import register_module, ModuleBase
+from PYME.recipes.traits import Input, Output, CStr, Int, Bool, Float, List
+
 # from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class ShrinkwrapMembrane(ModuleBase):
     #kg = Float(-0.514)
     #skip_prob = Float(0.0)
     remesh_frequency = Int(5)
-    cut_frequency = Int(0)
+    punch_frequency = Int(0)
     min_hole_radius = Float(100.0)
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
@@ -46,7 +47,7 @@ class ShrinkwrapMembrane(ModuleBase):
                                           step_size=self.curvature_weight,
                                           #skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
-                                          delaunay_remesh_frequency=self.cut_frequency, # self.delaunay_remesh_frequency,
+                                          delaunay_remesh_frequency=self.punch_frequency, # self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
                                           neck_threshold_low = self.neck_theshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
@@ -80,6 +81,55 @@ class ShrinkwrapMembrane(ModuleBase):
         # mProfile.profileOff()
         # mProfile.report()
 
+@register_module('ScreenedPoissonMesh')
+class ScreenedPoissonMesh(ModuleBase):
+    input = Input('filtered_localizations')
+    output = Output('membrane')
+
+    k = Int(10)
+    smoothiter = Int(0)
+    flipflag = Bool(False)
+    viewpos = List([0,0,0])
+    visiblelayer = Bool(False)
+    depth = Int(8)
+    fulldepth = Int(5)
+    cgdepth = Int(0)
+    scale = Float(1.1)
+    samplespernode = Float(1.5)
+    pointweight = Float(4)
+    iters = Int(8)
+    confidence = Bool(False)
+    preclean = Bool(False)
+    threads = Int(8)
+
+    def execute(self, namespace):
+        import numpy as np
+        from ch_shrinkwrap.screened_poisson import screened_poisson
+        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+
+        points = np.ascontiguousarray(np.vstack([namespace[self.input]['x'], 
+                                                 namespace[self.input]['y'],
+                                                 namespace[self.input]['z']]).T)
+        
+        try:
+            normals = np.ascontiguousarray(np.vstack([namespace[self.input]['xn'], 
+                                                      namespace[self.input]['yn'],
+                                                      namespace[self.input]['zn']]).T)
+        except KeyError:
+            normals = None
+
+        vertices, faces = screened_poisson(points, normals, k=self.k, 
+                                           smoothiter=self.smoothiter, flipflag=self.flipflag,
+                                           viewpos=np.array(self.viewpos), visiblelayer=self.visiblelayer,
+                                           depth=self.depth, fulldepth=self.fulldepth, cgdepth=self.cgdepth, 
+                                           scale=self.scale, samplespernode=self.samplespernode, 
+                                           pointweight=self.pointweight, iters=self.iters, 
+                                           confidence=self.confidence, preclean=self.preclean,
+                                           threads=self.threads)
+
+        mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
+
+        namespace[self.output] = mesh
 
 @register_module('ImageShrinkwrapMembrane')
 class ImageShrinkwrapMembrane(ModuleBase):

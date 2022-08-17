@@ -1,0 +1,61 @@
+save_fp: test_min
+system:
+    psf_width_x:
+        - 280.0
+    psf_width_y:
+        - 280.0
+    psf_width_z:
+        - 280.0
+        - 840.0
+    mean_photon_count: 
+        - 100
+    bg_photon_count: 
+        - 20
+shape:
+    type: 
+        - TwoToruses
+    parameters:
+        - {r: 30, R: 100}
+point_cloud:
+    density: 
+        - 1.0
+        - 1.0
+    p: 
+        - 0.001
+        - 0.0001
+    noise_fraction:
+        - 0.1
+dual_marching_cubes:
+    threshold_density:
+        - 0.00006
+        - 0.000006
+    n_points_min:
+        - 20
+        - 20
+shrinkwrapping:
+    max_iters:
+        - 9
+        - 19
+    curvature_weight:
+        - 5.0
+        - 10.0
+    remesh_frequency:
+        - 5
+    punch_frequency:
+        - 0
+    min_hole_radius:
+        - 50.0
+    neck_first_iter:
+        - 0
+    neck_threshold_low:
+        - -1e-4
+    neck_threshold_high:
+        - 1e2
+screened_poisson:
+    samplespernode:
+        - 1.5
+    pointweight:
+        - 0
+        - 1
+    iters:
+        - 8

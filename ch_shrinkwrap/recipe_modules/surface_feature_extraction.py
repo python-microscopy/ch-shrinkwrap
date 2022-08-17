@@ -1,8 +1,8 @@
+from unicodedata import name
 from PYME.IO import tabular, image, MetaDataHandler
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
-from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
 
@@ -70,3 +70,54 @@ class SkeletonizeMembrane(ModuleBase):
         else:
             # return mesoskeleton mesh
             namespace[self.output] = mesh
+
+@register_module('PointsFromMesh')
+class PointsFromMesh(ModuleBase):
+    input = Input('membrane0')
+    output = Output('membrane0_localizations')
+
+    dx_min = Float(5)
+    p = Float(1.0)
+    return_normals = Bool(True)
+
+    def execute(self, namespace):
+        from PYME.IO.tabular import DictSource
+        from ch_shrinkwrap.evaluation_utils import points_from_mesh
+        
+        points, normals = points_from_mesh(namespace[self.input], dx_min=self.dx_min, p=self.p, 
+                                           return_normals=self.return_normals)
+
+        ds = DictSource({'x': points[:,0],
+                         'y': points[:,1],
+                         'z': points[:,2],
+                         'xn': normals[:,0],
+                         'yn': normals[:,1],
+                         'zn': normals[:,2]})
+
+        namespace[self.output] = ds
+
+@register_module('AverageSquaredDistance')
+class AverageSquaredDistance(ModuleBase):
+    input = Input('filtered_localizations')
+    input2 = Input('filtered')
+    output = Output('average_squared_distance')
+
+    def execute(self, namespace):
+        import numpy as np
+        from PYME.IO.tabular import DictSource
+        from ch_shrinkwrap.evaluation_utils import average_squared_distance
+
+        points0 = np.ascontiguousarray(np.vstack([namespace[self.input]['x'], 
+                                                  namespace[self.input]['y'],
+                                                  namespace[self.input]['z']]).T)
+
+        points1 = np.ascontiguousarray(np.vstack([namespace[self.input2]['x'], 
+                                                  namespace[self.input2]['y'],
+                                                  namespace[self.input2]['z']]).T)
+
+        mse0, mse1 = average_squared_distance(points0, points1)
+        mse = np.sqrt((mse0+mse1)/2)
+
+        ds = DictSource({'mse': np.array([mse0, mse1, mse])})
+
+        namespace[self.output] = ds
