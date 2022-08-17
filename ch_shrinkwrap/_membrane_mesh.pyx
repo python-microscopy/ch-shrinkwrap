@@ -3,6 +3,7 @@ import numpy as np
 import scipy.spatial
 import cython
 import math
+import ctypes
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
@@ -35,13 +36,16 @@ POINTS_DTYPE2 = np.dtype([('position0', 'f4'),
                           ('position2', 'f4')])
 
 cdef extern from "triangle_mesh_utils.c":
-    void _update_face_normals(np.int32_t *f_idxs, halfedge_t *halfedges, vertex_t *vertices, face_t *faces, signed int n_idxs)
+    void _update_face_normals(np.int32_t *f_idxs, 
+                              halfedge_t *halfedges, 
+                              vertex_t *vertices, 
+                              face_t *faces, 
+                              signed int n_idxs)
     void update_face_normal(int f_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
     void update_single_vertex_neighbours(int v_idx, halfedge_t *halfedges, vertex_d *vertices, face_d *faces)
 
 cdef extern from "membrane_mesh_utils.c":
     void fcompute_curvature_tensor_eig(float *Mvi, float *l1, float *l2, float *v1, float *v2) 
-    void c_point_attraction_grad(points_t *attraction, points_t *points, float *sigma, void *vertices_, float w, float charge_sigma, int n_points, int n_vertices)
     void c_curvature_grad(void *vertices_, 
                          void *faces_,
                          halfedge_t *halfedges,
@@ -63,6 +67,12 @@ cdef extern from "membrane_mesh_utils.c":
                          float kg,
                          float c0,
                          points_t *dEdN)
+    void c_holepunch_pair_candidate_faces(void *vertices_, 
+                                          void *faces_,
+                                          halfedge_t *halfedges,
+                                          int *candidates,
+                                          int n_candidates,
+                                          int *pairs)
 
 cdef class MembraneMesh(TriangleMesh):
     def __init__(self, vertices=None, faces=None, mesh=None, **kwargs):
@@ -90,15 +100,11 @@ cdef class MembraneMesh(TriangleMesh):
         self.remesh_frequency = 100
         self.delaunay_remesh_frequency = 150
 
-        # Coloring info
-        #self._H = None
-        #self._K = None
-        #self._E = None
-        #self._pE = None
 
         self._initialize_curvature_vectors()
         
         self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc', 'point_influence']) #, 'puncture_candidates'])
+        self.vertex_vector_properties.extend(['S0', 'S1', 'S2', 'S3'])
 
         # Number of neighbors to use in self.point_attraction_grad_kdtree
         self.search_k = 200
@@ -110,17 +116,8 @@ cdef class MembraneMesh(TriangleMesh):
         # Pointcloud kdtree
         self._tree = None
 
-        # self._puncture_test = False  # Toggle puncture testing
-        # self._puncture_candidates = []
-
         for key, value in kwargs.items():
             setattr(self, key, value)
-
-    # @property
-    # def puncture_candidates(self):
-    #     arr = np.zeros(self._vertices.shape[0])
-    #     arr[self._puncture_candidates] = 1
-    #     return arr
 
     @property
     def E(self):
@@ -251,79 +248,8 @@ cdef class MembraneMesh(TriangleMesh):
 
     def remesh(self, n=5, target_edge_length=-1, l=0.5, n_relax=10):
         TriangleMesh.remesh(self, n=n, target_edge_length=target_edge_length, l=l, n_relax=n_relax)
-        # Reset H, E, K values
-        # self._H = None
-        # self._K = None
-        # self._E = None
+
         self._initialize_curvature_vectors()
-
-    def _compute_curvature_tensor_eig(self, Mvi):
-        """
-        Return the first two eigenvalues and eigenvectors of 3x3 curvature 
-        tensor. The third eigenvector is the unit normal of the point for
-        which the curvature tensor is defined.
-
-        This is a closed-form solution, and it assumes no eigenvalue is 0.
-
-        Parameters
-        ----------
-            Mvi : np.array
-                3x3 curvature tensor at a point.
-
-        Returns
-        -------
-            l1, l2 : float
-                Eigenvalues
-            v1, v2 : np.array
-                Eigenvectors
-        """
-        # Solve the eigenproblem in closed form
-        m00 = Mvi[0,0]
-        m01 = Mvi[0,1]
-        m02 = Mvi[0,2]
-        m11 = Mvi[1,1]
-        m12 = Mvi[1,2]
-        m22 = Mvi[2,2]
-
-        # Here we use the fact that Mvi is symnmetric and we know
-        # one of the eigenvalues must be 0
-        p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12
-        q = m00 + m11 + m22
-        r = np.sqrt(4*p + q*q)
-        
-        # Eigenvalues
-        l1 = 0.5*(q-r)
-        l2 = 0.5*(q+r)
-
-        def safe_divide(x, y):
-            # if y == 0:
-            #     return 0
-            return (y!=0)*1.*x/y
-
-        # Now calculate the eigenvectors, assuming x = 1
-        z1n = ((m00 - l1)*(m11 - l1) - (m01*m01))
-        z1d = (m01*m12 - m02*(m11 - l1))
-        z1 = safe_divide(z1n, z1d)
-        y1n = (m12*z1 + m01)
-        y1d = (m11 - l1)
-        y1 = safe_divide(y1n, y1d)
-        
-        v1 = np.array([1., y1, z1])
-        v1_norm = np.sqrt((v1*v1).sum())
-        v1 = v1/v1_norm
-        
-        z2n = ((m00 - l2)*(m11 - l2) - (m01*m01))
-        z2d = (m01*m12 - m02*(m11 - l2))
-        z2 = safe_divide(z2n, z2d)
-        y2n = (m12*z2 + m01)
-        y2d = (m11 - l2)
-        y2 = safe_divide(y2n, y2d)
-        
-        v2 = np.array([1., y2, z2])
-        v2_norm = np.sqrt((v2*v2).sum())
-        v2 = v2/v2_norm
-
-        return l1, l2, v1, v2
 
     cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
         dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
@@ -367,8 +293,6 @@ cdef class MembraneMesh(TriangleMesh):
 
         cdef int iv
         cdef float l1, l2
-        # cdef float[3] v1
-        # cdef float[3] v2
         v1 = np.zeros(3, dtype=np.float32)
         v2 = np.zeros(3, dtype=np.float32)
         cdef float[:] v1_view = v1
@@ -377,13 +301,7 @@ cdef class MembraneMesh(TriangleMesh):
         Mvi = np.zeros((3,3), dtype=np.float32)
         cdef float[:,:] Mvi_view = Mvi
 
-        # H = np.zeros(self._vertices.shape[0])
-        # K = np.zeros(self._vertices.shape[0])
-        # dH = np.zeros(self._vertices.shape[0])
-        # dK = np.zeros(self._vertices.shape[0])
-        # dE_neighbors = np.zeros(self._vertices.shape[0])
         areas = np.zeros(self._vertices.shape[0], dtype=np.float32)
-        # skip = np.random.rand(self._vertices.shape[0])
         for iv in range(self._vertices.shape[0]):
             if self._cvertices[iv].halfedge == -1:
                 self._k_0[iv] = 0.0
@@ -460,7 +378,6 @@ cdef class MembraneMesh(TriangleMesh):
             dEj = Aj*w*self.kc*(2.0*kjs - self.c0)*(kjs_1 - kjs)/dN  # eV/nm
             Mvi[:] = ((w[None,:,None]*k[None,:,None]*Tijs.T[:,:,None]*Tijs[None,:,:]).sum(axis=1)).astype(np.float32)  # nm
 
-            # l1, l2, v1, v2 = self._compute_curvature_tensor_eig(Mvi)
             fcompute_curvature_tensor_eig(&Mvi_view[0,0], &l1, &l2, &v1_view[0], &v2_view[0])
 
             # Eigenvectors
@@ -495,10 +412,6 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Calculate Canham-Helfrich energy functional
         self._E = areas*(0.5*self.kc*(2.0*self._H - self.c0)**2 + self.kg*self._K)  # eV
-
-        #self._H = H  # 1/nm
-        #self._E = E  # eV
-        #self._K = K  # 1/nm^2
         
         self._pE = np.exp(-(1.0/KBT)*self._E)  # unitless
         
@@ -510,11 +423,6 @@ cdef class MembraneMesh(TriangleMesh):
         dEdN_sum = (dEdN_H + dEdN_K + self._dE_neighbors) # eV/nm # + dE_neighbors)
         dEdN = -1.0*dEdN_sum # eV/nm # *(1.0-self._pE)
 
-        # print('Contributions: {}, {}, {}'.format(np.mean(dEdN_H), np.mean(dEdN_K), np.mean(dE_neighbors)))
-        # print('Total energy difference: {} {} {} {}'.format(np.min(dEdN_sum), np.mean(dEdN_sum), np.max(dEdN_sum), np.max(dEdN_sum)-np.min(dEdN_sum)))
-        # dEdN = -(4.*self.kc*H*dH + self.kg*dK)*pE
-        # dpdN = -250.*np.exp(-250.*E)*dEdN
-        
         # Return energy shift along direction of the normal
         return dEdN[:,None]*self._vertices['normal']  # eV/nm
 
@@ -586,22 +494,12 @@ cdef class MembraneMesh(TriangleMesh):
         # cdef float charge_sigma, charge_var, attraction_norm
 
         n_verts = self._vertices.shape[0]
-        #dirs = []
+
         dirs = np.zeros((n_verts,3), dtype=np.float32)
         attraction = np.zeros(3, dtype=np.float32)
 
-        # pt_cnt_dist_2 will eventually be a MxN (# points x # vertices) matrix, but becomes so in
-        # first loop iteration when we add a matrix to this scalar
-        # pt_cnt_dist_2 = 0
-
-        # for j in range(points.shape[1]):
-        #     pt_cnt_dist_2 = pt_cnt_dist_2 + (points[:,j][:,None] - self._vertices['position'][:,j][None,:])**2
-
         charge_sigma = self._mean_edge_length/2.5  # nm
         charge_var = (2*charge_sigma**2)  # nm^2
-
-        # pt_weight_matrix = 1. - w*np.exp(-pt_cnt_dist_2/(2*charge_sigma**2))
-        # pt_weights = np.prod(pt_weight_matrix, axis=1)
 
         if self._tree is None:
             # Compute a KDTree on points
@@ -618,23 +516,16 @@ cdef class MembraneMesh(TriangleMesh):
             valid = neighbors < self._tree.n
             dists = dists[valid]
             neighbours = neighbors[valid]
-            # neighbors = tree.query_ball_point(self._vertices['position'][i,:], search_r)
             
             try:
                 d = self._vertices['position'][i,:] - points[neighbors]  # nm
             except(IndexError):
                 raise IndexError('Could not access neighbors for position {}.'.format(self._vertices['position'][i,:]))
             dd = (d*d).sum(1)  # nm^2
-            # dd = dists*dists
 
-            # if self._puncture_test:
-            #     dvn = (self._halfedges['length'][(self._vertices['neighbors'][i])[self._vertices['neighbors'][i] != -1]])**2
-            #     if np.min(dvn) < np.min(dd):
-            #         self._puncture_candidates.append(i)
             pt_weight_matrix = 1. - w*np.exp(-dd/charge_var)  # unitless
             pt_weights = np.prod(pt_weight_matrix)  # unitless
             r = np.sqrt(dd)/sigma[neighbors]  # unitless
-            # r = dists/sigma[neighbors]
             
             rf = -(1-r**2)*np.exp(-r**2/2) + (1-np.exp(-(r-1)**2/2))*(r/(r**3 + 1))  # unitless
             # Points at the vertex we're interested in are not de-weighted by the
@@ -642,20 +533,10 @@ cdef class MembraneMesh(TriangleMesh):
             rf = rf*(pt_weights/pt_weight_matrix) # unitless
             
             attraction[:] = (-d*(rf/np.sqrt(dd))[:,None]).sum(0)  # unitless
-            # attraction[:] = (-d*(rf/dists)[:,None]).sum(0)  # unitless
             attraction_norm = np.linalg.norm(attraction)
-            # attraction_norm = math.sqrt(attraction[0]*attraction[0]+attraction[1]*attraction[1]+attraction[2]*attraction[2])
             attraction[:] = (attraction*np.prod(1-np.exp(-r**2/2)))/attraction_norm  # unitless
             attraction[attraction_norm == 0] = 0  # div by zero
             dirs[i,:] = attraction
-            # else:
-            #     attraction = np.array([0,0,0])
-            
-            # dirs.append(attraction)
-
-
-        # dirs = np.vstack(dirs)
-        # dirs[self._vertices['halfedge'] == -1] = 0
 
         return dirs
 
@@ -666,25 +547,12 @@ cdef class MembraneMesh(TriangleMesh):
         v = self._vertices['position'][self._vertices['halfedge']!=-1]
         d = scipy.spatial.Delaunay(v)
         
-        # circumradius = v[d].mean(1)
-
         # Ensure all simplex vertices are wound s.t. normals point away from simplex centroid
         tri = delaunay_utils.orient_simps(d, v)
 
         # Remove simplices outside of our mesh
-        # ext_inds = delaunay_utils.ext_simps(tri, self)
         ext_inds = delaunay_utils.greedy_ext_simps(tri, self)
         simps = delaunay_utils.del_simps(tri, ext_inds)
-
-        # Remove simplices that do not contain points
-        # eps = self._mean_edge_length/5.0  # How far outside of a tetrahedron do we 
-                                          # consider a point 'inside' a tetrahedron?
-                                          # TODO: /5.0 is empirical. sqrt(6)/4*base length is circumradius
-                                          # TODO: account for sigma?
-        #print('Guessed eps: {}'.format(eps))
-        # empty_inds = delaunay_utils.empty_simps(simps, v, points, eps=eps)
-        #empty_inds = delaunay_utils.greedy_empty_simps(simps, self, points, eps=eps)
-        #simps_ = delaunay_utils.del_simps(simps, empty_inds)
 
         # Recover new triangulation
         faces = delaunay_utils.surf_from_delaunay(simps)
@@ -768,7 +636,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._holepunch_insert_square(self._chalfedges[self._cfaces[face0].halfedge].next, 
                             self._chalfedges[self._cfaces[face1].halfedge].prev,  
-                            <np.int32_t *> np.PyArray_DATA(n_edges), 
+                            <np.int32_t *> np.PyArray_DATA(n_edges),
                             <np.int32_t *> np.PyArray_DATA(n_faces), 
                             n_edge_idx, n_face_idx)
 
@@ -787,6 +655,91 @@ cdef class MembraneMesh(TriangleMesh):
         self._face_delete(face1)
 
         # Make sure we re-calculate
+        self._clear_flags()
+        self.face_normals
+        self.vertex_neighbors
+
+    def _holepunch_punch_hole2(self, np.ndarray component_cands, np.ndarray paired_component_cands):
+        inner_boundary0 = self._holepunch_component_boundary(component_cands)
+        inner_boundary1 = self._holepunch_component_boundary(paired_component_cands)
+
+        # Find the closest position to the first position in boundary 0
+        position0 = self._vertices['position'][self._halfedges['vertex'][inner_boundary0[0]]]
+        positions1 = self._vertices['position'][self._halfedges['vertex'][inner_boundary1]]
+        min_idx = np.argmin((positions1 - position0)**2)
+        
+        # roll positions 1 back by min_idx+1, so the closest vertex to inner_boundary[0]
+        # is inner_boundary1[0].prev's vertex
+        inner_boundary1 = np.roll(inner_boundary1, -min_idx-1)
+
+        # Store all vertices used by these faces, for later
+        def face_vertices(candidates):
+            e0 = self._faces['halfedge'][candidates]
+            e1 = self._halfedges['next'][e0]
+            e2 = self._halfedges['prev'][e0]
+            v0 = self._halfedges['vertex'][e0]
+            v1 = self._halfedges['vertex'][e1]
+            v2 = self._halfedges['vertex'][e2]
+
+            return np.hstack([v0, v1, v2])
+        face_vertices = np.hstack([face_vertices(component_cands),
+                                    face_vertices(paired_component_cands)])
+
+        # Convert the inner boundary to the outer boundary, which will be
+        # left after face deletion 
+        def find_outer_boundary(inner_boundary):
+            boundary = np.zeros_like(inner_boundary)
+            for j, edge in enumerate(inner_boundary):
+                twin = self._chalfedges[edge].twin
+                boundary[j] = twin
+                # reassign vertex so its halfedge will still exist
+                self._cvertices[self._chalfedges[edge].vertex].halfedge = twin
+                # Disconnect the halfedges
+                self._chalfedges[twin].twin = -1
+            return boundary
+    
+        # Reverse the boundaries so they run in the correct order
+        boundary0 = find_outer_boundary(inner_boundary0)
+        boundary1 = find_outer_boundary(inner_boundary1)
+        boundary_polygons = np.hstack([boundary0, boundary1])
+
+        # Add one square to connect the separated boundaries
+        # (TODO: This could be done with a single triangle)
+        n_faces, n_edges = self.new_faces(2), self.new_edges(6)
+        n_face_idx, n_edge_idx = 0, 0
+        self._holepunch_insert_square(inner_boundary0[0], inner_boundary1[0],
+                                        <np.int32_t *> np.PyArray_DATA(n_edges), 
+                                        <np.int32_t *> np.PyArray_DATA(n_faces), 
+                                        n_edge_idx, n_face_idx)
+
+        # Update the boundary to include two new edges
+        boundary_polygons[0] = n_edges[2]
+        boundary_polygons[len(boundary0)] = n_edges[5]
+
+        # Delete faces
+        for face in component_cands:
+            self._face_delete(self._cfaces[face].halfedge)
+        for face in paired_component_cands:
+            self._face_delete(self._cfaces[face].halfedge)
+
+        # Delete any vertices that were in the faces, but aren't in the
+        # outer boundaries
+        boundary_vertices = self._halfedges['vertex'][boundary_polygons]
+        remaining_vertices = set(face_vertices) - set(boundary_vertices)
+        for vertex in remaining_vertices:
+            self._vertex_delete(vertex)
+
+        # Zipper the boundary
+        n_edges = boundary_polygons.shape[0]
+
+        new_faces = self.new_faces(int(n_edges-2))
+        new_edges = self.new_edges(int(3*(n_edges-3)+3))
+
+        self._zig_zag_triangulation(np.atleast_2d(boundary_polygons), 
+                                    <np.int32_t *> np.PyArray_DATA(new_edges), 
+                                    <np.int32_t *> np.PyArray_DATA(new_faces), 
+                                    0, n_edges, live_update=True)
+
         self._clear_flags()
         self.face_normals
         self.vertex_neighbors
@@ -860,47 +813,66 @@ cdef class MembraneMesh(TriangleMesh):
         tree = scipy.spatial.cKDTree(points)
         dist, _ = tree.query(self._vertices['position'][self.faces].mean(1))
         
-        inds = np.flatnonzero(self._faces['halfedge'] != -1)
+        inds = np.flatnonzero(self._faces['halfedge'] != -1).astype('i4')
 
         return inds[dist>eps] # Optionally, (mesh._mean_edge_length + eps)], but this seems to work worse
 
-    def _holepunch_pair_candidate_faces(self, candidates):
+    cdef _c_holepunch_pair_candidate_faces(self, int[:] candidates, int n_candidates, int[:] pairs):
+        c_holepunch_pair_candidate_faces(&(self._cvertices[0]), 
+                                         &(self._cfaces[0]),
+                                         &(self._chalfedges[0]),
+                                         &(candidates[0]),
+                                         n_candidates,
+                                         &(pairs[0]))
+
+    def _holepunch_pair_candidate_faces(self, np.ndarray candidates):
         """
         For each face, find the opposing face with the nearest centroid that has a
         normal in the opposite direction of this face and form a pair. Note this pair
         does not need to be unique.
         """
-        candidate_faces = self._faces[candidates]
-        candidate_halfedges = candidate_faces['halfedge']
-        
-        v0 = self._halfedges['vertex'][self._halfedges['prev'][candidate_halfedges]]
-        v1 = self._halfedges['vertex'][candidate_halfedges]
-        v2 = self._halfedges['vertex'][self._halfedges['next'][candidate_halfedges]]
-        
-        candidate_vertices = np.vstack([v0,v1,v2]).T
-        candidate_positions = self._vertices['position'][candidate_vertices] # (N, (v0,v1,v2), (x,y,z))
-        candidate_centroids = candidate_positions.mean(1)
-        
-        candidate_normals = candidate_faces['normal']  # (N, 3)
-        
-        # Compute the shift orthogonal to the mean normal plane between each of the faces
-        candidate_shift = candidate_centroids[None,...] - candidate_centroids[:,None,:]  # (N, N, 3)
-        n_hat = 0.5*(candidate_normals[None,...] + candidate_normals[:,None,:])  # (N, N, 3)
-        shift = candidate_shift - n_hat*(((n_hat*candidate_shift).sum(2))[...,None])
-        abs_shift = (shift*shift).sum(2)
-        
-        # Compute the dot product between all of the normals
-        nd = (candidate_normals[None,...]*candidate_normals[:,None,:]).sum(2)  # (N, N)
-        
-        # For each face, find the opposing face with the nearest centroid that has a
-        # normal in the opposite direction of this face
-        factor = -0.5
-        ndlt = nd<factor  # TODO: stricter requirement on "opposing face" angle?
-        min_mask = np.any(ndlt,axis=1)  
-        min_inds = np.argmax(-abs_shift*ndlt-1e6*(nd>=factor),axis=1)
-        pairs = np.vstack([np.flatnonzero(min_mask), min_inds[min_mask]])
-        
-        return candidates[pairs[0,:]], pairs[1,:]
+        if USE_C:
+            pairs = -1*np.ones(candidates.shape[0], dtype='i4')  # index of paired face for each candidate
+            self._c_holepunch_pair_candidate_faces(candidates, candidates.shape[0], pairs)
+            pair_inds = pairs!=-1  # some faces may have no pairs
+            new_inds = np.cumsum(pair_inds)-1
+
+            return candidates[pair_inds], new_inds[pairs[pair_inds]]
+            
+        else:
+            # CAUTION: This has a tendency to blow up memory usage.
+
+            candidate_faces = self._faces[candidates]
+            candidate_halfedges = candidate_faces['halfedge']
+            
+            v0 = self._halfedges['vertex'][self._halfedges['prev'][candidate_halfedges]]
+            v1 = self._halfedges['vertex'][candidate_halfedges]
+            v2 = self._halfedges['vertex'][self._halfedges['next'][candidate_halfedges]]
+            
+            candidate_vertices = np.vstack([v0,v1,v2]).T
+            candidate_positions = self._vertices['position'][candidate_vertices] # (N, (v0,v1,v2), (x,y,z))
+            candidate_centroids = candidate_positions.mean(1)
+            
+            candidate_normals = candidate_faces['normal']  # (N, 3)
+            
+            # Compute the shift orthogonal to the mean normal plane between each of the faces
+            candidate_shift = candidate_centroids[None,...] - candidate_centroids[:,None,:]  # (N, N, 3)
+            n_hat = 0.5*(candidate_normals[None,...] + candidate_normals[:,None,:])  # (N, N, 3)
+            shift = candidate_shift - n_hat*(((n_hat*candidate_shift).sum(2)*np.linalg.norm(candidate_shift*candidate_shift, axis=2))[...,None])
+            abs_shift = (shift*shift).sum(2)
+            
+            # Compute the dot product between all of the normals
+            nd = (candidate_normals[None,...]*candidate_normals[:,None,:]).sum(2)  # (N, N)
+            
+            # For each face, find the opposing face with the nearest centroid that has a
+            # normal in the opposite direction of this face
+            factor = -0.5
+            ndlt = nd<factor  # TODO: stricter requirement on "opposing face" angle?
+            min_mask = np.any(ndlt,axis=1)  
+            min_inds = np.argmax(-abs_shift*ndlt-1e6*(nd>=factor),axis=1)
+            pairs = np.vstack([np.flatnonzero(min_mask), min_inds[min_mask]])
+            
+            return candidates[pairs[0,:]], pairs[1,:]
 
     def _holepunch_empty_prism_candidate_faces(self, points, candidates, candidate_pair, eps=10.0):
         """
@@ -948,8 +920,8 @@ cdef class MembraneMesh(TriangleMesh):
 
             if len(p) == 0:
                 # There are no points within r of either of these faces
-                kept_cands[i] |= False
-                # disallowed[candidates == candidates[j]] |= True
+                kept_cands[i] |= True
+                disallowed[candidates == candidates[j]] |= True
                 continue
 
             # Check if any of these are within +eps of half planes of both triangles
@@ -963,11 +935,11 @@ cdef class MembraneMesh(TriangleMesh):
             below_hp2_cj = (hp2[j][None,:]*(points[p]-fv_pos[j,0][None,:])).sum(1) < eps
             
             # If no points are in between these triangles, keep them
-            inside = np.sum(below_hp0_ci & below_hp1_ci & below_hp2_ci \
-                            & below_hp0_cj & below_hp1_cj & below_hp2_cj) == 0
+            empty = np.sum(below_hp0_ci & below_hp1_ci & below_hp2_ci \
+                           & below_hp0_cj & below_hp1_cj & below_hp2_cj) == 0
             
-            kept_cands[i] |= inside
-            disallowed[candidates == candidates[j]] |= inside
+            kept_cands[i] |= empty
+            disallowed[candidates == candidates[j]] |= empty
             
         c = candidates[kept_cands]
         cp = candidates[candidate_pair[kept_cands]]
@@ -985,29 +957,30 @@ cdef class MembraneMesh(TriangleMesh):
         # Give each face its own component
         self._faces['component'][candidates] = range(len(candidates))
         
-        for c in candidates:
-            # Assign each face the minimum component of it and the face of its twin edge
-            e0 = self._faces['halfedge'][c]
-            e1 = self._halfedges['next'][e0]
-            e2 = self._halfedges['prev'][e0]
-        
-            c0, c1, c2 = 1e6, 1e6, 1e6
-            if self._halfedges['twin'][e0] != -1:
-                c0 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]]
-            if self._halfedges['twin'][e1] != -1:
-                c1 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]]
-            if self._halfedges['twin'][e2] != -1:
-                c2 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]]
-
-            new_component = np.min([self._faces['component'][c], c0, c1, c2])
+        for _ in range(2):
+            for c in candidates:
+                # Assign each face the minimum component of it and the face of its twin edge
+                e0 = self._faces['halfedge'][c]
+                e1 = self._halfedges['next'][e0]
+                e2 = self._halfedges['prev'][e0]
             
-            self._faces['component'][c] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e0]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e1]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]] = new_component
-            if self._halfedges['face'][self._halfedges['twin'][e2]] in candidates:
-                self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]] = new_component
+                c0, c1, c2 = 1e6, 1e6, 1e6
+                if self._halfedges['twin'][e0] != -1:
+                    c0 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]]
+                if self._halfedges['twin'][e1] != -1:
+                    c1 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]]
+                if self._halfedges['twin'][e2] != -1:
+                    c2 = self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]]
+
+                new_component = np.min([self._faces['component'][c], c0, c1, c2])
+                
+                self._faces['component'][c] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e0]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e0]]] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e1]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e1]]] = new_component
+                if self._halfedges['face'][self._halfedges['twin'][e2]] in candidates:
+                    self._faces['component'][self._halfedges['face'][self._halfedges['twin'][e2]]] = new_component
             
         return self._faces['component'][candidates]
 
@@ -1064,17 +1037,59 @@ cdef class MembraneMesh(TriangleMesh):
                 # component, punch a hole and remove both components from consideration.
                 component_cand_pairs = candidate_pairs[component_idxs]
                 for j, pair_idx in enumerate(component_cand_pairs):
-                    pair_component_idx = np.flatnonzero(unique_components==component[pair_idx])
-                    assert(len(pair_component_idx) == 1)
-                    pair_component_idx = [0]
-                    if (component[pair_idx] != c) and (used_components[pair_component_idx] != True):
-                        self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
-                        used_components[pair_component_idx] = True
-                        break
+                    if component[pair_idx] == c:
+                        continue
+                    pair_component_idx = np.argmax(unique_components==component[pair_idx])
+                    if used_components[pair_component_idx]:
+                        continue
+                    paired_component_cands = candidates[component == component[pair_idx]]
+
+                    # self._holepunch_punch_hole(component_cands[j], candidates[pair_idx])
+                    self._holepunch_punch_hole2(component_cands, paired_component_cands)
+                    
+                    used_components[i] = True
+                    used_components[pair_component_idx] = True
+                    break
             else:
                 print(f"Component {c} has Euler characteristic {euler[i]}. I don't know what to do with this.")
+            
             # Mark this component as used
             used_components[i] = True
+
+    def _holepunch_component_boundary(self, candidates):
+        """Take a list of face indices and return the halfedges forming the boundary of this component
+        in the order of the external boundary (as if we are traversing around the boundary in the
+        direction opposite its halfedge flow)."""
+
+        cdef int j
+        cdef np.int32_t edge, twin_vertex
+
+        e0 = self._faces['halfedge'][candidates]
+        e1 = self._halfedges['next'][e0]
+        e2 = self._halfedges['prev'][e0]
+
+        he = np.hstack([e0,e1,e2])
+
+        boundary_edges = list(set(he) - set(self._halfedges['twin'][he]))
+        ordered_boundary = np.zeros((len(boundary_edges),), dtype='i4')
+
+        # Now order them by finding pivot vertices
+        edge = boundary_edges.pop()
+        ordered_boundary[0] = edge
+        twin_vertex = self._chalfedges[self._chalfedges[edge].twin].vertex
+        j = 1
+        failsafe = 100 + ordered_boundary.shape[0]
+        while (j < ordered_boundary.shape[0]) and (failsafe > 0):
+            for i, e in enumerate(boundary_edges):
+                if self._chalfedges[e].vertex == twin_vertex:
+                    edge = boundary_edges.pop(i)
+                    ordered_boundary[j] = edge
+                    twin_vertex = self._chalfedges[self._chalfedges[edge].twin].vertex
+                    j += 1
+                    break
+            failsafe -= 1
+
+        return ordered_boundary
 
     def punch_holes(self, pts, eps=10.0):
         """
@@ -1089,7 +1104,10 @@ cdef class MembraneMesh(TriangleMesh):
             Distance to closest point
         """
         # Find all mesh faces that have no points within eps of their face center
-        hc = self._holepunch_find_candidate_faces(pts, eps=eps/5.0)  # TODO: 5.0 is empirical
+        hc = self._holepunch_find_candidate_faces(pts, eps=eps)  # TODO: 5.0 is empirical
+
+        if len(hc) < 1:
+            return
 
         # Pair these faces by matching each face to its closest face in mean normal space
         # with an opposing normal. Allows many-to-one.
@@ -1098,6 +1116,9 @@ cdef class MembraneMesh(TriangleMesh):
         # Check if there are no points within eps of the prism formed by each face pair. Keep these
         # only. Restores one-to-one face matching.
         empty_cands, empty_pairs = self._holepunch_empty_prism_candidate_faces(pts, cands, pairs, eps=eps)
+
+        if len(empty_cands) < 1:
+            return
 
         # Group the remaining faces by edge connectivity.
         component = self._holepunch_connect_candidates(empty_cands)
@@ -1118,199 +1139,141 @@ cdef class MembraneMesh(TriangleMesh):
         TODO: Improve neck selection by looking at, e.g. point_influence as well. 
         """
 
+        #print(self.curvature_gaussian)
+        self._populate_curvature_grad()
+
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
         self.unsafe_remove_vertices(verts)
         self.repair()
         #self.repair()
         self.remesh()
+        self.remove_inner_surfaces()
 
     # End topology functions
     ##########################
     
-    
-    cdef grad(self, np.ndarray points, np.ndarray sigma):
-        """
-        Gradient between points and the surface.
+    #cdef grad(self, np.ndarray points, np.ndarray sigma):
+    #    """
+    #    Gradient between points and the surface.
+    #
+    #    Parameters
+    #    ----------
+    #        points : np.array
+    #            3D point cloud to fit.
+    #        sigma : float
+    #            Localization uncertainty of points.
+    #    """
+    #
+    #    dN = 0.1
+    #    if USE_C:
+    #        curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+    #    else:
+    #        curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
+    #    attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+    #
+    #    print("Curvature: {}".format(np.mean(curvature,axis=0)))
+    #    print("Attraction: {}".format(np.mean(attraction,axis=0)))
+    #    print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
+    #
+    #    g = self.a*attraction + self.c*curvature
+    #    print("Gradient: {}".format(np.mean(g,axis=0)))
+    #    return g
 
-        Parameters
-        ----------
-            points : np.array
-                3D point cloud to fit.
-            sigma : float
-                Localization uncertainty of points.
-        """
-        # attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
-        # cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
-        # cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
-        # cdef float[:] sigma_view = sigma
+    #def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
+    #    """
+    #    Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
+    #    fit of surface mesh surf to point cloud points.
+    #
+    #    Parameters
+    #    ----------
+    #        points : np.array
+    #            3D point cloud to fit.
+    #        sigma : float
+    #            Localization uncertainty of points.
+    #    """
+    #    # Initialize moment vectors
+    #    m = np.zeros(self._vertices['position'].shape)
+    #    v = np.zeros(self._vertices['position'].shape)
+    #
+    #    t = 0
+    #    # g_mag_prev = 0
+    #    # g_mag = 0
+    #    while (t < max_iter):
+    #        print('Iteration %d ...' % t)
+    #         
+    #        t += 1
+    #        # Gaussian noise std
+    #        noise_sigma = np.sqrt(self.step_size / ((1 + t)**0.55))
+    #        # Gaussian noise
+    #        noise = np.random.normal(0, noise_sigma, self._vertices['position'].shape)
+    #        # Calculate graident for each point on the  surface, 
+    #        g = self.grad(points, sigma)
+    #        # add Gaussian noise to the gradient
+    #        g += noise
+    #        # Update first biased moment 
+    #        m = beta_1 * m + (1. - beta_1) * g
+    #        # Update second biased moment
+    #        v = beta_2 * v + (1. - beta_2) * np.multiply(g, g)
+    #        # Remove biases on moments & calculate update weight
+    #        a = step_size * np.sqrt(1. - beta_2**t) / (1. - beta_1**t)
+    #        # Update the surface
+    #        self._vertices['position'] += a * m / (np.sqrt(v) + eps)
 
-        dN = 0.1
-        if USE_C:
-            curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
-        else:
-            curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-        attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
-        # c_point_attraction_grad(&(attraction_view[0]), 
-        #                        &(points_view[0]), 
-        #                        &(sigma_view[0]), 
-        #                        &(self._cvertices[0]), 
-        #                        0.95, 
-        #                        self._mean_edge_length/2.5, 
-        #                        points.shape[0], 
-        #                        self._vertices.shape[0])
-
-        # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
-        # print('Ratio: ' + str(ratio))
-
-        # c_inf_mask = (np.isinf(curvature).sum(1)>0)
-        # a_inf_mask = (np.isinf(attraction).sum(1)>0)
-
-        # c_inf = curvature[c_inf_mask]
-        # a_inf = attraction[a_inf_mask]
-
-        # if len(c_inf) > 0:
-        #     print('Curvature infinity!!!')
-        #     print(self._vertices[c_inf_mask])
-
-        # if len(a_inf) > 0:
-        #     print('Attraction infinity!!!')
-        #     print(self._vertices[a_inf_mask])
-
-        print("Curvature: {}".format(np.mean(curvature,axis=0)))
-        print("Attraction: {}".format(np.mean(attraction,axis=0)))
-        print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
-
-        g = self.a*attraction + self.c*curvature
-        print("Gradient: {}".format(np.mean(g,axis=0)))
-        return g
-
-    def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
-        """
-        Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
-        fit of surface mesh surf to point cloud points.
-
-        Parameters
-        ----------
-            points : np.array
-                3D point cloud to fit.
-            sigma : float
-                Localization uncertainty of points.
-        """
-        # Initialize moment vectors
-        m = np.zeros(self._vertices['position'].shape)
-        v = np.zeros(self._vertices['position'].shape)
-
-        t = 0
-        # g_mag_prev = 0
-        # g_mag = 0
-        while (t < max_iter):
-            print('Iteration %d ...' % t)
-            
-            t += 1
-            # Gaussian noise std
-            noise_sigma = np.sqrt(self.step_size / ((1 + t)**0.55))
-            # Gaussian noise
-            noise = np.random.normal(0, noise_sigma, self._vertices['position'].shape)
-            # Calculate graident for each point on the  surface, 
-            g = self.grad(points, sigma)
-            # add Gaussian noise to the gradient
-            g += noise
-            # Update first biased moment 
-            m = beta_1 * m + (1. - beta_1) * g
-            # Update second biased moment
-            v = beta_2 * v + (1. - beta_2) * np.multiply(g, g)
-            # Remove biases on moments & calculate update weight
-            a = step_size * np.sqrt(1. - beta_2**t) / (1. - beta_1**t)
-            # Update the surface
-            self._vertices['position'] += a * m / (np.sqrt(v) + eps)
-
-    def opt_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
-        """
-        Normal gradient descent.
-
-        Parameters
-        ----------
-            points : np.array
-                3D point cloud to fit.
-            sigma : float
-                Localization uncertainty of points.
-        """
-
-        # Precalc 
-        dr = (self.delaunay_remesh_frequency != 0)
-        r = (self.remesh_frequency != 0)
-        if r:
-            initial_length = self._mean_edge_length
-            final_length = 3*np.max(sigma)
-            m = (final_length - initial_length)/max_iter
-        
-        for _i in np.arange(max_iter):
-
-            print('Iteration %d ...' % _i)
-            
-            # Calculate the weighted gradient
-            shift = step_size*self.grad(points, sigma)
-
-            # Update the vertices
-            self._vertices['position'] += shift
-
-            # self._faces['normal'][:] = -1
-            # self._vertices['neighbors'][:] = -1
-            self._face_normals_valid = 0
-            self._vertex_normals_valid = 0
-            self.face_normals
-            self.vertex_neighbors
-
-            # If we've reached precision, terminate
-            if np.all(shift < eps):
-               break
-
-            if (_i == 0):
-                # Don't remesh
-                continue
-
-            # Remesh
-            if r and ((_i % self.remesh_frequency) == 0):
-                target_length = initial_length + m*_i
-                self.remesh(5, target_length, 0.5, 10)
-                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
-                                                                                str(self._mean_edge_length)))
-
-            # Delaunay remesh
-            if dr and ((_i % self.delaunay_remesh_frequency) == 0):
-                self.delaunay_remesh(points, self.delaunay_eps)
-
-    def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
-        for _i in np.arange(max_iter):
-
-            print('Iteration %d ...' % _i)
-
-            if _i % 2:
-                dN = 0.1
-                # grad = self.c*self.curvature_grad(dN=dN)
-                if USE_C:
-                    grad = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
-                else:
-                    grad = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-            else:
-                grad = self.a*self.point_attraction_grad_kdtree(points, sigma)
-
-            # Calculate the weighted gradient
-            shift = step_size*grad
-
-            # Update the vertices
-            self._vertices['position'] += shift
-
-            # self._faces['normal'][:] = -1
-            # self._vertices['neighbors'][:] = -1
-            self._face_normals_valid = 0
-            self._vertex_normals_valid = 0
-            self.face_normals
-            self.vertex_neighbors
-
-            # If we've reached precision, terminate
-            if np.all(shift < eps):
-                return
+    #def opt_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+    #    """
+    #    Normal gradient descent.
+    #
+    #    Parameters
+    #    ----------
+    #        points : np.array
+    #            3D point cloud to fit.
+    #        sigma : float
+    #            Localization uncertainty of points.
+    #    """
+    #
+    #    # Precalc 
+    #    dr = (self.delaunay_remesh_frequency != 0)
+    #    r = (self.remesh_frequency != 0)
+    #    if r:
+    #        initial_length = self._mean_edge_length
+    #        final_length = 3*np.max(sigma)
+    #        m = (final_length - initial_length)/max_iter
+    #   
+    #   for _i in np.arange(max_iter):
+    #
+    #        print('Iteration %d ...' % _i)
+    #        
+    #        # Calculate the weighted gradient
+    #        shift = step_size*self.grad(points, sigma)
+    #
+    #        # Update the vertices
+    #        self._vertices['position'] += shift
+    #
+    #        # self._faces['normal'][:] = -1
+    #        # self._vertices['neighbors'][:] = -1
+    #        self._face_normals_valid = 0
+    #        self._vertex_normals_valid = 0
+    #        self.face_normals
+    #        self.vertex_neighbors
+    #
+    #        # If we've reached precision, terminate
+    #        if np.all(shift < eps):
+    #           break
+    #
+    #        if (_i == 0):
+    #            # Don't remesh
+    #            continue
+    #
+    #        # Remesh
+    #        if r and ((_i % self.remesh_frequency) == 0):
+    #            target_length = initial_length + m*_i
+    #            self.remesh(5, target_length, 0.5, 10)
+    #            print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+    #                                                                            str(self._mean_edge_length)))
+    #
+    #        # Delaunay remesh
+    #        if dr and ((_i % self.delaunay_remesh_frequency) == 0):
+    #            self.delaunay_remesh(points, self.delaunay_eps)
 
     def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
         from ch_shrinkwrap.conj_grad import ShrinkwrapConjGrad
@@ -1345,7 +1308,9 @@ cdef class MembraneMesh(TriangleMesh):
         neck_first_iter = getattr(self, 'neck_first_iter', -1)
 
 
-        if (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
+        if np.isscalar(sigma):
+            s = float(sigma)
+        elif (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
             print("Not this case???")
             print(points.shape, sigma.shape)
             s = 1.0/np.repeat(sigma,points.shape[1])
@@ -1366,29 +1331,42 @@ cdef class MembraneMesh(TriangleMesh):
 
         j = 0
 
+        if self.shrink_weight > 0:
+            lams = [step_size*self.kc/2.0, self.shrink_weight]
+        else:
+            lams  = [step_size*self.kc/2.0,]
+
         while j < max_iter:
-            n = self._halfedges['vertex'][self._vertices['neighbors']]
-            n_idxs = self._vertices['neighbors'] == -1
-            n[n_idxs] = -1
-            fn = self._halfedges['face'][self._vertices['neighbors']]
-            fn[n_idxs] = -1
-            faces = self._faces['halfedge']
-            v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
-            v1 = self._halfedges['vertex'][faces]
-            v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
-            faces_by_vertex = np.vstack([v0, v1, v2]).T
-            self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            # n = self._halfedges['vertex'][self._vertices['neighbors']]
+            # n_idxs = self._vertices['neighbors'] == -1
+            # n[n_idxs] = -1
+            
+            # fn = self._halfedges['face'][self._vertices['neighbors']]
+            # fn[n_idxs] = -1
+            
+            # faces = self._faces['halfedge']
+            # v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
+            # v1 = self._halfedges['vertex'][faces]
+            # v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
+            # faces_by_vertex = np.vstack([v0, v1, v2]).T
+            
+            # self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            #                         search_k=self.search_k, search_rad=self.search_rad,
+            #                         shield_sigma=self._mean_edge_length/2.0)
+
+            self.cg = ShrinkwrapMeshConjGrad(self, points, 
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
+
             n_it = min(max_iter - j, rf)
-            vp = self.cg.search(points,lams=step_size*self.kc/2.0,num_iters=n_it,
-                           weights=s)
+            vp = self.cg.search(points,lams=lams,num_iters=n_it,
+                           sigma_inv=s, weights=weights)
 
             j += n_it
 
-            k = (self._vertices['halfedge'] != -1)
-            self._vertices['position'][k] = vp[k]
+            #k = (self._vertices['halfedge'] != -1)
+            #self._vertices['position'][k] = vp[k]
 
             # self._faces['normal'][:] = -1
             # self._vertices['neighbors'][:] = -1
@@ -1430,6 +1408,23 @@ cdef class MembraneMesh(TriangleMesh):
     def _S0(self):
         """ Search direction to minimise data misfit"""
         return self.cg.Ahfunc(self.cg.res).reshape(self.vertices.shape)
+
+
+    @property
+    def S0(self):
+        return self.cg.S[:,0].reshape(self.vertices.shape)
+
+    @property
+    def S1(self):
+        return self.cg.S[:,1].reshape(self.vertices.shape)
+
+    @property
+    def S2(self):
+        return self.cg.S[:,2].reshape(self.vertices.shape)
+
+    @property
+    def S3(self):
+        return self.cg.S[:,3].reshape(self.vertices.shape)
 
     @property
     def point_dis(self):
@@ -1496,16 +1491,7 @@ cdef class MembraneMesh(TriangleMesh):
                     eps=self.eps,
                     **kwargs)
 
-        #opts.update(kwargs)
-
         self._points = points
         self._sigma = sigma
 
         return getattr(self, 'opt_{}'.format(method))(**opts)
-
-        # if method == 'euler':
-        #     return self.opt_euler(**opts)
-        # elif method == 'expectation_maximization':
-        #     return self.opt_expectation_maximization(**opts)
-        # elif method == 'adam':
-        #     return self.opt_adam(**opts)

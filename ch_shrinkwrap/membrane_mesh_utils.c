@@ -142,6 +142,21 @@ void ffscalar_multd(const float *a, const float b, double *c, const int length)
         c[k] = ((double)(a[k]))*((double)(b));
 }
 
+/** @brief Elementwise multiplication of a scalar times a length 3 vector
+ *
+ *
+ *  @param a float vector
+ *  @param b float scalar
+ *  @param c float vector a*b
+ *  @return Void
+ */
+void ffscalar_mult3f(const float *a, const float b, float *c)
+{
+    int k;
+    for (k=0;k<3;++k)
+        c[k] = a[k]*b;
+}
+
 /** @brief Construct outer product of vectors
  * 
  *  @param a double vector
@@ -1216,6 +1231,134 @@ static void c_curvature_grad(void *vertices_,
     }
 }
 
+/** @brief Find the centroid of face vertices.
+ * 
+ *
+ *  @param faces face_t mesh face
+*   @param vertices vertex_t set of mesh vertices
+ *  @param halfedges halfedges_t set of mesh halfedges
+ *  @param centroid float centroid of mesh face
+ *  @return void
+ */
+static void calculate_face_centroid(face_t *face, vertex_t *vertices, halfedge_t *halfedges, float *centroid)
+{
+    int32_t he, v0, v1, v2;
+    float p01[3];
+    float p012[3];
+    float *p0;
+    float *p1;
+    float *p2;
+    
+    // get the vertex indices
+    he = face->halfedge;
+    v0 = halfedges[halfedges[he].prev].vertex;
+    v1 = halfedges[he].vertex;
+    v2 = halfedges[halfedges[he].next].vertex;
+
+    // get the vertex positions
+    p0 = vertices[v0].position;
+    p1 = vertices[v1].position;
+    p2 = vertices[v2].position;
+
+    // average them
+    ffadd3f(p0, p1, p01);
+    ffadd3f(p01, p2, p012);
+    ffscalar_mult3f(p012, 0.3333333333333333, centroid);
+}
+
+/** @brief Pair candidate faces for holepunching.
+ * 
+ * For each face, find the opposing face with the nearest centroid that has a
+ * normal in the opposite direction of this face and form a pair. Note this pair
+ * does not need to be unique.
+ *
+ *  @param vertices_ void vertex_d/vertex_t set of mesh vertices
+ *  @param faces_ void face_d/face_t set of mesh faces
+ *  @param halfedges halfedges_t set of mesh halfedges
+ *  @param candidates int* array of indices of candidate faces for pairing
+ *  @param n_candidates int length of candidate array
+ *  @param pairs int* array of matching faces of size n_candidates
+ *  @return void
+ */
+static void c_holepunch_pair_candidate_faces(void *vertices_, 
+                                             void *faces_,
+                                             halfedge_t *halfedges,
+                                             int *candidates,
+                                             int n_candidates,
+                                             int *pairs)
+{
+    int i, j;
+    float nd, ndi, ndj, candidate_shift_n_hat_dot, candidate_shift_norm, abs_shift, min_shift;
+    float centroid_i[3];
+    float centroid_j[3];
+    float n_sum[3];
+    float n_hat[3];
+    float candidate_shift[3];
+    float candidate_shift_n_hat[3];
+    float shift[3];
+    face_t *face_i;
+    face_t *face_j;
+    vertex_t *vertices = (vertex_t*) vertices_;
+    face_t *faces = (face_t*) faces_;
+
+    // for all the candidate faces...
+    for (i=0;i<n_candidates;++i)
+    {
+        face_i = &(faces[candidates[i]]);
+        calculate_face_centroid(face_i, vertices, halfedges, centroid_i);
+        min_shift = 1e6;
+
+        // ...compare the upper triangle of the pairwise comparison
+        for (j=(i+1);j<n_candidates;++j)
+        {
+            // This was already assigned.
+            // Note, this check deviates slightly from the behavior of the Python version
+            // of this function.
+            if (pairs[j] != -1) continue;
+
+            face_j = &(faces[candidates[j]]);
+            nd = ffdot3f(face_i->normal, face_j->normal);
+
+            // printf("the dot product is %f\n", nd);
+
+            if (nd>-0.6) continue;  // These two faces are not opposite. 
+                                    // TODO: stricter requirement on "opposing face" angle?
+            
+            calculate_face_centroid(face_j, vertices, halfedges, centroid_j);
+
+            // Get the average normal direction
+            ffadd3f(face_i->normal, face_j->normal, n_sum);
+            ffscalar_mult3f(n_sum, 0.5, n_hat);
+
+            
+            ffsubtract3f(centroid_i, centroid_j, candidate_shift);
+
+            ndi = ffdot3f(face_i->normal, candidate_shift);
+            ndj = ffdot3f(face_j->normal, candidate_shift);
+
+            // These are paired with the normals pointing at one another, don't use
+            // This also deviates from the behavior of the Python version
+            if ((ndi < 0) && (ndj > 0)) continue;
+
+            // Compute the shift orthogonal to the mean normal plane between the faces
+            candidate_shift_norm = fnorm3f(candidate_shift);
+            candidate_shift_n_hat_dot = ffdot3f(n_hat, candidate_shift);
+            ffscalar_mult3f(n_hat, candidate_shift_n_hat_dot*candidate_shift_norm, candidate_shift_n_hat);
+            ffsubtract3f(candidate_shift, candidate_shift_n_hat, shift);
+            
+            // If this face is closer in mean normal space to face_i than any other face,
+            // assign it as the paired face.
+            abs_shift = ffdot3f(shift, shift);
+            if (abs_shift < min_shift)
+            {
+                min_shift = abs_shift;
+                pairs[i] = j;
+                // pairs[j] = i;
+            }
+
+        }
+    }
+}
 
 static PyMethodDef membrane_mesh_utils_methods[] = {
     {"calculate_pt_cnt_dist_2", calculate_pt_cnt_dist_2, METH_VARARGS},
