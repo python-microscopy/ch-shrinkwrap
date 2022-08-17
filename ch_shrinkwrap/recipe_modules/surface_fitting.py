@@ -52,6 +52,7 @@ class ShrinkwrapMembrane(ModuleBase):
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
                                           shrink_weight = self.shrink_weight) # self.min_hole_radius)
+
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
                                         #   search_rad=self.search_rad)
