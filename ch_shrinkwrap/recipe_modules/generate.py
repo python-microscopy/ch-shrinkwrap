@@ -38,7 +38,7 @@ class PointcloudFromShape(ModuleBase):
                                                                      mean_photon_count=self.mean_photon_count, 
                                                                      bg_photon_count=self.bg_photon_count, 
                                                                      noise_fraction=self.noise_fraction)
-        print(points.shape, normals.shape, sigma.shape)
+
         if self.no_jitter:
             ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2],
                               xn=normals[:,0], yn=normals[:,1], zn=normals[:,2])
