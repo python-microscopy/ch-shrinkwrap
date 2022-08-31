@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 
 @register_module('PointcloudFromShape')
 class PointcloudFromShape(ModuleBase):
-    input = Input('filtered_localizations')
     output = Output('two_toruses')
 
     shape_name = CStr('TwoToruses')
