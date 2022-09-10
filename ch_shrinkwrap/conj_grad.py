@@ -173,6 +173,8 @@ class TikhonovConjugateGradient(object):
                 S[:,(s_size-1)] = (fnew - self.f)
                 n_search = s_size
 
+            self.S = S
+
             #set the current estimate to out new estimate
             self.f[:] = fnew
 
