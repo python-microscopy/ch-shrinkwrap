@@ -93,8 +93,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         scheme: pyme-cluster://
     """
 
-    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, inputs={'test': f'pyme-cluster://{output_dir}/test_{test_pointcloud_id}.hdf',
-                                                                         'shape': f'pyme-cluster://{output_dir}/shape_{shape_pointcloud_id}.hdf'})
+    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, inputs={'test': f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf',
+                                                                         'shape': f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf'})
 
     rule.push()
 
