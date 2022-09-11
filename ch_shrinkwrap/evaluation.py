@@ -73,7 +73,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         neck_threshold_high: {test_d['neck_threshold_high']}
         neck_first_iter: {test_d['neck_first_iter']}
         output: membrane
-        points: two_toruses
+        points: shape
     - surface_feature_extraction.PointsFromMesh:
         input: membrane
         output: membrane0_localizations
@@ -93,8 +93,9 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         scheme: pyme-cluster://
     """
 
-    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, inputs={'test': f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf',
-                                                                         'shape': f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf'})
+    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, 
+                      inputs={'test': f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf',
+                              'shape': f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf'})
 
     rule.push()
 
