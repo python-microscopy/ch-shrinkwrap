@@ -60,7 +60,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         input: octree
         output: mesh
         remesh: true
-        threshold_density: {test_d['threshold_density']}
+        threshold_density: {float(test_d['threshold_density']):.3e}
         n_points_min: {test_d['n_points_min']}
     - surface_fitting.ShrinkwrapMembrane:
         input: mesh
@@ -69,8 +69,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         remesh_frequency: {test_d['remesh_frequency']}
         punch_frequency: {test_d['punch_frequency']}
         min_hole_radius: {test_d['min_hole_radius']}
-        neck_threshold_low: {test_d['neck_threshold_low']}
-        neck_threshold_high: {test_d['neck_threshold_high']}
+        neck_threshold_low: {float(test_d['neck_threshold_low']):.3e}
+        neck_threshold_high: {float(test_d['neck_threshold_high']):.3e}
         neck_first_iter: {test_d['neck_first_iter']}
         output: membrane
         points: shape
@@ -94,8 +94,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
     """
 
     rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, 
-                      inputs={'test': f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf',
-                              'shape': f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf'})
+                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf'],
+                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf']})
 
     rule.push()
 
@@ -112,14 +112,15 @@ def evaluate(file_name, generated_shapes_filename=None):
         for d in sw_dicts:
             test_pointcloud_id, shape_pointcloud_id = generate_pointclouds(d, test_d['save_fp'])
             ids.append({'test_id' : str(test_pointcloud_id), 'shape_id': str(shape_pointcloud_id)})
-        print(ids)
         with open('test_ids.yaml', 'w') as f:
             yaml.safe_dump([*ids], f)
     else:
         with open(generated_shapes_filename) as f:
             ids = yaml.safe_load(f)
         for id, d in zip(ids, sw_dicts):
-            shrinkwrap_pointcloud_id = compute_shrinkwrap(d, test_d['save_fp'], id['test_id'], id['shape_id'])
+            from PYME.IO.clusterIO import local_dataroot
+            output_dir = os.path.join(local_dataroot, test_d['save_fp'])
+            shrinkwrap_pointcloud_id = compute_shrinkwrap(d, output_dir, id['test_id'], id['shape_id'])
 
 if __name__ == '__main__':
     import argparse
