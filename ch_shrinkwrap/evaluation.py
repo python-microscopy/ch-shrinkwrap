@@ -44,7 +44,7 @@ def generate_pointclouds(test_d, output_dir):
 
     # pyme-cluster:///file_name
 
-    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, inputs={'__sim':['1']})
+    rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, inputs={'__sim':['1']})
 
     rule.push()
 
@@ -92,9 +92,9 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
             membrane: membrane
         scheme: pyme-cluster://
     """
-    rule = RecipeRule(recipe=recipe_text, output_dir=output_dir, 
-                      inputs={'test': [f'pyme-cluster://{output_dir}/test_{test_pointcloud_id}.hdf'],
-                              'shape': [f'pyme-cluster://{output_dir}/shape_{shape_pointcloud_id}.hdf']})
+    rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, 
+                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf'],
+                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf']})
 
     rule.push()
 
@@ -117,9 +117,7 @@ def evaluate(file_name, generated_shapes_filename=None):
         with open(generated_shapes_filename) as f:
             ids = yaml.safe_load(f)
         for id, d in zip(ids, sw_dicts):
-            from PYME.IO.clusterIO import local_dataroot
-            output_dir = os.path.join(local_dataroot, test_d['save_fp'])
-            shrinkwrap_pointcloud_id = compute_shrinkwrap(d, output_dir, id['test_id'], id['shape_id'])
+            shrinkwrap_pointcloud_id = compute_shrinkwrap(d, test_d['save_fp'], id['test_id'], id['shape_id'])
 
 if __name__ == '__main__':
     import argparse
