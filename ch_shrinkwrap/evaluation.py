@@ -54,7 +54,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
     shrinkwrap_pointcloud_id = uuid.uuid4()
     recipe_text = f"""
     - pointcloud.Octree:
-        input_localizations: shape
+        input_localizations: shape_shape
         output_octree: octree
     - surface_fitting.DualMarchingCubes:
         input: octree
@@ -73,13 +73,13 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         neck_threshold_high: {float(test_d['neck_threshold_high']):.3e}
         neck_first_iter: {test_d['neck_first_iter']}
         output: membrane
-        points: shape
+        points: shape_shape
     - surface_feature_extraction.PointsFromMesh:
         input: membrane
         output: membrane0_localizations
     - surface_feature_extraction.AverageSquaredDistance:
         input: membrane0_localizations
-        input2: test
+        input2: test_test
         output: average_squared_distance
     - output.HDFOutput:
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.hdf'
@@ -88,8 +88,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         scheme: pyme-cluster://
     - output.STLOutput:
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.stl'
-        inputVariables:
-            membrane: membrane
+        inputName: membrane
         scheme: pyme-cluster://
     """
     rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, 
