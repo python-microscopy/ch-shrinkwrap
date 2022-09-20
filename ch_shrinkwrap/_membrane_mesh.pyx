@@ -7,6 +7,7 @@ import ctypes
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
+from PYME.IO.MetaDataHandler import DictMDHandler
 from PYME.experimental._triangle_mesh cimport TriangleMesh
 from PYME.experimental._triangle_mesh import TriangleMesh
 from PYME.experimental._triangle_mesh import VERTEX_DTYPE
@@ -100,7 +101,6 @@ cdef class MembraneMesh(TriangleMesh):
         self.remesh_frequency = 100
         self.delaunay_remesh_frequency = 150
 
-
         self._initialize_curvature_vectors()
         
         self.vertex_properties.extend(['E', 'curvature_principal0', 'curvature_principal1', 'point_dis', 'rms_point_sc', 'point_influence']) #, 'puncture_candidates'])
@@ -115,6 +115,8 @@ cdef class MembraneMesh(TriangleMesh):
 
         # Pointcloud kdtree
         self._tree = None
+
+        self._mdh = None
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -172,6 +174,21 @@ cdef class MembraneMesh(TriangleMesh):
         if not np.any(self._K):
             self._populate_curvature_grad()
         return self._K
+
+    @property
+    def mdh(self):
+        self._mdh = DictMDHandler()
+        self._mdh['max_iters'] = self.max_iter
+        self._mdh['curvature_weight'] = self.step_size
+        self._mdh['remesh_frequency'] = self.remesh_frequency
+        self._mdh['punch_frequency'] = self.delaunay_remesh_frequency
+        self._mdh['min_hole_radius'] = self.delaunay_eps
+        self._mdh['neck_threshold_low'] = getattr(self, 'neck_threhold_low', -1e-4)
+        self._mdh['neck_threshold_high'] = getattr(self, 'neck_threhold_low', 1e-2)
+        self._mdh['neck_first_iter'] = getattr(self, 'neck_first_iter', -1)
+        self._mdh['shrink_weight'] = self.shrink_weight
+
+        return self._mdh
 
     def _populate_curvature_grad(self):
         if USE_C:
