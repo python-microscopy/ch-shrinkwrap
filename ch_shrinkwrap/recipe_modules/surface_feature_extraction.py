@@ -4,6 +4,8 @@ from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
 
+from PYME.IO.MetaDataHandler import DictMDHandler
+
 logger = logging.getLogger(__name__)
 
 @register_module('SkeletonizeMembrane')
@@ -93,6 +95,11 @@ class PointsFromMesh(ModuleBase):
                          'xn': normals[:,0],
                          'yn': normals[:,1],
                          'zn': normals[:,2]})
+
+        ds.mdh = DictMDHandler()
+        ds.mdh['dx_min'] = self.dx_min
+        ds.mdh['p'] = self.p
+        ds.mdh['return_normals'] = self.return_normals
 
         namespace[self.output] = ds
 

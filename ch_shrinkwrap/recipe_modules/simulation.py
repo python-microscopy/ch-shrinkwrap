@@ -1,5 +1,6 @@
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int
+from PYME.IO.MetaDataHandler import DictMDHandler
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,5 +49,18 @@ class PointcloudFromShape(ModuleBase):
                               xn=normals[:,0], yn=normals[:,1], zn=normals[:,2],
                               sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], 
                               sigma_z=sigma[:,2])
+
+        ds.mdh = DictMDHandler()
+        ds.mdh['shape_name'] = self.shape_name
+        ds.mdh['shape_params'] = self.shape_params
+        ds.mdh['density'] = self.density
+        ds.mdh['p'] = self.p
+        ds.mdh['psf_width_x'] = self.psf_width_x
+        ds.mdh['psf_width_y'] = self.psf_width_y
+        ds.mdh['psf_width_z'] = self.psf_width_z
+        ds.mdh['mean_photon_count'] = self.mean_photon_count
+        ds.mdh['bg_photon_count'] = self.bg_photon_count
+        ds.mdh['noise_fraction'] = self.noise_fraction
+        ds.mdh['no_jitter'] = self.no_jitter
 
         namespace[self.output] = ds
