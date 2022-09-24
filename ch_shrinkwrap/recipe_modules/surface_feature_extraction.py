@@ -97,9 +97,9 @@ class PointsFromMesh(ModuleBase):
                          'zn': normals[:,2]})
 
         ds.mdh = DictMDHandler()
-        ds.mdh['dx_min'] = self.dx_min
-        ds.mdh['p'] = self.p
-        ds.mdh['return_normals'] = self.return_normals
+        ds.mdh['PointsFromMesh.DxMin'] = self.dx_min
+        ds.mdh['PointsFromMesh.P'] = self.p
+        ds.mdh['PointsFromMesh.ReturnNormals'] = self.return_normals
 
         namespace[self.output] = ds
 

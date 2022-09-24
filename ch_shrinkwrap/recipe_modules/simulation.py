@@ -51,16 +51,16 @@ class PointcloudFromShape(ModuleBase):
                               sigma_z=sigma[:,2])
 
         ds.mdh = DictMDHandler()
-        ds.mdh['shape_name'] = self.shape_name
-        ds.mdh['shape_params'] = self.shape_params
-        ds.mdh['density'] = self.density
-        ds.mdh['p'] = self.p
-        ds.mdh['psf_width_x'] = self.psf_width_x
-        ds.mdh['psf_width_y'] = self.psf_width_y
-        ds.mdh['psf_width_z'] = self.psf_width_z
-        ds.mdh['mean_photon_count'] = self.mean_photon_count
-        ds.mdh['bg_photon_count'] = self.bg_photon_count
-        ds.mdh['noise_fraction'] = self.noise_fraction
-        ds.mdh['no_jitter'] = self.no_jitter
+        ds.mdh['PointcloudFromShape.ShapeName'] = self.shape_name
+        ds.mdh['PointcloudFromShape.ShapeParams'] = self.shape_params
+        ds.mdh['PointcloudFromShape.Density'] = self.density
+        ds.mdh['PointcloudFromShape.P'] = self.p
+        ds.mdh['PointcloudFromShape.PsfWidthX'] = self.psf_width_x
+        ds.mdh['PointcloudFromShape.PsfWidthY'] = self.psf_width_y
+        ds.mdh['PointcloudFromShape.PsfWidthZ'] = self.psf_width_z
+        ds.mdh['PointcloudFromShape.MeanPhotonCount'] = self.mean_photon_count
+        ds.mdh['PointcloudFromShape.BgPhotonCount'] = self.bg_photon_count
+        ds.mdh['PointcloudFromShape.NoiseFraction'] = self.noise_fraction
+        ds.mdh['PointcloudFromShape.NoJitter'] = self.no_jitter
 
         namespace[self.output] = ds

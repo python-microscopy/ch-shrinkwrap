@@ -177,16 +177,19 @@ cdef class MembraneMesh(TriangleMesh):
 
     @property
     def mdh(self):
-        self._mdh = DictMDHandler()
-        self._mdh['max_iters'] = self.max_iter
-        self._mdh['curvature_weight'] = self.step_size
-        self._mdh['remesh_frequency'] = self.remesh_frequency
-        self._mdh['punch_frequency'] = self.delaunay_remesh_frequency
-        self._mdh['min_hole_radius'] = self.delaunay_eps
-        self._mdh['neck_threshold_low'] = getattr(self, 'neck_threhold_low', -1e-4)
-        self._mdh['neck_threshold_high'] = getattr(self, 'neck_threhold_low', 1e-2)
-        self._mdh['neck_first_iter'] = getattr(self, 'neck_first_iter', -1)
-        self._mdh['shrink_weight'] = self.shrink_weight
+        try:
+            self._mdh = super().mdh(self)
+        except AttributeError:
+            self._mdh = DictMDHandler()
+        self._mdh['MembraneMesh.MaxIters'] = self.max_iter
+        self._mdh['MembraneMesh.CurvatureWeight'] = self.step_size
+        self._mdh['MembraneMesh.RemeshFrequency'] = self.remesh_frequency
+        self._mdh['MembraneMesh.PunchFrequency'] = self.delaunay_remesh_frequency
+        self._mdh['MembraneMesh.MinHoleRadius'] = self.delaunay_eps
+        self._mdh['MembraneMesh.NeckThresholdLow'] = getattr(self, 'neck_threhold_low', -1e-4)
+        self._mdh['MembraneMesh.NeckThresholdHigh'] = getattr(self, 'neck_threhold_low', 1e-2)
+        self._mdh['MembraneMesh.NeckFirstIter'] = getattr(self, 'neck_first_iter', -1)
+        self._mdh['MembraneMesh.ShrinkWeight'] = self.shrink_weight
 
         return self._mdh
 
