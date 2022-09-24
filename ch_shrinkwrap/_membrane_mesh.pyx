@@ -116,7 +116,15 @@ cdef class MembraneMesh(TriangleMesh):
         # Pointcloud kdtree
         self._tree = None
 
-        self._mdh = None
+        self.mdh['MembraneMesh.MaxIters'] = self.max_iter
+        self.mdh['MembraneMesh.CurvatureWeight'] = self.step_size
+        self.mdh['MembraneMesh.RemeshFrequency'] = self.remesh_frequency
+        self.mdh['MembraneMesh.PunchFrequency'] = self.delaunay_remesh_frequency
+        self.mdh['MembraneMesh.MinHoleRadius'] = self.delaunay_eps
+        self.mdh['MembraneMesh.NeckThresholdLow'] = getattr(self, 'neck_threshold_low', -1e-4)
+        self.mdh['MembraneMesh.NeckThresholdHigh'] = getattr(self, 'neck_threshold_high', 1e-2)
+        self.mdh['MembraneMesh.NeckFirstIter'] = getattr(self, 'neck_first_iter', -1)
+        self.mdh['MembraneMesh.ShrinkWeight'] = self.shrink_weight
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -174,24 +182,6 @@ cdef class MembraneMesh(TriangleMesh):
         if not np.any(self._K):
             self._populate_curvature_grad()
         return self._K
-
-    @property
-    def mdh(self):
-        try:
-            self._mdh = super().mdh(self)
-        except AttributeError:
-            self._mdh = DictMDHandler()
-        self._mdh['MembraneMesh.MaxIters'] = self.max_iter
-        self._mdh['MembraneMesh.CurvatureWeight'] = self.step_size
-        self._mdh['MembraneMesh.RemeshFrequency'] = self.remesh_frequency
-        self._mdh['MembraneMesh.PunchFrequency'] = self.delaunay_remesh_frequency
-        self._mdh['MembraneMesh.MinHoleRadius'] = self.delaunay_eps
-        self._mdh['MembraneMesh.NeckThresholdLow'] = getattr(self, 'neck_threhold_low', -1e-4)
-        self._mdh['MembraneMesh.NeckThresholdHigh'] = getattr(self, 'neck_threhold_low', 1e-2)
-        self._mdh['MembraneMesh.NeckFirstIter'] = getattr(self, 'neck_first_iter', -1)
-        self._mdh['MembraneMesh.ShrinkWeight'] = self.shrink_weight
-
-        return self._mdh
 
     def _populate_curvature_grad(self):
         if USE_C:
@@ -1403,7 +1393,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
-                    self.remove_necks(getattr(self, 'neck_threhold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
+                    self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
                 target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
