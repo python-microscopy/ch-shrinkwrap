@@ -50,17 +50,17 @@ class PointcloudFromShape(ModuleBase):
                               sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], 
                               sigma_z=sigma[:,2])
 
-        ds.mdh = DictMDHandler()
-        ds.mdh['PointcloudFromShape.ShapeName'] = self.shape_name
-        ds.mdh['PointcloudFromShape.ShapeParams'] = self.shape_params
-        ds.mdh['PointcloudFromShape.Density'] = self.density
-        ds.mdh['PointcloudFromShape.P'] = self.p
-        ds.mdh['PointcloudFromShape.PsfWidthX'] = self.psf_width_x
-        ds.mdh['PointcloudFromShape.PsfWidthY'] = self.psf_width_y
-        ds.mdh['PointcloudFromShape.PsfWidthZ'] = self.psf_width_z
-        ds.mdh['PointcloudFromShape.MeanPhotonCount'] = self.mean_photon_count
-        ds.mdh['PointcloudFromShape.BgPhotonCount'] = self.bg_photon_count
-        ds.mdh['PointcloudFromShape.NoiseFraction'] = self.noise_fraction
-        ds.mdh['PointcloudFromShape.NoJitter'] = self.no_jitter
+        # ds.mdh = DictMDHandler()
+        # ds.mdh['PointcloudFromShape.ShapeName'] = self.shape_name
+        # ds.mdh['PointcloudFromShape.ShapeParams'] = self.shape_params
+        # ds.mdh['PointcloudFromShape.Density'] = self.density
+        # ds.mdh['PointcloudFromShape.P'] = self.p
+        # ds.mdh['PointcloudFromShape.PsfWidthX'] = self.psf_width_x
+        # ds.mdh['PointcloudFromShape.PsfWidthY'] = self.psf_width_y
+        # ds.mdh['PointcloudFromShape.PsfWidthZ'] = self.psf_width_z
+        # ds.mdh['PointcloudFromShape.MeanPhotonCount'] = self.mean_photon_count
+        # ds.mdh['PointcloudFromShape.BgPhotonCount'] = self.bg_photon_count
+        # ds.mdh['PointcloudFromShape.NoiseFraction'] = self.noise_fraction
+        # ds.mdh['PointcloudFromShape.NoJitter'] = self.no_jitter
 
         namespace[self.output] = ds

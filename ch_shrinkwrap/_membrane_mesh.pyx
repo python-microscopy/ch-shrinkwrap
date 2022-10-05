@@ -116,16 +116,6 @@ cdef class MembraneMesh(TriangleMesh):
         # Pointcloud kdtree
         self._tree = None
 
-        self.mdh['MembraneMesh.MaxIters'] = self.max_iter
-        self.mdh['MembraneMesh.CurvatureWeight'] = self.step_size
-        self.mdh['MembraneMesh.RemeshFrequency'] = self.remesh_frequency
-        self.mdh['MembraneMesh.PunchFrequency'] = self.delaunay_remesh_frequency
-        self.mdh['MembraneMesh.MinHoleRadius'] = self.delaunay_eps
-        self.mdh['MembraneMesh.NeckThresholdLow'] = getattr(self, 'neck_threshold_low', -1e-4)
-        self.mdh['MembraneMesh.NeckThresholdHigh'] = getattr(self, 'neck_threshold_high', 1e-2)
-        self.mdh['MembraneMesh.NeckFirstIter'] = getattr(self, 'neck_first_iter', -1)
-        self.mdh['MembraneMesh.ShrinkWeight'] = self.shrink_weight
-
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -1150,14 +1140,20 @@ cdef class MembraneMesh(TriangleMesh):
         """
 
         #print(self.curvature_gaussian)
+        print('a')
         self._populate_curvature_grad()
-
+        print('b')
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
+        print('c')
         self.unsafe_remove_vertices(verts)
+        print('d')
         self.repair()
+        print('e')
         #self.repair()
         self.remesh()
+        print('f')
         self.remove_inner_surfaces()
+        print('g')
 
     # End topology functions
     ##########################

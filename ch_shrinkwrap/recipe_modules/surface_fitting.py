@@ -153,7 +153,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
-    neck_theshold_low = Float(-1e-4)
+    neck_threshold_low = Float(-1e-4)
     neck_threshold_high = Float(1e-2)
     neck_first_iter = Int(9)
     # method = Enum(DESCENT_METHODS)
@@ -173,7 +173,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
                                           remesh_frequency=self.remesh_frequency,
                                           delaunay_remesh_frequency=self.cut_frequency, # self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
-                                          neck_threshold_low = self.neck_theshold_low,
+                                          neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
                                           shrink_weight = self.shrink_weight) # self.min_hole_radius)
