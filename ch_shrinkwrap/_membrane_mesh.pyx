@@ -1140,20 +1140,13 @@ cdef class MembraneMesh(TriangleMesh):
         """
 
         #print(self.curvature_gaussian)
-        print('a')
         self._populate_curvature_grad()
-        print('b')
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
-        print('c')
         self.unsafe_remove_vertices(verts)
-        print('d')
         self.repair()
-        print('e')
         #self.repair()
         self.remesh()
-        print('f')
         self.remove_inner_surfaces()
-        print('g')
 
     # End topology functions
     ##########################
