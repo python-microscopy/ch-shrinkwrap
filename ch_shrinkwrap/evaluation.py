@@ -85,7 +85,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.hdf'
         inputVariables:
             average_squared_distance: average_squared_distance
-        scheme: pyme-cluster://
+        scheme: pyme-cluster:// - aggregate
     - output.STLOutput:
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.stl'
         inputName: membrane

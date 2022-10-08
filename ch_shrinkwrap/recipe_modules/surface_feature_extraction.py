@@ -85,8 +85,11 @@ class PointsFromMesh(ModuleBase):
     def execute(self, namespace):
         from PYME.IO.tabular import DictSource
         from ch_shrinkwrap.evaluation_utils import points_from_mesh
+        from PYME.IO import MetaDataHandler
         
-        points, normals = points_from_mesh(namespace[self.input], dx_min=self.dx_min, p=self.p, 
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        points, normals = points_from_mesh(inp, dx_min=self.dx_min, p=self.p, 
                                            return_normals=self.return_normals)
 
         ds = DictSource({'x': points[:,0],
@@ -96,10 +99,8 @@ class PointsFromMesh(ModuleBase):
                          'yn': normals[:,1],
                          'zn': normals[:,2]})
 
-        # ds.mdh = DictMDHandler()
-        # ds.mdh['PointsFromMesh.DxMin'] = self.dx_min
-        # ds.mdh['PointsFromMesh.P'] = self.p
-        # ds.mdh['PointsFromMesh.ReturnNormals'] = self.return_normals
+        self._params_to_metadata(md)
+        ds.mdh = md
 
         namespace[self.output] = ds
 
@@ -113,18 +114,27 @@ class AverageSquaredDistance(ModuleBase):
         import numpy as np
         from PYME.IO.tabular import DictSource
         from ch_shrinkwrap.evaluation_utils import average_squared_distance
+        from PYME.IO import MetaDataHandler
 
-        points0 = np.ascontiguousarray(np.vstack([namespace[self.input]['x'], 
-                                                  namespace[self.input]['y'],
-                                                  namespace[self.input]['z']]).T)
+        inp = namespace[self.input]
+        inp2 = namespace[self.input2]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        md2 = MetaDataHandler.DictMDHandler(getattr(inp2, 'mdh', None)) # get metadata from the input dataset if present
+        md.mergeEntriesFrom(md2)
 
-        points1 = np.ascontiguousarray(np.vstack([namespace[self.input2]['x'], 
-                                                  namespace[self.input2]['y'],
-                                                  namespace[self.input2]['z']]).T)
+        points0 = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                  inp['y'],
+                                                  inp['z']]).T)
+
+        points1 = np.ascontiguousarray(np.vstack([inp2['x'], 
+                                                  inp2['y'],
+                                                  inp2['z']]).T)
 
         mse0, mse1 = average_squared_distance(points0, points1)
         mse = np.sqrt((mse0+mse1)/2)
 
         ds = DictSource({'mse': np.array([mse0, mse1, mse])})
+        self._params_to_metadata(md)
+        ds.mdh = md
 
         namespace[self.output] = ds

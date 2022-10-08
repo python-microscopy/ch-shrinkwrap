@@ -38,8 +38,11 @@ class ShrinkwrapMembrane(ModuleBase):
     def execute(self, namespace):
         import numpy as np
         from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
                                           kc=self.kc,
                                           #kg=self.kg,
@@ -81,6 +84,9 @@ class ShrinkwrapMembrane(ModuleBase):
         # mProfile.profileOff()
         # mProfile.report()
 
+        self._params_to_metadata(md)
+        mesh.mdh = md
+
 @register_module('ScreenedPoissonMesh')
 class ScreenedPoissonMesh(ModuleBase):
     input = Input('filtered_localizations')
@@ -106,15 +112,17 @@ class ScreenedPoissonMesh(ModuleBase):
         import numpy as np
         from ch_shrinkwrap.screened_poisson import screened_poisson
         from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
 
-        points = np.ascontiguousarray(np.vstack([namespace[self.input]['x'], 
-                                                 namespace[self.input]['y'],
-                                                 namespace[self.input]['z']]).T)
+        inp = namespace[self.input]
+        points = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                 inp['y'],
+                                                 inp['z']]).T)
         
         try:
-            normals = np.ascontiguousarray(np.vstack([namespace[self.input]['xn'], 
-                                                      namespace[self.input]['yn'],
-                                                      namespace[self.input]['zn']]).T)
+            normals = np.ascontiguousarray(np.vstack([inp['xn'], 
+                                                      inp['yn'],
+                                                      inp]).T)
         except KeyError:
             normals = None
 
@@ -128,6 +136,10 @@ class ScreenedPoissonMesh(ModuleBase):
                                            threads=self.threads)
 
         mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
+
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        self._params_to_metadata(md)
+        mesh.mdh = md
 
         namespace[self.output] = mesh
 
@@ -162,8 +174,11 @@ class ImageShrinkwrapMembrane(ModuleBase):
     def execute(self, namespace):
         import numpy as np
         from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+        inp = namespace[self.input]
+
+        mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
                                           kc=self.kc,
                                           #kg=self.kg,
@@ -215,3 +230,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
         mesh.shrink_wrap(pts, sigma=sigma, weights=np.repeat(weights, 3), method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
         # mProfile.profileOff()
         # mProfile.report()
+
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        self._params_to_metadata(md)
+        mesh.mdh = md
