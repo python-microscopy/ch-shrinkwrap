@@ -24,7 +24,7 @@ def generate_pointclouds(test_d, output_dir):
         noise_fraction: {test_d['noise_fraction']}
         p: {test_d['p']}
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/test_{test_pointcloud_id}.hdf'
+        filePattern: '{{output_dir}}/test_{test_pointcloud_id}.h5r'
         inputVariables:
             test: test
         scheme: pyme-cluster://
@@ -36,7 +36,7 @@ def generate_pointclouds(test_d, output_dir):
         output: shape
         p: {test_d['p']}
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/shape_{shape_pointcloud_id}.hdf'
+        filePattern: '{{output_dir}}/shape_{shape_pointcloud_id}.h5r'
         inputVariables:
             shape: shape
         scheme: pyme-cluster://
@@ -82,7 +82,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         input2: test_test
         output: average_squared_distance
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.hdf'
+        filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.h5r'
         inputVariables:
             average_squared_distance: average_squared_distance
         scheme: pyme-cluster:// - aggregate
@@ -92,8 +92,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         scheme: pyme-cluster://
     """
     rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, 
-                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf'],
-                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf']})
+                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.h5r'],
+                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.h5r']})
 
     rule.push()
 
