@@ -1,7 +1,10 @@
+import logging
+
+import numpy as np
+
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int
-from PYME.IO.MetaDataHandler import DictMDHandler
-import logging
+from PYME.IO import tabular
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +59,24 @@ class PointcloudFromShape(ModuleBase):
         ds.mdh = md
 
         namespace[self.output] = ds
+
+@register_module('AddAllMetadataToPipeline')         
+class AddAllMetadataToPipeline(ModuleBase):
+    """Copies AddMetadataToMeasurements but with a twist
+    """
+    inputMeasurements = Input('measurements')
+    outputName = Output('annotatedMeasurements')
+    
+    def execute(self, namespace):
+        res = {}
+        meas = namespace[self.inputMeasurements]
+        res.update(meas)
+        
+        nEntries = len(list(res.values())[0])
+        for k in meas.mdh.keys():
+            v = meas.mdh[k]
+            res[k] = np.array([v]*nEntries)
+        
+        res = tabular.MappingFilter(res)
+        
+        namespace[self.outputName] = res

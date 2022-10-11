@@ -81,10 +81,13 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         input: membrane0_localizations
         input2: test_test
         output: average_squared_distance
+    - simulation.AddAllMetadataToPipeline:
+        inputMeasurements: average_squared_distance
+        outputName: measurements
     - output.HDFOutput:
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.h5r'
         inputVariables:
-            average_squared_distance: average_squared_distance
+            measurements: measurements
         scheme: pyme-cluster:// - aggregate
     - output.STLOutput:
         filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.stl'
