@@ -85,7 +85,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         inputMeasurements: average_squared_distance
         outputName: measurements
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.h5r'
+        filePattern: '{{output_dir}}/sw_res.h5r'
         inputVariables:
             measurements: measurements
         scheme: pyme-cluster:// - aggregate

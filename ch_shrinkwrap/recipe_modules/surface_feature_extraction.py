@@ -133,7 +133,9 @@ class AverageSquaredDistance(ModuleBase):
         mse0, mse1 = average_squared_distance(points0, points1)
         mse = np.sqrt((mse0+mse1)/2)
 
-        ds = DictSource({'mse': np.array([mse0, mse1, mse])})
+        ds = DictSource({'mse01': np.atleast_1d(mse0), 
+                         'mse10': np.atleast_1d(mse1), 
+                         'mse_rms': np.atleast_1d(mse)})
         self._params_to_metadata(md)
         ds.mdh = md
 
