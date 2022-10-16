@@ -1,4 +1,5 @@
 import logging
+import time
 
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, CStr, Int, Bool, Float, List
@@ -80,7 +81,11 @@ class ShrinkwrapMembrane(ModuleBase):
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
+        start = time.time()
         mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        stop = time.time()
+        duration = stop-start
+        md[f'Processing.ShrinkwrapMembrane.Runtime'] = duration
         # mProfile.profileOff()
         # mProfile.report()
 
@@ -126,6 +131,7 @@ class ScreenedPoissonMesh(ModuleBase):
         except KeyError:
             normals = None
 
+        start = time.time()
         vertices, faces = screened_poisson(points, normals, k=self.k, 
                                            smoothiter=self.smoothiter, flipflag=self.flipflag,
                                            viewpos=np.array(self.viewpos), visiblelayer=self.visiblelayer,
@@ -134,10 +140,13 @@ class ScreenedPoissonMesh(ModuleBase):
                                            pointweight=self.pointweight, iters=self.iters, 
                                            confidence=self.confidence, preclean=self.preclean,
                                            threads=self.threads)
+        stop = time.time()
+        duration = stop-start
 
         mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
 
         md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
         self._params_to_metadata(md)
         mesh.mdh = md
 
