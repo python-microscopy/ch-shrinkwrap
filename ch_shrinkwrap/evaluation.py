@@ -1,5 +1,3 @@
-from cgi import test
-import os
 import uuid
 
 import yaml
@@ -9,7 +7,6 @@ from evaluation_utils import testing_parameters
 
 def generate_pointclouds(test_d, output_dir):
     test_pointcloud_id = uuid.uuid4()   # points are jittered by psf width
-    shape_pointcloud_id = uuid.uuid4()  # points are directly on the surface of the shape
     recipe_text = f"""
     - simulation.PointcloudFromShape:
         output: test
@@ -28,6 +25,19 @@ def generate_pointclouds(test_d, output_dir):
         inputVariables:
             test: test
         scheme: pyme-cluster://
+    """
+
+    # pyme-cluster:///file_name
+
+    rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, inputs={'__sim':['1']})
+
+    rule.push()
+
+    return test_pointcloud_id
+
+def generate_test_shapes(test_d, output_dir):
+    shape_pointcloud_id = uuid.uuid4()  # points are directly on the surface of the shape
+    recipe_text = f"""
     - simulation.PointcloudFromShape:
         shape_name: {test_d['shape_name']}
         shape_params: {test_d['shape_params']}
@@ -42,13 +52,11 @@ def generate_pointclouds(test_d, output_dir):
         scheme: pyme-cluster://
     """
 
-    # pyme-cluster:///file_name
-
     rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, inputs={'__sim':['1']})
 
     rule.push()
 
-    return test_pointcloud_id, shape_pointcloud_id
+    return shape_pointcloud_id
 
 def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
     shrinkwrap_pointcloud_id = uuid.uuid4()
@@ -102,17 +110,30 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
 
     return shrinkwrap_pointcloud_id
 
-def evaluate(file_name, generated_shapes_filename=None):
+def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
     with open(file_name) as f:
         test_d = yaml.safe_load(f)
 
     sw_dicts, spr_dicts = testing_parameters(test_d)
 
+    shape_dict = {}
+
     if generated_shapes_filename is None:
         ids = []
         for d in sw_dicts:
-            test_pointcloud_id, shape_pointcloud_id = generate_pointclouds(d, test_d['save_fp'])
-            ids.append({'test_id' : str(test_pointcloud_id), 'shape_id': str(shape_pointcloud_id)})
+            for _ in range(technical_replicates):
+                test_pointcloud_id = generate_pointclouds(d, test_d['save_fp'])
+
+                # Only generate comparative shapes as necessary
+                k = f"{d['shape_name']}_{'_'.join([f'{k}_{v}' for k,v in d['shape_params'].items()])}_{d['density']}_{d['p']}"
+                print(k)
+                if k in shape_dict.keys():
+                    shape_pointcloud_id = shape_dict[k]
+                else:
+                    shape_pointcloud_id = generate_test_shapes(d, test_d['save_fp'])
+                    shape_dict[k] = shape_pointcloud_id
+                
+                ids.append({'test_id' : str(test_pointcloud_id), 'shape_id': str(shape_pointcloud_id)})
         with open('test_ids.yaml', 'w') as f:
             yaml.safe_dump([*ids], f)
     else:
@@ -129,7 +150,9 @@ if __name__ == '__main__':
                         default=None, nargs='?')
     parser.add_argument('generated_shapes_filename', help="File containing list of generated shape IDs.", 
                         default=None, nargs='?')
+    parser.add_argument('-n', '--technical_replicates', help="How many of each example should we run?",
+                        default=1, type=int)
 
     args = parser.parse_args()
 
-    evaluate(args.filename, args.generated_shapes_filename)
+    evaluate(args.filename, args.generated_shapes_filename, args.technical_replicates)
