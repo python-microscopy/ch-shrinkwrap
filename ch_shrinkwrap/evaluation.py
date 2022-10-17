@@ -21,7 +21,7 @@ def generate_pointclouds(test_d, output_dir):
         noise_fraction: {test_d['noise_fraction']}
         p: {test_d['p']}
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/test_{test_pointcloud_id}.h5r'
+        filePattern: '{{output_dir}}/test_{test_pointcloud_id}.hdf'
         inputVariables:
             test: test
         scheme: pyme-cluster://
@@ -44,9 +44,9 @@ def generate_test_shapes(test_d, output_dir):
         density: {test_d['density']}
         no_jitter: true
         output: shape
-        p: {test_d['p']}
+        p: 1.0
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/shape_{shape_pointcloud_id}.h5r'
+        filePattern: '{{output_dir}}/shape_{shape_pointcloud_id}.hdf'
         inputVariables:
             shape: shape
         scheme: pyme-cluster://
@@ -93,7 +93,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         inputMeasurements: average_squared_distance
         outputName: measurements
     - output.HDFOutput:
-        filePattern: '{{output_dir}}/sw_res.h5r'
+        filePattern: '{{output_dir}}/sw_res.hdf'
         inputVariables:
             measurements: measurements
         scheme: pyme-cluster:// - aggregate
@@ -103,8 +103,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         scheme: pyme-cluster://
     """
     rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, 
-                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.h5r'],
-                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.h5r']})
+                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf'],
+                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf']})
 
     rule.push()
 
@@ -125,7 +125,7 @@ def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
                 test_pointcloud_id = generate_pointclouds(d, test_d['save_fp'])
 
                 # Only generate comparative shapes as necessary
-                k = f"{d['shape_name']}_{'_'.join([f'{k}_{v}' for k,v in d['shape_params'].items()])}_{d['density']}_{d['p']}"
+                k = f"{d['shape_name']}_{'_'.join([f'{k}_{v}' for k,v in d['shape_params'].items()])}_{d['density']}"
                 print(k)
                 if k in shape_dict.keys():
                     shape_pointcloud_id = shape_dict[k]
