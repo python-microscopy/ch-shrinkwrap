@@ -62,7 +62,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
     shrinkwrap_pointcloud_id = uuid.uuid4()
     recipe_text = f"""
     - pointcloud.Octree:
-        input_localizations: shape_shape
+        input_localizations: test_test
         output_octree: octree
     - surface_fitting.DualMarchingCubes:
         input: octree
@@ -81,13 +81,13 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         neck_threshold_high: {float(test_d['neck_threshold_high']):.3e}
         neck_first_iter: {test_d['neck_first_iter']}
         output: membrane
-        points: shape_shape
+        points: test_test
     - surface_feature_extraction.PointsFromMesh:
         input: membrane
         output: membrane0_localizations
     - surface_feature_extraction.AverageSquaredDistance:
         input: membrane0_localizations
-        input2: test_test
+        input2: shape_shape
         output: average_squared_distance
     - simulation.AddAllMetadataToPipeline:
         inputMeasurements: average_squared_distance
@@ -113,8 +113,8 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
 def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
     spr_pointcloud_id = uuid.uuid4()
     recipe_text = f"""
-    - surface_fitting.ScreenedPoissonMesh
-        input: shape_shape
+    - surface_fitting.ScreenedPoissonMesh:
+        input: test_test
         depth: 12
         samplespernode: {test_d['samplespernode']}
         pointweight: {test_d['pointweight']}
@@ -125,7 +125,7 @@ def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
         output: membrane0_localizations
     - surface_feature_extraction.AverageSquaredDistance:
         input: membrane0_localizations
-        input2: test_test
+        input2: shape_shape
         output: average_squared_distance
     - simulation.AddAllMetadataToPipeline:
         inputMeasurements: average_squared_distance

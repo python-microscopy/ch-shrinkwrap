@@ -127,7 +127,7 @@ class ScreenedPoissonMesh(ModuleBase):
         try:
             normals = np.ascontiguousarray(np.vstack([inp['xn'], 
                                                       inp['yn'],
-                                                      inp]).T)
+                                                      inp['zn']]).T)
         except KeyError:
             normals = None
 
