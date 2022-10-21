@@ -110,6 +110,44 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
 
     return shrinkwrap_pointcloud_id
 
+def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
+    spr_pointcloud_id = uuid.uuid4()
+    recipe_text = f"""
+    - surface_fitting.ScreenedPoissonMesh
+        input: shape_shape
+        depth: 12
+        samplespernode: {test_d['samplespernode']}
+        pointweight: {test_d['pointweight']}
+        iters: {test_d['iters']}
+        output: membrane
+    - surface_feature_extraction.PointsFromMesh:
+        input: membrane
+        output: membrane0_localizations
+    - surface_feature_extraction.AverageSquaredDistance:
+        input: membrane0_localizations
+        input2: test_test
+        output: average_squared_distance
+    - simulation.AddAllMetadataToPipeline:
+        inputMeasurements: average_squared_distance
+        outputName: measurements
+    - output.HDFOutput:
+        filePattern: '{{output_dir}}/spr_res.hdf'
+        inputVariables:
+            measurements: measurements
+        scheme: pyme-cluster:// - aggregate
+    - output.STLOutput:
+        filePattern: '{{output_dir}}/spr_{spr_pointcloud_id}.stl'
+        inputName: membrane
+        scheme: pyme-cluster://
+    """
+    rule = RecipeRule(recipe=recipe_text, output_dir='pyme-cluster:///'+output_dir, 
+                      inputs={'test': [f'pyme-cluster:///{output_dir}/test_{test_pointcloud_id}.hdf'],
+                              'shape': [f'pyme-cluster:///{output_dir}/shape_{shape_pointcloud_id}.hdf']})
+
+    rule.push()
+
+    return spr_pointcloud_id
+
 def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
     with open(file_name) as f:
         test_d = yaml.safe_load(f)
@@ -126,7 +164,6 @@ def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
 
                 # Only generate comparative shapes as necessary
                 k = f"{d['shape_name']}_{'_'.join([f'{k}_{v}' for k,v in d['shape_params'].items()])}_{d['density']}"
-                print(k)
                 if k in shape_dict.keys():
                     shape_pointcloud_id = shape_dict[k]
                 else:
@@ -141,6 +178,8 @@ def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
             ids = yaml.safe_load(f)
         for id, d in zip(ids, sw_dicts):
             shrinkwrap_pointcloud_id = compute_shrinkwrap(d, test_d['save_fp'], id['test_id'], id['shape_id'])
+        for id, d in zip(ids, spr_dicts):
+            spr_pointcloud_id = compute_spr(d, test_d['save_fp'], id['test_id'], id['shape_id'])
 
 if __name__ == '__main__':
     import argparse
