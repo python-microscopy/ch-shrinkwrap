@@ -120,6 +120,7 @@ class ScreenedPoissonMesh(ModuleBase):
         from PYME.IO import MetaDataHandler
 
         inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
         points = np.ascontiguousarray(np.vstack([inp['x'], 
                                                  inp['y'],
                                                  inp['z']]).T)
@@ -142,12 +143,11 @@ class ScreenedPoissonMesh(ModuleBase):
                                            threads=self.threads)
         stop = time.time()
         duration = stop-start
+        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
+        self._params_to_metadata(md)
 
         mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
 
-        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
-        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
-        self._params_to_metadata(md)
         mesh.mdh = md
 
         namespace[self.output] = mesh

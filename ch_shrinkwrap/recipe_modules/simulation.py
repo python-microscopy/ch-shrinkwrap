@@ -3,7 +3,7 @@ import logging
 import numpy as np
 
 from PYME.recipes.base import register_module, ModuleBase
-from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int
+from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int, List
 from PYME.IO import tabular
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,8 @@ class AddAllMetadataToPipeline(ModuleBase):
         nEntries = len(list(res.values())[0])
         for k in meas.mdh.keys():
             v = meas.mdh[k]
+            if isinstance(v, List) or isinstance(v, list):
+                v = str(v)
             res[k] = np.array([v]*nEntries)
         
         res = tabular.MappingFilter(res)
