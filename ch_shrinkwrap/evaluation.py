@@ -59,7 +59,7 @@ def generate_test_shapes(test_d, output_dir):
     return shape_pointcloud_id
 
 def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
-    shrinkwrap_pointcloud_id = uuid.uuid4()
+    shrinkwrap_stl_id = uuid.uuid4()
     recipe_text = f"""
     - pointcloud.Octree:
         input_localizations: test_test
@@ -92,13 +92,15 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
     - simulation.AddAllMetadataToPipeline:
         inputMeasurements: average_squared_distance
         outputName: measurements
+        additionalKeys: test_pointcloud_id shape_pointcloud_id shrinkwrap_stl_id
+        additionalValues: {test_pointcloud_id} {shape_pointcloud_id} {shrinkwrap_stl_id}
     - output.HDFOutput:
         filePattern: '{{output_dir}}/sw_res.hdf'
         inputVariables:
             measurements: measurements
         scheme: pyme-cluster:// - aggregate
     - output.STLOutput:
-        filePattern: '{{output_dir}}/sw_{shrinkwrap_pointcloud_id}.stl'
+        filePattern: '{{output_dir}}/sw_{shrinkwrap_stl_id}.stl'
         inputName: membrane
         scheme: pyme-cluster://
     """
@@ -108,10 +110,10 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
 
     rule.push()
 
-    return shrinkwrap_pointcloud_id
+    return shrinkwrap_stl_id
 
 def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
-    spr_pointcloud_id = uuid.uuid4()
+    spr_stl_id = uuid.uuid4()
     recipe_text = f"""
     - surface_fitting.ScreenedPoissonMesh:
         input: test_test
@@ -130,13 +132,15 @@ def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
     - simulation.AddAllMetadataToPipeline:
         inputMeasurements: average_squared_distance
         outputName: measurements
+        additionalKeys: test_pointcloud_id shape_pointcloud_id spr_stl_id
+        additionalValues: {test_pointcloud_id} {shape_pointcloud_id} {spr_stl_id}
     - output.HDFOutput:
         filePattern: '{{output_dir}}/spr_res.hdf'
         inputVariables:
             measurements: measurements
         scheme: pyme-cluster:// - aggregate
     - output.STLOutput:
-        filePattern: '{{output_dir}}/spr_{spr_pointcloud_id}.stl'
+        filePattern: '{{output_dir}}/spr_{spr_stl_id}.stl'
         inputName: membrane
         scheme: pyme-cluster://
     """
@@ -146,7 +150,7 @@ def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
 
     rule.push()
 
-    return spr_pointcloud_id
+    return spr_stl_id
 
 def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
     with open(file_name) as f:
@@ -177,9 +181,9 @@ def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
         with open(generated_shapes_filename) as f:
             ids = yaml.safe_load(f)
         for id, d in zip(ids, sw_dicts):
-            shrinkwrap_pointcloud_id = compute_shrinkwrap(d, test_d['save_fp'], id['test_id'], id['shape_id'])
+            shrinkwrap_stl_id = compute_shrinkwrap(d, test_d['save_fp'], id['test_id'], id['shape_id'])
         for id, d in zip(ids, spr_dicts):
-            spr_pointcloud_id = compute_spr(d, test_d['save_fp'], id['test_id'], id['shape_id'])
+            spr_stl_id = compute_spr(d, test_d['save_fp'], id['test_id'], id['shape_id'])
 
 if __name__ == '__main__':
     import argparse

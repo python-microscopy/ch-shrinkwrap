@@ -66,13 +66,23 @@ class AddAllMetadataToPipeline(ModuleBase):
     """
     inputMeasurements = Input('measurements')
     outputName = Output('annotatedMeasurements')
+    additionalKeys = CStr('')
+    additionalValues = CStr('')
     
     def execute(self, namespace):
         res = {}
         meas = namespace[self.inputMeasurements]
         res.update(meas)
+
+        # Inject additional information
+        add_keys, add_values = self.additionalKeys.split(), self.additionalValues.split()
         
         nEntries = len(list(res.values())[0])
+
+        if len(add_keys) > 0 and len(add_keys) == len(add_values):
+            for k, v in zip(add_keys, add_values):
+                res[k] = np.array([v]*nEntries)
+        
         for k in meas.mdh.keys():
             v = meas.mdh[k]
             if isinstance(v, List) or isinstance(v, list):
