@@ -87,7 +87,10 @@ class AddAllMetadataToPipeline(ModuleBase):
             v = meas.mdh[k]
             if isinstance(v, List) or isinstance(v, list):
                 v = str(v)
-            res[k] = np.array([v]*nEntries)
+            if isinstance(v, str):
+                res[k] = np.array([v]*nEntries, dtype='S40')
+            else:
+                res[k] = np.array([v]*nEntries)
         
         res = tabular.MappingFilter(res)
         
