@@ -81,7 +81,10 @@ class AddAllMetadataToPipeline(ModuleBase):
 
         if len(add_keys) > 0 and len(add_keys) == len(add_values):
             for k, v in zip(add_keys, add_values):
-                res[k] = np.array([v]*nEntries)
+                if isinstance(v, str):
+                    res[k] = np.array([v]*nEntries, dtype='S40')
+                else:
+                    res[k] = np.array([v]*nEntries)
         
         for k in meas.mdh.keys():
             v = meas.mdh[k]
