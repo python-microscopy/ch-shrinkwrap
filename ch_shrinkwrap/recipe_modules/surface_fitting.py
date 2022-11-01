@@ -112,6 +112,7 @@ class ScreenedPoissonMesh(ModuleBase):
     confidence = Bool(False)
     preclean = Bool(False)
     threads = Int(8)
+    use_normals = Bool(False)
 
     def execute(self, namespace):
         import numpy as np
@@ -125,11 +126,14 @@ class ScreenedPoissonMesh(ModuleBase):
                                                  inp['y'],
                                                  inp['z']]).T)
         
-        try:
-            normals = np.ascontiguousarray(np.vstack([inp['xn'], 
-                                                      inp['yn'],
-                                                      inp['zn']]).T)
-        except KeyError:
+        if self.use_normals:
+            try:
+                normals = np.ascontiguousarray(np.vstack([inp['xn'], 
+                                                        inp['yn'],
+                                                        inp['zn']]).T)
+            except KeyError:
+                normals = None
+        else:
             normals = None
 
         start = time.time()
