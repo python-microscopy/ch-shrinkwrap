@@ -121,6 +121,7 @@ def compute_spr(test_d, output_dir, test_pointcloud_id, shape_pointcloud_id):
         samplespernode: {test_d['samplespernode']}
         pointweight: {test_d['pointweight']}
         iters: {test_d['iters']}
+        k: {test_d['k']}
         output: membrane
     - surface_feature_extraction.PointsFromMesh:
         input: membrane
