@@ -72,7 +72,7 @@ This section lists the parameters included in a test suite configuration file.
 
 The parameters are related to the behaviour of the optical system used to generate the 
 theoretically simulated images that were localized to create the point cloud. In reality, 
-we go directly to the point cloud. See ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
+we go directly to the point cloud. See ch_shrinkwrap.recipe_modules.simulation.PointcloudFromShape.
 
 - psf_width_x : float
     The FWHM (2.355 x sigma) of the PSF along the x-dimension.
@@ -89,7 +89,7 @@ we go directly to the point cloud. See ch_shrinkwrap.recipe_modules.generate.Poi
 
 These are related to the theoretical structure, defined by a signed-distance function
 (see ch_shrinkwrap.shape), that gives rise to the simulated point cloud. See
-ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
+ch_shrinkwrap.recipe_modules.simulation.PointcloudFromShape.
 
 - type : str
     Name of the shape. The class name of an object derived from ch_shrinkwrap.shape.Shape,
@@ -100,7 +100,7 @@ ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
 ### Point cloud
 
 The parameters define the sampling of the point cloud and the amount of background noise 
-added to the point cloud. See ch_shrinkwrap.recipe_modules.generate.PointcloudFromShape.
+added to the point cloud. See ch_shrinkwrap.recipe_modules.simulation.PointcloudFromShape.
 
 - density : float
     The density of the point cloud. Sampled on a regular grid, this is 1/(dx^3) where

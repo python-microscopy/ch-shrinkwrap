@@ -1,3 +1,3 @@
 ch_shrinkwrap.recipe_modules.surface_fitting
 ch_shrinkwrap.recipe_modules.surface_feature_extraction
-ch_shrinkwrap.recipe_modules.generate
+ch_shrinkwrap.recipe_modules.simulation

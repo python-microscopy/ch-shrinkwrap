@@ -299,6 +299,7 @@ def testing_parameters(test_d : dict) -> Tuple[dict, dict]:
     spr_spn = test_d['screened_poisson']['samplespernode']
     spr_weight = test_d['screened_poisson']['pointweight']
     spr_iters = test_d['screened_poisson']['iters']
+    spr_k = test_d['screened_poisson']['k']
 
     # common parameters
     param_list = [psf_widths, mean_photon_counts, bg_photon_counts,
@@ -311,7 +312,7 @@ def testing_parameters(test_d : dict) -> Tuple[dict, dict]:
                      sw_neck_low, sw_neck_high]
 
     # spr-specific parameters
-    spr_param_list = param_list + [spr_spn, spr_weight, spr_iters]
+    spr_param_list = param_list + [spr_spn, spr_weight, spr_iters, spr_k]
 
     sw_list = itertools.product(*sw_param_list)
     spr_list = itertools.product(*spr_param_list)
@@ -326,7 +327,7 @@ def testing_parameters(test_d : dict) -> Tuple[dict, dict]:
                      'punch_frequency', 'min_hole_radius', 'neck_first_iter',
                      'neck_threshold_low', 'neck_threshold_high']
 
-    spr_keys = param_keys + ['samplespernode', 'pointweight', 'iters']
+    spr_keys = param_keys + ['samplespernode', 'pointweight', 'iters', 'k']
 
     def to_dict(sw_list, sw_keys):
         sw_dicts = []

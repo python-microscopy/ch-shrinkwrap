@@ -7,6 +7,7 @@ import ctypes
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
+from PYME.IO.MetaDataHandler import DictMDHandler
 from PYME.experimental._triangle_mesh cimport TriangleMesh
 from PYME.experimental._triangle_mesh import TriangleMesh
 from PYME.experimental._triangle_mesh import VERTEX_DTYPE
@@ -99,7 +100,6 @@ cdef class MembraneMesh(TriangleMesh):
         self.max_iter = 250
         self.remesh_frequency = 100
         self.delaunay_remesh_frequency = 150
-
 
         self._initialize_curvature_vectors()
         
@@ -1141,7 +1141,6 @@ cdef class MembraneMesh(TriangleMesh):
 
         #print(self.curvature_gaussian)
         self._populate_curvature_grad()
-
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
         self.unsafe_remove_vertices(verts)
         self.repair()
@@ -1383,7 +1382,7 @@ cdef class MembraneMesh(TriangleMesh):
             # Remesh
             if r and ((j % self.remesh_frequency) == 0):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
-                    self.remove_necks(getattr(self, 'neck_threhold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
+                    self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
                 target_length = np.sqrt(initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
