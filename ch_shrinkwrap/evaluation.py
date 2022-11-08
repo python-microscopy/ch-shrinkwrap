@@ -3,7 +3,7 @@ import uuid
 import yaml
 from PYME.cluster.rules import RecipeRule
 
-from evaluation_utils import testing_parameters
+from .evaluation_utils import testing_parameters
 
 def generate_pointclouds(test_d, output_dir):
     test_pointcloud_id = uuid.uuid4()   # points are jittered by psf width
@@ -158,6 +158,8 @@ def evaluate(file_name, generated_shapes_filename=None, technical_replicates=1):
         test_d = yaml.safe_load(f)
 
     sw_dicts, spr_dicts = testing_parameters(test_d)
+
+    print(sw_dicts, spr_dicts)
 
     shape_dict = {}
 

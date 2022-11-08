@@ -6,7 +6,7 @@ system:
         - 280.0
     psf_width_z:
         - 280.0
-        - 840.0
+        #- 840.0
     mean_photon_count: 
         - 100
     bg_photon_count: 
@@ -19,7 +19,6 @@ shape:
 point_cloud:
     density: 
         - 1.0
-        - 1.0
     p: 
         - 0.001
         - 0.0001
@@ -31,7 +30,7 @@ dual_marching_cubes:
         - 0.000006
     n_points_min:
         - 20
-        - 20
+        #- 20
 shrinkwrapping:
     max_iters:
         - 9
@@ -48,9 +47,9 @@ shrinkwrapping:
     neck_first_iter:
         - 0
     neck_threshold_low:
-        - -1e-4
+        - -1.0e-4
     neck_threshold_high:
-        - 1e2
+        - 1.0e+2
 screened_poisson:
     samplespernode:
         - 1.5
@@ -59,3 +58,5 @@ screened_poisson:
         - 1
     iters:
         - 8
+    k:
+        - 30
