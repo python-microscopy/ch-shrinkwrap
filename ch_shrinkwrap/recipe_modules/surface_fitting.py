@@ -42,6 +42,11 @@ class ShrinkwrapMembrane(ModuleBase):
         from PYME.IO import MetaDataHandler
 
         inp = namespace[self.input]
+
+        n_faces = len(inp.faces)
+        if not n_faces > 4:
+            raise RuntimeError('Input mesh only has %d faces, a valid surface needs at least 4 faces' % n_faces)
+
         md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
         mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
@@ -190,6 +195,11 @@ class ImageShrinkwrapMembrane(ModuleBase):
         from PYME.IO import MetaDataHandler
 
         inp = namespace[self.input]
+
+        n_faces = len(inp.faces)
+        if not n_faces > 4:
+            raise RuntimeError('Input mesh only has %d faces, a valid surface needs at least 4 faces')
+
 
         mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
