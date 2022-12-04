@@ -1,0 +1,45 @@
+- localisations.AddPipelineDerivedVars:
+    inputEvents: ''
+    inputFitResults: FitResults
+    outputLocalizations: Localizations
+- localisations.ProcessColour:
+    input: Localizations
+    output: colour_mapped
+- tablefilters.FilterTable:
+    filters:
+      error_x:
+      - 0
+      - 30
+    inputName: colour_mapped
+    outputName: filtered_localizations
+- generate.PointcloudFromShape:
+    input: filtered_localizations
+    output: two_toruses
+    psf_width_z: 280.0
+- generate.PointcloudFromShape:
+    density: 0.008
+    input: filtered_localizations
+    no_jitter: true
+    output: two_toruses_raw
+    p: 1.0
+- pointcloud.Octree:
+    input_localizations: two_toruses
+    output_octree: octree
+- surface_fitting.DualMarchingCubes:
+    input: octree
+    output: mesh
+    remesh: true
+    threshold_density: 0.0002
+- surface_fitting.ShrinkwrapMembrane:
+    input: mesh
+    max_iters: 29
+    neck_first_iter: 0
+    output: membrane
+    points: two_toruses
+- surface_feature_extraction.PointsFromMesh:
+    input: membrane
+    output: membrane0_localizations
+- surface_feature_extraction.AverageSquaredDistance:
+    input: membrane0_localizations
+    input2: two_toruses_raw
+    output: average_squared_distance

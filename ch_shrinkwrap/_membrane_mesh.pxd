@@ -53,7 +53,7 @@ cdef class MembraneMesh(TriangleMesh):
     cdef public float neck_threshold_high
     cdef public int neck_first_iter
     cdef public float shrink_weight
-
+    
     cdef curvature_grad_c(self, float dN=*, float skip_prob=*)
     cdef curvature_grad(self, float dN=*, float skip_prob=*)
 
@@ -64,6 +64,8 @@ cdef class MembraneMesh(TriangleMesh):
                     int n_edge_idx,
                     int n_face_idx)
 
-    cdef grad(self, np.ndarray points, np.ndarray sigma)
+    # cdef grad(self, np.ndarray points, np.ndarray sigma)
+
+    cdef _c_holepunch_pair_candidate_faces(self, int[:] candidates, int n_candidates, int[:] pairs)
         
     

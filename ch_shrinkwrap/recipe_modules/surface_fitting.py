@@ -1,7 +1,9 @@
-from PYME.IO import tabular, image, MetaDataHandler
-from PYME.recipes.base import register_module, ModuleBase
-from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
+import time
+
+from PYME.recipes.base import register_module, ModuleBase
+from PYME.recipes.traits import Input, Output, CStr, Int, Bool, Float, List
+
 # from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
 
 logger = logging.getLogger(__name__)
@@ -23,12 +25,12 @@ class ShrinkwrapMembrane(ModuleBase):
     #kg = Float(-0.514)
     #skip_prob = Float(0.0)
     remesh_frequency = Int(5)
-    cut_frequency = Int(0)
+    punch_frequency = Int(0)
     min_hole_radius = Float(100.0)
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
-    neck_theshold_low = Float(-1e-4)
+    neck_threshold_low = Float(-1e-4)
     neck_threshold_high = Float(1e-2)
     neck_first_iter = Int(9)
     # method = Enum(DESCENT_METHODS)
@@ -37,8 +39,16 @@ class ShrinkwrapMembrane(ModuleBase):
     def execute(self, namespace):
         import numpy as np
         from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+        inp = namespace[self.input]
+
+        n_faces = len(inp.faces)
+        if not n_faces > 4:
+            raise RuntimeError('Input mesh only has %d faces, a valid surface needs at least 4 faces' % n_faces)
+
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
                                           kc=self.kc,
                                           #kg=self.kg,
@@ -46,9 +56,9 @@ class ShrinkwrapMembrane(ModuleBase):
                                           step_size=self.curvature_weight,
                                           #skip_prob=self.skip_prob,
                                           remesh_frequency=self.remesh_frequency,
-                                          delaunay_remesh_frequency=self.cut_frequency, # self.delaunay_remesh_frequency,
+                                          delaunay_remesh_frequency=self.punch_frequency, # self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
-                                          neck_threshold_low = self.neck_theshold_low,
+                                          neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
                                           shrink_weight = self.shrink_weight) # self.min_hole_radius)
@@ -76,10 +86,80 @@ class ShrinkwrapMembrane(ModuleBase):
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
+        start = time.time()
         mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        stop = time.time()
+        duration = stop-start
+        md[f'Processing.ShrinkwrapMembrane.Runtime'] = duration
         # mProfile.profileOff()
         # mProfile.report()
 
+        self._params_to_metadata(md)
+        mesh.mdh = md
+
+@register_module('ScreenedPoissonMesh')
+class ScreenedPoissonMesh(ModuleBase):
+    input = Input('filtered_localizations')
+    output = Output('membrane')
+
+    k = Int(10)
+    smoothiter = Int(0)
+    flipflag = Bool(False)
+    viewpos = List([0,0,0])
+    visiblelayer = Bool(False)
+    depth = Int(8)
+    fulldepth = Int(5)
+    cgdepth = Int(0)
+    scale = Float(1.1)
+    samplespernode = Float(1.5)
+    pointweight = Float(4)
+    iters = Int(8)
+    confidence = Bool(False)
+    preclean = Bool(False)
+    threads = Int(8)
+    use_normals = Bool(False)
+
+    def execute(self, namespace):
+        import numpy as np
+        from ch_shrinkwrap.screened_poisson import screened_poisson
+        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
+
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        points = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                 inp['y'],
+                                                 inp['z']]).T)
+        
+        if self.use_normals:
+            try:
+                normals = np.ascontiguousarray(np.vstack([inp['xn'], 
+                                                        inp['yn'],
+                                                        inp['zn']]).T)
+            except KeyError:
+                normals = None
+        else:
+            normals = None
+
+        start = time.time()
+        vertices, faces = screened_poisson(points, normals, k=self.k, 
+                                           smoothiter=self.smoothiter, flipflag=self.flipflag,
+                                           viewpos=np.array(self.viewpos), visiblelayer=self.visiblelayer,
+                                           depth=self.depth, fulldepth=self.fulldepth, cgdepth=self.cgdepth, 
+                                           scale=self.scale, samplespernode=self.samplespernode, 
+                                           pointweight=self.pointweight, iters=self.iters, 
+                                           confidence=self.confidence, preclean=self.preclean,
+                                           threads=self.threads)
+        stop = time.time()
+        duration = stop-start
+        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
+        self._params_to_metadata(md)
+
+        mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
+
+        mesh.mdh = md
+
+        namespace[self.output] = mesh
 
 @register_module('ImageShrinkwrapMembrane')
 class ImageShrinkwrapMembrane(ModuleBase):
@@ -103,7 +183,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
-    neck_theshold_low = Float(-1e-4)
+    neck_threshold_low = Float(-1e-4)
     neck_threshold_high = Float(1e-2)
     neck_first_iter = Int(9)
     # method = Enum(DESCENT_METHODS)
@@ -112,8 +192,16 @@ class ImageShrinkwrapMembrane(ModuleBase):
     def execute(self, namespace):
         import numpy as np
         from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+        from PYME.IO import MetaDataHandler
 
-        mesh = membrane_mesh.MembraneMesh(mesh=namespace[self.input], 
+        inp = namespace[self.input]
+
+        n_faces = len(inp.faces)
+        if not n_faces > 4:
+            raise RuntimeError('Input mesh only has %d faces, a valid surface needs at least 4 faces')
+
+
+        mesh = membrane_mesh.MembraneMesh(mesh=inp, 
                                         #   search_k=self.search_k,
                                           kc=self.kc,
                                           #kg=self.kg,
@@ -123,7 +211,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
                                           remesh_frequency=self.remesh_frequency,
                                           delaunay_remesh_frequency=self.cut_frequency, # self.delaunay_remesh_frequency,
                                           delaunay_eps=self.min_hole_radius,
-                                          neck_threshold_low = self.neck_theshold_low,
+                                          neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
                                           shrink_weight = self.shrink_weight) # self.min_hole_radius)
@@ -165,3 +253,7 @@ class ImageShrinkwrapMembrane(ModuleBase):
         mesh.shrink_wrap(pts, sigma=sigma, weights=np.repeat(weights, 3), method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
         # mProfile.profileOff()
         # mProfile.report()
+
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        self._params_to_metadata(md)
+        mesh.mdh = md

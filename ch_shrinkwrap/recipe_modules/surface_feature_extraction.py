@@ -1,8 +1,10 @@
+from unicodedata import name
 from PYME.IO import tabular, image, MetaDataHandler
 from PYME.recipes.base import register_module, ModuleBase
 from PYME.recipes.traits import Input, Output, DictStrAny, CStr, Int, Bool, Float, Enum
 import logging
-from ch_shrinkwrap._membrane_mesh import DESCENT_METHODS
+
+from PYME.IO.MetaDataHandler import DictMDHandler
 
 logger = logging.getLogger(__name__)
 
@@ -70,3 +72,71 @@ class SkeletonizeMembrane(ModuleBase):
         else:
             # return mesoskeleton mesh
             namespace[self.output] = mesh
+
+@register_module('PointsFromMesh')
+class PointsFromMesh(ModuleBase):
+    input = Input('membrane0')
+    output = Output('membrane0_localizations')
+
+    dx_min = Float(5)
+    p = Float(1.0)
+    return_normals = Bool(True)
+
+    def execute(self, namespace):
+        from PYME.IO.tabular import DictSource
+        from ch_shrinkwrap.evaluation_utils import points_from_mesh
+        from PYME.IO import MetaDataHandler
+        
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        points, normals = points_from_mesh(inp, dx_min=self.dx_min, p=self.p, 
+                                           return_normals=self.return_normals)
+
+        ds = DictSource({'x': points[:,0],
+                         'y': points[:,1],
+                         'z': points[:,2],
+                         'xn': normals[:,0],
+                         'yn': normals[:,1],
+                         'zn': normals[:,2]})
+
+        self._params_to_metadata(md)
+        ds.mdh = md
+
+        namespace[self.output] = ds
+
+@register_module('AverageSquaredDistance')
+class AverageSquaredDistance(ModuleBase):
+    input = Input('filtered_localizations')
+    input2 = Input('filtered')
+    output = Output('average_squared_distance')
+
+    def execute(self, namespace):
+        import numpy as np
+        from PYME.IO.tabular import DictSource
+        from ch_shrinkwrap.evaluation_utils import average_squared_distance
+        from PYME.IO import MetaDataHandler
+
+        inp = namespace[self.input]
+        inp2 = namespace[self.input2]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        md2 = MetaDataHandler.DictMDHandler(getattr(inp2, 'mdh', None)) # get metadata from the input dataset if present
+        md.mergeEntriesFrom(md2)
+
+        points0 = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                  inp['y'],
+                                                  inp['z']]).T)
+
+        points1 = np.ascontiguousarray(np.vstack([inp2['x'], 
+                                                  inp2['y'],
+                                                  inp2['z']]).T)
+
+        mse0, mse1 = average_squared_distance(points0, points1)
+        mse = np.sqrt((mse0+mse1)/2)
+
+        ds = DictSource({'mse01': np.atleast_1d(mse0), 
+                         'mse10': np.atleast_1d(mse1), 
+                         'mse_rms': np.atleast_1d(mse)})
+        self._params_to_metadata(md)
+        ds.mdh = md
+
+        namespace[self.output] = ds
