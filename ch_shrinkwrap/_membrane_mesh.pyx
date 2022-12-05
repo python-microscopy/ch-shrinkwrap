@@ -251,7 +251,7 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
 
-     def _compute_curvature_tensor_eig(self, Mvi):
+    def _compute_curvature_tensor_eig(self, Mvi):
         """
         Return the first two eigenvalues and eigenvectors of 3x3 curvature 
         tensor. The third eigenvector is the unit normal of the point for
