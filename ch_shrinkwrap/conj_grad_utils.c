@@ -483,7 +483,7 @@ static void _vertex_area_weights(int n_verts, int max_neigbours, float* vertex_d
 
         if (w > 0)
         {
-            w = 1.0/sqrtf(w);       
+            w = 1.0/sqrtf(w+1); // +1 as a form of regularization on really small triangles       
         } else
         {
             w = 0;

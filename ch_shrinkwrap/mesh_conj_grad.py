@@ -703,9 +703,9 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         """
 
-        w = np.zeros_like(f)
-        conj_grad_utils.vertex_area_weights(np.ascontiguousarray(f), self.vertex_neighbors, w, self.M, self.N)
-        return w
+        w = np.zeros(f.shape, 'f4')
+        conj_grad_utils.vertex_area_weights(np.ascontiguousarray(self.f), self.vertex_neighbors, w, self.M, self.N)
+        return w*f
 
 
     # def unconstrained_penalty(self, f):
