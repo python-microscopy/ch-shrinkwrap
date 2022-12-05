@@ -401,6 +401,7 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
         {
             // now do another pass and calculate the angle between each of the neighbors
             // in the unmodified surface
+            // GAUSIAN CURVATURE ... THIS IS NOT USED???!!
             sum_theta = 0;
             //printf("summing over the neighbors\n");
             for (k=0; k<N; ++k)
@@ -448,6 +449,92 @@ static PyObject *c_shrinkwrap_lw_func(PyObject *self, PyObject *args)
     Py_INCREF(Py_None);
     return Py_None;
 }
+
+
+static void _vertex_area_weights(int n_verts, int max_neigbours, float* vertex_data, PyObject *neighbour_data, float *out){
+    // float * d;
+    int i, j,k, n;
+    float w, d2, dd;
+
+
+    for (i=0; i<n_verts; ++i)
+    {
+        if ((*((int32_t *)PyArray_GETPTR2(neighbour_data, i, 0))) == -1) continue;
+        
+        // calculate and store the edge lengths for each neighbor 
+        w = 0; // running total of edge lengths squared (area)
+        
+        for (k=0; k<max_neigbours; ++k)
+        {
+            n = *((int32_t *)PyArray_GETPTR2(neighbour_data, i, k));
+            if (n == -1) break;
+
+            // find the distance between this vertex and its neighbors
+            // in the unmodified surface
+            d2 = 0;
+            for (j=0; j<3; ++j)
+            {
+                dd = (vertex_data[n*3+j] - vertex_data[i*3+j]);
+                d2 += dd*dd;
+            }
+
+            w += d2; // area
+        }
+
+        if (w > 0)
+        {
+            w = 1.0/sqrtf(w);       
+        } else
+        {
+            w = 0;
+        }
+
+        j = i*3;
+        out[j] = w;
+        out[j+1] = w;
+        out[j+2] = w; 
+        
+        // for (j=0; j<3; ++j) {
+        //     out[i*3+j] = w;
+        // }
+        
+    }
+    
+}
+
+static PyObject *vertex_area_weights(PyObject *self, PyObject *args)
+{
+    PyObject *vertex_data = 0, *neighbour_data = 0, *out = 0;
+    int n_verts, max_neighbours;
+    float *p_vertices, *p_out;
+
+    if (!PyArg_ParseTuple(args, "OOOii", &vertex_data, &neighbour_data, &out, &n_verts, &max_neighbours)) return NULL;
+    if (!PyArray_Check(vertex_data) || !PyArray_ISCONTIGUOUS(vertex_data))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the f data.");
+        return NULL;
+    }
+    if (!PyArray_Check(neighbour_data) || !PyArray_ISCONTIGUOUS(neighbour_data))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the neighbor data.");
+        return NULL;
+    }
+    
+    if (!PyArray_Check(out) || !PyArray_ISCONTIGUOUS(out)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the output data.");
+        return NULL;
+    } 
+
+    p_vertices = (float *)PyArray_GETPTR1(vertex_data, 0);
+    p_out = (float *)PyArray_GETPTR1(out, 0);
+
+    _vertex_area_weights(n_verts, max_neighbours, p_vertices, neighbour_data, p_out);
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 
 static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
 {
@@ -585,6 +672,7 @@ static PyMethodDef conj_grad_utils_methods[] = {
     {"c_shrinkwrap_lh_func", c_shrinkwrap_lh_func, METH_VARARGS},
     {"c_shrinkwrap_lw_func", c_shrinkwrap_lw_func, METH_VARARGS},
     {"c_shrinkwrap_lhw_func", c_shrinkwrap_lhw_func, METH_VARARGS},
+    {"vertex_area_weights", vertex_area_weights, METH_VARARGS},
     {NULL, NULL, 0}  /* Sentinel */
 };
 

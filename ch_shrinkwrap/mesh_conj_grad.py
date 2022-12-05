@@ -34,7 +34,8 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         TikhonovConjugateGradient.__init__(self)
         
         #self.Lfuncs, self.Lhfuncs = ["Lfunc3", "I"], ["Lfunc3", "I"]
-        self.Lfuncs, self.Lhfuncs = ["I"], ["I"]
+        #self.Lfuncs, self.Lhfuncs = ["I"], ["I"]
+        self.Lfuncs, self.Lhfuncs = ["wfunc"], ["wfunc"]
         self.mesh = mesh
         self.points = points
         self.sigma = sigma
@@ -694,6 +695,18 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         
         assert(not np.any(np.isnan(d)))
         return d
+
+    def wfunc(self, f):
+        """
+        Area-weighting to be used with centroid prior 
+        (as mathematically equivalent to lfunc3)
+
+        """
+
+        w = np.zeros_like(f)
+        conj_grad_utils.vertex_area_weights(np.ascontiguousarray(f), self.vertex_neighbors, w, self.M, self.N)
+        return w
+
 
     # def unconstrained_penalty(self, f):
     #     """
