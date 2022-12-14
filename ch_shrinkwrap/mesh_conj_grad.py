@@ -34,8 +34,9 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         TikhonovConjugateGradient.__init__(self)
         
         #self.Lfuncs, self.Lhfuncs = ["Lfunc3", "I"], ["Lfunc3", "I"]
-        #self.Lfuncs, self.Lhfuncs = ["I"], ["I"]
-        self.Lfuncs, self.Lhfuncs = ["wfunc"], ["wfunc"]
+        #self.Lfuncs, self.Lhfuncs = ["Lfunc3"], ['Lhfunc3']
+        self.Lfuncs, self.Lhfuncs = ["I"], ["I"]
+        #self.Lfuncs, self.Lhfuncs = ["wfunc"], ["wfunc"]
         self.mesh = mesh
         self.points = points
         self.sigma = sigma
@@ -647,14 +648,15 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         return d
 
     def Lfunc3(self, f):
-        d = np.zeros_like(f)
+        d = np.zeros(f.shape, dtype='f4')
         conj_grad_utils.c_shrinkwrap_lw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, self.points.shape[0], self.M, self.N)
         
         assert(not np.any(np.isnan(d)))
         return d
 
     def Lhfunc3(self, f):
-        d = np.zeros_like(f)
+        #d = np.zeros_like(f)
+        d = np.zeros(f.shape, dtype='f4')
         conj_grad_utils.c_shrinkwrap_lhw_func(np.ascontiguousarray(f), self.vertex_neighbors, self.f, d, self.dims, self.points.shape[0], self.M, self.N)
         
         assert(not np.any(np.isnan(d)))
@@ -705,7 +707,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         w = np.zeros(f.shape, 'f4')
         conj_grad_utils.vertex_area_weights(np.ascontiguousarray(self.f), self.vertex_neighbors, w, self.M, self.N)
-        return w*f
+        return f*w
 
 
     # def unconstrained_penalty(self, f):
@@ -737,15 +739,63 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         vc[ms==0,:] = self.mesh.vertices[ms==0,:]
 
-        return vc   
+        return vc  
+
+    def _ncc(self):
+        """
+        Define a prior for Lfunc to operate against as a location part way
+        between the centroid (minimises curvature at the given point) and 
+        a point which minimises the curvature at the neighbours. 
+        """ 
+
+        vnn = self.mesh._halfedges['vertex'][self.mesh.vertex_neighbors]
+        mask = self.mesh.vertex_neighbors > -1
+        ms= mask.sum(1)
+        
+        #centroid
+        vc = (self.mesh.vertices[vnn,:]*mask[:,:,None]).sum(1)/ms[:,None]
+
+        #vector from centroid to each of the neighouring vertices
+        c_n = self.mesh.vertices[vnn,:] - vc[:,None,:]
+
+        #neighbour normals
+        n_n = self.mesh.vertex_normals[vnn, :]
+
+        # alpha = dot(c_n, n_n)/dot(n_n, mesh.vertex_normals)
+        # NB - we clip the dot product of the vertex and neighbour normals so as to
+        # avoid a div/0 situation as the angle approaches 90 degrees.
+        alpha = (c_n*n_n).sum(2)/np.maximum((n_n*self.mesh.vertex_normals[:,None,:]).sum(2), 0.2)
+        #print(alpha.shape)
+        alpha = (alpha*mask).sum(1)/ms
+        
+        vc = vc + 0.3*alpha[:,None]*self.mesh.vertex_normals
+
+        vc[ms==0,:] = self.mesh.vertices[ms==0,:]
+
+        return vc
+
+
 
     def _defaults(self, idx=0):
         if idx == 0:
+            ## Set defaults for alternative Lfunc formulations where we use 
+            ## the centroid of the neighbours, or the modified centroid as a prior
+            ## and a weighting matrix (or the identity) as Lfunc/Lhfunc itself
+            
+            ## If we are using a full Lfunc, we should return 0 (as there is no need for a prior)
             #return 0
-            return self._neighbour_centroids().ravel()
+            
+            ## smoothing moves towards the centroid of the neighbours
+            ## this is equivalent to the simple energy discretisation
+            #return self._neighbour_centroids().ravel()
+
+            ## smoothing moves towards a point partway between the centroid of the
+            ## neighbours, and a point which minimizes the curvature at the neighbours. 
+            return self._ncc().ravel()
         
         else:
             # hard coded shrink-wrapping defaults - basically everything propagated in along it's normal
+            # this is a purely shinking force.
             
             if self._shrink_def is None:
                 #n = self.calculate_normals(self.f).reshape(self.shape)
