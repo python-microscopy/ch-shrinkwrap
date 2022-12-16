@@ -14,8 +14,8 @@ class ShrinkwrapMembrane(ModuleBase):
     output = Output('membrane')
     points = Input('filtered_localizations')
 
-    max_iters = Int(100)
-    curvature_weight = Float(10.0)
+    max_iters = Int(39)
+    curvature_weight = Float(20.0)
     shrink_weight = Float(0)
     #attraction_weight = Float(1)
     #curvature_weight = Float(1)
@@ -24,17 +24,18 @@ class ShrinkwrapMembrane(ModuleBase):
     kc = Float(1.0)  # Float(0.514)
     #kg = Float(-0.514)
     #skip_prob = Float(0.0)
-    remesh_frequency = Int(5)
-    punch_frequency = Int(0)
+    remesh_frequency = Int(5, desc='# of iterations between remesh operations')
+    punch_frequency = Int(0, desc='# of iterations between hole punching attempts')
     min_hole_radius = Float(100.0)
     sigma_x = CStr('sigma_x')
     sigma_y = CStr('sigma_y')
     sigma_z = CStr('sigma_z')
-    neck_threshold_low = Float(-1e-4)
-    neck_threshold_high = Float(1e-2)
+    neck_threshold_low = Float(-1e-3, desc='curvature threshold for necks characterised by negative curvature (i.e. a constriction/furrow)')
+    neck_threshold_high = Float(1e-2, desc='curvature threshold for necks characterised by +ve curvature (i.e. very thin tubes)')
     neck_first_iter = Int(9)
     # method = Enum(DESCENT_METHODS)
     minimum_edge_length = Float(-1.0)
+    smooth_curvature = Bool(True, desc='Smooth curvature estimates [NB - just on finished mesh, does not effect shrinkwrapping]')
 
     def execute(self, namespace):
         import numpy as np
@@ -61,7 +62,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
-                                          shrink_weight = self.shrink_weight) # self.min_hole_radius)
+                                          shrink_weight = self.shrink_weight,
+                                          smooth_curvature=self.smooth_curvature) # self.min_hole_radius)
 
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
@@ -96,6 +98,31 @@ class ShrinkwrapMembrane(ModuleBase):
 
         self._params_to_metadata(md)
         mesh.mdh = md
+
+
+    def _view_items(self, params=None):
+        from traitsui.api import Item, Group, TextEditor, SetEditor
+        
+        return [Item(name='max_iters'),
+                Item(name='curvature_weight'),
+                
+                Group(
+                    Item(name='remesh_frequency'),
+                    Item(name='neck_first_iter'),
+                    Item(name='neck_threshold_low', visible_when='neck_first_iter > 0'),
+                    Item(name='neck_threshold_high', visible_when='neck_first_iter > 0'),
+                    Item(name='punch_frequency'),
+                    Item(name='min_hole_radius', visible_when='punch_frequency > 0'),
+                    #Item(name='shrink_weight'), #dedicated shrink force is not used
+                    Item(name='kc'),
+                    Item(name='minimum_edge_length'),
+                    Item(name='smooth_curvature'),
+                    Group(Item(name='sigma_x'),
+                        Item(name='sigma_y'),
+                        Item(name='sigma_z'),
+                        label='Point errors'),
+                    label='Advanced'),
+                ]
 
 @register_module('ScreenedPoissonMesh')
 class ScreenedPoissonMesh(ModuleBase):

@@ -486,7 +486,12 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         #print(self.points.shape, v_idx.shape, d.shape, d_ij.shape)
 
-        w = 1.0/np.maximum(d, 1e-6)
+        
+        # inverse distance weight to ensure that
+        #w = 1.0/np.maximum(d, 1e-6) 
+        # cut weighting off at expected localisation precision 
+        # (10 nm), so that anything withing loc precision gets an equal weight
+        w = 1.0/np.maximum(d/10., 1)
 
         #w = np.ones_like(d) 
 
@@ -764,11 +769,27 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         # alpha = dot(c_n, n_n)/dot(n_n, mesh.vertex_normals)
         # NB - we clip the dot product of the vertex and neighbour normals so as to
         # avoid a div/0 situation as the angle approaches 90 degrees.
-        alpha = (c_n*n_n).sum(2)/np.maximum((n_n*self.mesh.vertex_normals[:,None,:]).sum(2), 0.2)
+        # now clip at 0.5 to avoid being expansive when angles are greater than 60 degrees.
+        #alpha = (c_n*n_n).sum(2)/np.maximum((n_n*self.mesh.vertex_normals[:,None,:]).sum(2), 0.5)
+        
+        n_dot_n = (n_n*self.mesh.vertex_normals[:,None,:]).sum(2)
+        alpha = (c_n*n_n).sum(2)/np.sqrt(2*(np.maximum(n_dot_n, 0) +1))
+        
         #print(alpha.shape)
         alpha = (alpha*mask).sum(1)/ms
         
-        vc = vc + 0.3*alpha[:,None]*self.mesh.vertex_normals
+        ### Switch (linearly) between shrinking curvature force and non-shrinking curvature
+        # force depending on point influence (how much point-attraction force is acting
+        # on the vertex).
+        # Low point attraction -> use a shrinking force
+        # average/high point attraction -> use a non-shrinking force
+        pi = self.mesh.point_influence
+        pi = pi #/(pi.sum()/(pi > 0).sum()) # normalise by mean of non-zero entries
+        #pi = np.repeat(pi, 3)
+
+        alpha = alpha*np.minimum(pi**2, 1)
+        
+        vc = vc + alpha[:,None]*self.mesh.vertex_normals
 
         vc[ms==0,:] = self.mesh.vertices[ms==0,:]
 
