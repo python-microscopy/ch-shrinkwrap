@@ -62,8 +62,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
-                                          shrink_weight = self.shrink_weight,
-                                          smooth_curvature=self.smooth_curvature) # self.min_hole_radius)
+                                          shrink_weight = self.shrink_weight,)
+                                          #smooth_curvature=self.smooth_curvature) # self.min_hole_radius)
 
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
@@ -90,6 +90,10 @@ class ShrinkwrapMembrane(ModuleBase):
         # mProfile.profileOn(['membrane_mesh.py'])
         start = time.time()
         mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        if self.smooth_curvature:
+            # recalculate the curvatures with smoothing after iteration is finished
+            mesh.smooth_curvature = self.smooth_curvature
+            mesh._populate_curvature_grad()
         stop = time.time()
         duration = stop-start
         md[f'Processing.ShrinkwrapMembrane.Runtime'] = duration
