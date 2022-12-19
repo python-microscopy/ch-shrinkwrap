@@ -227,7 +227,10 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
-            w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            
+            #w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+
+            w = 2.0/(self.d.ravel()*.01 + 1)
             #w = 1.0
             #w = 1.0/(self.d.ravel()/2.0+1)
             #w = weights
@@ -488,10 +491,10 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         
         # inverse distance weight to ensure that
-        #w = 1.0/np.maximum(d, 1e-6) 
-        # cut weighting off at expected localisation precision 
-        # (10 nm), so that anything withing loc precision gets an equal weight
-        w = 1.0/np.maximum(d/10., 1)
+        # NB - this is for computing face centroid, not 
+        # determining point-distance weightings (that wieghting is in search())
+        w = 1.0/np.maximum(d, 1e-6) 
+        
 
         #w = np.ones_like(d) 
 
@@ -564,6 +567,12 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         
         assert(not np.any(np.isnan(d)))
         #print('ah:',d)
+
+        # smooth point force across the mesh
+        #d[:, 0] = self.mesh.smooth_per_vertex_data(d[:,0])
+        #d[:, 1] = self.mesh.smooth_per_vertex_data(d[:,1])
+        #d[:, 2] = self.mesh.smooth_per_vertex_data(d[:,2])
+
         return d.ravel()
 
     def Lfunc(self, f):
@@ -773,7 +782,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         #alpha = (c_n*n_n).sum(2)/np.maximum((n_n*self.mesh.vertex_normals[:,None,:]).sum(2), 0.5)
         
         n_dot_n = (n_n*self.mesh.vertex_normals[:,None,:]).sum(2)
-        alpha = (c_n*n_n).sum(2)/np.sqrt(2*(np.maximum(n_dot_n, 0) +1))
+        alpha = ((c_n*n_n).sum(2))/np.sqrt(2*(np.maximum(n_dot_n, 0) +1))
         
         #print(alpha.shape)
         alpha = (alpha*mask).sum(1)/ms
