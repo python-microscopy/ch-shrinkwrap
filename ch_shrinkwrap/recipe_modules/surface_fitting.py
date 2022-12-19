@@ -33,6 +33,7 @@ class ShrinkwrapMembrane(ModuleBase):
     neck_threshold_low = Float(-1e-3, desc='curvature threshold for necks characterised by negative curvature (i.e. a constriction/furrow)')
     neck_threshold_high = Float(1e-2, desc='curvature threshold for necks characterised by +ve curvature (i.e. very thin tubes)')
     neck_first_iter = Int(9)
+    truncate_at = Int(1000, desc='Truncate the iterations before max_iter (useful for debugging edge-length refinement)')
     # method = Enum(DESCENT_METHODS)
     minimum_edge_length = Float(-1.0)
     smooth_curvature = Bool(True, desc='Smooth curvature estimates [NB - just on finished mesh, does not effect shrinkwrapping]')
@@ -62,7 +63,8 @@ class ShrinkwrapMembrane(ModuleBase):
                                           neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
-                                          shrink_weight = self.shrink_weight,)
+                                          shrink_weight = self.shrink_weight,
+                                          truncate_at = self.truncate_at)
                                           #smooth_curvature=self.smooth_curvature) # self.min_hole_radius)
 
                                           #a=self.attraction_weight,
@@ -121,6 +123,7 @@ class ShrinkwrapMembrane(ModuleBase):
                     Item(name='kc'),
                     Item(name='minimum_edge_length'),
                     Item(name='smooth_curvature'),
+                    Item(name='truncate_at'),
                     Group(Item(name='sigma_x'),
                         Item(name='sigma_y'),
                         Item(name='sigma_z'),
