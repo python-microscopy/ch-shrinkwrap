@@ -201,6 +201,7 @@ class TikhonovConjugateGradient(object):
 
         Hc = np.dot(np.transpose(AS), AS)
         Gc = np.dot(np.transpose(AS), res)
+        #print(Hc, Gc)
 
         Hw = np.zeros((n_search,n_search,n_smooth))
         Gw = np.zeros((n_search,n_smooth))
@@ -213,7 +214,7 @@ class TikhonovConjugateGradient(object):
             H += l2*Hw[:,:,i]
             G += l2*Gw[:,i]
 
-        print(H,G)
+        #print(H,G)
 
         c = np.linalg.solve(H, G)
 
