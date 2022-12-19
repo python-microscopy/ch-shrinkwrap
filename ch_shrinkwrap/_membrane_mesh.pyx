@@ -1431,10 +1431,10 @@ cdef class MembraneMesh(TriangleMesh):
             
             # We want face area, rather than edge length to decrease linearly as iterations proceed
             # this means we should be linear in edge length squared
-            initial_length_2 = initial_length*initial_length
-            final_length_2 = final_length*final_length
+            initial_length_2 = initial_length#*initial_length
+            final_length_2 = final_length#*final_length
 
-            m = (final_length_2 - initial_length_2)/max_iter
+            m = (final_length_2 - initial_length_2)/(rf*np.ceil(max_iter/rf))
 
         neck_first_iter = getattr(self, 'neck_first_iter', -1)
 
@@ -1467,7 +1467,11 @@ cdef class MembraneMesh(TriangleMesh):
         else:
             lams  = [step_size*self.kc/2.0,]
 
-        while j < max_iter:
+        
+        # truncate_at kwarg to allow visualisation of early steps of a given refinement scheme
+        n_iter = min(max_iter, getattr(self, 'truncate_at', max_iter))
+        
+        while j < n_iter:#max_iter:
             # n = self._halfedges['vertex'][self._vertices['neighbors']]
             # n_idxs = self._vertices['neighbors'] == -1
             # n[n_idxs] = -1
@@ -1490,7 +1494,7 @@ cdef class MembraneMesh(TriangleMesh):
                                     shield_sigma=self._mean_edge_length/2.0)
 
 
-            n_it = min(max_iter - j, rf)
+            n_it = min(n_iter - j, rf)
             vp = self.cg.search(points,lams=lams,num_iters=n_it,
                            sigma_inv=s, weights=weights)
 
@@ -1516,7 +1520,8 @@ cdef class MembraneMesh(TriangleMesh):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
-                target_length = np.sqrt(initial_length_2 + m*(j+1))
+                #target_length = np.sqrt(initial_length_2 + m*(j+1))
+                target_length = (initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
