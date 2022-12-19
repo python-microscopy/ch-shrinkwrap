@@ -228,9 +228,10 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
             
-            #w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
 
-            w = 2.0/(self.d.ravel()*.01 + 1)
+            #w = 2.0/(self.d.ravel()*.01 + 1)
+            
             #w = 1.0
             #w = 1.0/(self.d.ravel()/2.0+1)
             #w = weights
