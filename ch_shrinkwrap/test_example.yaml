@@ -6,7 +6,7 @@ system:
         - 280.0
     psf_width_z:
         - 280.0
-        - 840.0
+        #- 840.0
     mean_photon_count: 
         - 100
     bg_photon_count: 
@@ -19,26 +19,51 @@ shape:
 point_cloud:
     density: 
         - 1.0
-        - 1.0
     p: 
+        - 0.01
+        - 0.005
+        - 0.002
         - 0.001
-        - 0.0001
+        - 0.0005
+       # - 0.0002
+       # - 0.0001
     noise_fraction:
+        - 0.5
+        - 0.2
         - 0.1
+        - 0.05
+        - 0.02
+        - 0.01
 dual_marching_cubes:
     threshold_density:
-        - 0.00006
-        - 0.000006
+        - 0.002
+        - 0.001
+        - 0.0004
+        - 0.0002
+        #- 0.00015
+        - 0.0001
+        - 0.00005
+        - 0.00002
+        - 0.00001
+        - 0.000005
+        #- 0.000002
+        #- 0.000001
     n_points_min:
         - 20
-        - 20
+        #- 20
 shrinkwrapping:
     max_iters:
-        - 9
+        #- 9
         - 19
+        - 39
     curvature_weight:
-        - 5.0
+        #- 1.0
+        #- 2.5
+        #- 5.0
+        #- 7.0
         - 10.0
+        - 15.0
+        - 25
     remesh_frequency:
         - 5
     punch_frequency:
@@ -48,9 +73,9 @@ shrinkwrapping:
     neck_first_iter:
         - 0
     neck_threshold_low:
-        - -1e-4
+        - -1.0e-4
     neck_threshold_high:
-        - 1e2
+        - 1.0e+2
 screened_poisson:
     samplespernode:
         - 1.5
@@ -59,3 +84,5 @@ screened_poisson:
         - 1
     iters:
         - 8
+    k:
+        - 30

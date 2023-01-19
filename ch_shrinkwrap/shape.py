@@ -230,7 +230,11 @@ def ERSim(centroid=[0,0,0]):
     return struct
 
 TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
-          
+
+def DualCapsule(length, r, sep): 
+    return UnionShape(Capsule(start=np.array([-sep/2,0,0]), end=np.array([-sep/2,length,0]), radius=r),
+                      Capsule(start=np.array([sep/2,0,0]), end=np.array([sep/2,length,0]), radius=r))
+
 class UnionShape(Shape):
     def __init__(self, s0, s1, k=0, **kwargs):
         """

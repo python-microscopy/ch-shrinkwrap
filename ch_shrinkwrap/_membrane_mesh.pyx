@@ -251,6 +251,75 @@ cdef class MembraneMesh(TriangleMesh):
 
         self._initialize_curvature_vectors()
 
+    def _compute_curvature_tensor_eig(self, Mvi):
+        """
+        Return the first two eigenvalues and eigenvectors of 3x3 curvature 
+        tensor. The third eigenvector is the unit normal of the point for
+        which the curvature tensor is defined.
+
+        This is a closed-form solution, and it assumes no eigenvalue is 0.
+
+        Parameters
+        ----------
+            Mvi : np.array
+                3x3 curvature tensor at a point.
+
+        Returns
+        -------
+            l1, l2 : float
+                Eigenvalues
+            v1, v2 : np.array
+                Eigenvectors
+        """
+        # Solve the eigenproblem in closed form
+        m00 = Mvi[0,0]
+        m01 = Mvi[0,1]
+        m02 = Mvi[0,2]
+        m11 = Mvi[1,1]
+        m12 = Mvi[1,2]
+        m22 = Mvi[2,2]
+
+        # Here we use the fact that Mvi is symnmetric and we know
+        # one of the eigenvalues must be 0
+        p = -m00*m11 - m00*m22 + m01*m01 + m02*m02 - m11*m22 + m12*m12
+        q = m00 + m11 + m22
+        r = np.sqrt(4*p + q*q)
+        
+        # Eigenvalues
+        l1 = 0.5*(q-r)
+        l2 = 0.5*(q+r)
+
+        def safe_divide(x, y):
+            # if y == 0:
+            #     return 0
+            return (y!=0)*1.*x/y
+
+        # Now calculate the eigenvectors, assuming x = 1
+        z1n = ((m00 - l1)*(m11 - l1) - (m01*m01))
+        z1d = (m01*m12 - m02*(m11 - l1))
+        z1 = safe_divide(z1n, z1d)
+        y1n = (m12*z1 + m01)
+        y1d = (m11 - l1)
+        y1 = safe_divide(y1n, y1d)
+        
+        v1 = np.array([1., y1, z1])
+        v1_norm = np.sqrt((v1*v1).sum())
+        v1 = v1/v1_norm
+        
+        z2n = ((m00 - l2)*(m11 - l2) - (m01*m01))
+        z2d = (m01*m12 - m02*(m11 - l2))
+        z2 = safe_divide(z2n, z2d)
+        y2n = (m12*z2 + m01)
+        y2d = (m11 - l2)
+        y2 = safe_divide(y2n, y2d)
+        
+        v2 = np.array([1., y2, z2])
+        v2_norm = np.sqrt((v2*v2).sum())
+        v2 = v2/v2_norm
+
+        return l1, l2, v1, v2
+
+
     cdef curvature_grad_c(self, float dN=0.1, float skip_prob=0.0):
         dEdN = np.ascontiguousarray(np.zeros((self._vertices.shape[0], 3), dtype=np.float32), dtype=np.float32)
         cdef points_t[:] cdEdN = dEdN.ravel().view(POINTS_DTYPE)
@@ -1142,140 +1211,203 @@ cdef class MembraneMesh(TriangleMesh):
         #print(self.curvature_gaussian)
         self._populate_curvature_grad()
         verts = np.flatnonzero((self.curvature_gaussian < neck_curvature_threshold_low)|(self.curvature_gaussian > neck_curvature_threshold_high))
-        self.unsafe_remove_vertices(verts)
-        self.repair()
-        #self.repair()
-        self.remesh()
-        self.remove_inner_surfaces()
+        if len(verts) > 0:
+            self.unsafe_remove_vertices(verts)
+            self.repair()
+            #self.repair()
+            self.remesh()
+            self.remove_inner_surfaces()
 
     # End topology functions
     ##########################
     
-    #cdef grad(self, np.ndarray points, np.ndarray sigma):
-    #    """
-    #    Gradient between points and the surface.
-    #
-    #    Parameters
-    #    ----------
-    #        points : np.array
-    #            3D point cloud to fit.
-    #        sigma : float
-    #            Localization uncertainty of points.
-    #    """
-    #
-    #    dN = 0.1
-    #    if USE_C:
-    #        curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
-    #    else:
-    #        curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
-    #    attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
-    #
-    #    print("Curvature: {}".format(np.mean(curvature,axis=0)))
-    #    print("Attraction: {}".format(np.mean(attraction,axis=0)))
-    #    print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
-    #
-    #    g = self.a*attraction + self.c*curvature
-    #    print("Gradient: {}".format(np.mean(g,axis=0)))
-    #    return g
+    
+    # cdef grad(self, np.ndarray points, np.ndarray sigma):
+    #     """
+    #     Gradient between points and the surface.
 
-    #def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
-    #    """
-    #    Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
-    #    fit of surface mesh surf to point cloud points.
-    #
-    #    Parameters
-    #    ----------
-    #        points : np.array
-    #            3D point cloud to fit.
-    #        sigma : float
-    #            Localization uncertainty of points.
-    #    """
-    #    # Initialize moment vectors
-    #    m = np.zeros(self._vertices['position'].shape)
-    #    v = np.zeros(self._vertices['position'].shape)
-    #
-    #    t = 0
-    #    # g_mag_prev = 0
-    #    # g_mag = 0
-    #    while (t < max_iter):
-    #        print('Iteration %d ...' % t)
-    #         
-    #        t += 1
-    #        # Gaussian noise std
-    #        noise_sigma = np.sqrt(self.step_size / ((1 + t)**0.55))
-    #        # Gaussian noise
-    #        noise = np.random.normal(0, noise_sigma, self._vertices['position'].shape)
-    #        # Calculate graident for each point on the  surface, 
-    #        g = self.grad(points, sigma)
-    #        # add Gaussian noise to the gradient
-    #        g += noise
-    #        # Update first biased moment 
-    #        m = beta_1 * m + (1. - beta_1) * g
-    #        # Update second biased moment
-    #        v = beta_2 * v + (1. - beta_2) * np.multiply(g, g)
-    #        # Remove biases on moments & calculate update weight
-    #        a = step_size * np.sqrt(1. - beta_2**t) / (1. - beta_1**t)
-    #        # Update the surface
-    #        self._vertices['position'] += a * m / (np.sqrt(v) + eps)
+    #     Parameters
+    #     ----------
+    #         points : np.array
+    #             3D point cloud to fit.
+    #         sigma : float
+    #             Localization uncertainty of points.
+    #     """
+    #     # attraction = np.zeros((self._vertices.shape[0], 3), dtype=np.float32)
+    #     # cdef points_t[:] attraction_view = attraction.ravel().view(POINTS_DTYPE)
+    #     # cdef points_t[:] points_view = points.ravel().view(POINTS_DTYPE)
+    #     # cdef float[:] sigma_view = sigma
 
-    #def opt_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
-    #    """
-    #    Normal gradient descent.
-    #
-    #    Parameters
-    #    ----------
-    #        points : np.array
-    #            3D point cloud to fit.
-    #        sigma : float
-    #            Localization uncertainty of points.
-    #    """
-    #
-    #    # Precalc 
-    #    dr = (self.delaunay_remesh_frequency != 0)
-    #    r = (self.remesh_frequency != 0)
-    #    if r:
-    #        initial_length = self._mean_edge_length
-    #        final_length = 3*np.max(sigma)
-    #        m = (final_length - initial_length)/max_iter
-    #   
-    #   for _i in np.arange(max_iter):
-    #
-    #        print('Iteration %d ...' % _i)
-    #        
-    #        # Calculate the weighted gradient
-    #        shift = step_size*self.grad(points, sigma)
-    #
-    #        # Update the vertices
-    #        self._vertices['position'] += shift
-    #
-    #        # self._faces['normal'][:] = -1
-    #        # self._vertices['neighbors'][:] = -1
-    #        self._face_normals_valid = 0
-    #        self._vertex_normals_valid = 0
-    #        self.face_normals
-    #        self.vertex_neighbors
-    #
-    #        # If we've reached precision, terminate
-    #        if np.all(shift < eps):
-    #           break
-    #
-    #        if (_i == 0):
-    #            # Don't remesh
-    #            continue
-    #
-    #        # Remesh
-    #        if r and ((_i % self.remesh_frequency) == 0):
-    #            target_length = initial_length + m*_i
-    #            self.remesh(5, target_length, 0.5, 10)
-    #            print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
-    #                                                                            str(self._mean_edge_length)))
-    #
-    #        # Delaunay remesh
-    #        if dr and ((_i % self.delaunay_remesh_frequency) == 0):
-    #            self.delaunay_remesh(points, self.delaunay_eps)
+    #     dN = 0.1
+    #     if USE_C:
+    #         curvature = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+    #     else:
+    #         curvature = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
+    #     attraction = self.point_attraction_grad_kdtree(points, sigma, w=0.95, search_k=self.search_k)
+    #     # c_point_attraction_grad(&(attraction_view[0]), 
+    #     #                        &(points_view[0]), 
+    #     #                        &(sigma_view[0]), 
+    #     #                        &(self._cvertices[0]), 
+    #     #                        0.95, 
+    #     #                        self._mean_edge_length/2.5, 
+    #     #                        points.shape[0], 
+    #     #                        self._vertices.shape[0])
 
-    def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, **kwargs):
-        from ch_shrinkwrap.conj_grad import ShrinkwrapConjGrad
+    #     # ratio = np.nanmean(np.linalg.norm(curvature,axis=1)/np.linalg.norm(attraction,axis=1))
+    #     # print('Ratio: ' + str(ratio))
+
+    #     # c_inf_mask = (np.isinf(curvature).sum(1)>0)
+    #     # a_inf_mask = (np.isinf(attraction).sum(1)>0)
+
+    #     # c_inf = curvature[c_inf_mask]
+    #     # a_inf = attraction[a_inf_mask]
+
+    #     # if len(c_inf) > 0:
+    #     #     print('Curvature infinity!!!')
+    #     #     print(self._vertices[c_inf_mask])
+
+    #     # if len(a_inf) > 0:
+    #     #     print('Attraction infinity!!!')
+    #     #     print(self._vertices[a_inf_mask])
+
+    #     print("Curvature: {}".format(np.mean(curvature,axis=0)))
+    #     print("Attraction: {}".format(np.mean(attraction,axis=0)))
+    #     print("Curvature-to-attraction: {}".format(np.mean(curvature/attraction,axis=0)))
+
+    #     g = self.a*attraction + self.c*curvature
+    #     print("Gradient: {}".format(np.mean(g,axis=0)))
+    #     return g
+
+    # def opt_adam(self, points, sigma, max_iter=250, step_size=1, beta_1=0.9, beta_2=0.999, eps=1e-8, **kwargs):
+    #     """
+    #     Performs Adam optimization (https://arxiv.org/abs/1412.6980) on
+    #     fit of surface mesh surf to point cloud points.
+
+    #     Parameters
+    #     ----------
+    #         points : np.array
+    #             3D point cloud to fit.
+    #         sigma : float
+    #             Localization uncertainty of points.
+    #     """
+    #     # Initialize moment vectors
+    #     m = np.zeros(self._vertices['position'].shape)
+    #     v = np.zeros(self._vertices['position'].shape)
+
+    #     t = 0
+    #     # g_mag_prev = 0
+    #     # g_mag = 0
+    #     while (t < max_iter):
+    #         print('Iteration %d ...' % t)
+            
+    #         t += 1
+    #         # Gaussian noise std
+    #         noise_sigma = np.sqrt(self.step_size / ((1 + t)**0.55))
+    #         # Gaussian noise
+    #         noise = np.random.normal(0, noise_sigma, self._vertices['position'].shape)
+    #         # Calculate graident for each point on the  surface, 
+    #         g = self.grad(points, sigma)
+    #         # add Gaussian noise to the gradient
+    #         g += noise
+    #         # Update first biased moment 
+    #         m = beta_1 * m + (1. - beta_1) * g
+    #         # Update second biased moment
+    #         v = beta_2 * v + (1. - beta_2) * np.multiply(g, g)
+    #         # Remove biases on moments & calculate update weight
+    #         a = step_size * np.sqrt(1. - beta_2**t) / (1. - beta_1**t)
+    #         # Update the surface
+    #         self._vertices['position'] += a * m / (np.sqrt(v) + eps)
+
+    # def opt_euler(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+    #     """
+    #     Normal gradient descent.
+
+    #     Parameters
+    #     ----------
+    #         points : np.array
+    #             3D point cloud to fit.
+    #         sigma : float
+    #             Localization uncertainty of points.
+    #     """
+
+    #     # Precalc 
+    #     dr = (self.delaunay_remesh_frequency != 0)
+    #     r = (self.remesh_frequency != 0)
+    #     if r:
+    #         initial_length = self._mean_edge_length
+    #         final_length = 3*np.max(sigma)
+    #         m = (final_length - initial_length)/max_iter
+        
+    #     for _i in np.arange(max_iter):
+
+    #         print('Iteration %d ...' % _i)
+            
+    #         # Calculate the weighted gradient
+    #         shift = step_size*self.grad(points, sigma)
+
+    #         # Update the vertices
+    #         self._vertices['position'] += shift
+
+    #         # self._faces['normal'][:] = -1
+    #         # self._vertices['neighbors'][:] = -1
+    #         self._face_normals_valid = 0
+    #         self._vertex_normals_valid = 0
+    #         self.face_normals
+    #         self.vertex_neighbors
+
+    #         # If we've reached precision, terminate
+    #         if np.all(shift < eps):
+    #            break
+
+    #         if (_i == 0):
+    #             # Don't remesh
+    #             continue
+
+    #         # Remesh
+    #         if r and ((_i % self.remesh_frequency) == 0):
+    #             target_length = initial_length + m*_i
+    #             self.remesh(5, target_length, 0.5, 10)
+    #             print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+    #                                                                             str(self._mean_edge_length)))
+
+    #         # Delaunay remesh
+    #         if dr and ((_i % self.delaunay_remesh_frequency) == 0):
+    #             self.delaunay_remesh(points, self.delaunay_eps)
+
+    # def opt_expectation_maximization(self, points, sigma, max_iter=100, step_size=1, eps=0.00001, **kwargs):
+    #     for _i in np.arange(max_iter):
+
+    #         print('Iteration %d ...' % _i)
+
+    #         if _i % 2:
+    #             dN = 0.1
+    #             # grad = self.c*self.curvature_grad(dN=dN)
+    #             if USE_C:
+    #                 grad = self.curvature_grad_c(dN=dN, skip_prob=self.skip_prob)
+    #             else:
+    #                 grad = self.curvature_grad(dN=dN, skip_prob=self.skip_prob)
+    #         else:
+    #             grad = self.a*self.point_attraction_grad_kdtree(points, sigma)
+
+    #         # Calculate the weighted gradient
+    #         shift = step_size*grad
+
+    #         # Update the vertices
+    #         self._vertices['position'] += shift
+
+    #         # self._faces['normal'][:] = -1
+    #         # self._vertices['neighbors'][:] = -1
+    #         self._face_normals_valid = 0
+    #         self._vertex_normals_valid = 0
+    #         self.face_normals
+    #         self.vertex_neighbors
+
+    #         # If we've reached precision, terminate
+    #         if np.all(shift < eps):
+    #             return
+
+    def opt_conjugate_gradient(self, points, sigma, max_iter=10, step_size=1.0, weights=None, **kwargs):
+        from ch_shrinkwrap.mesh_conj_grad import ShrinkwrapMeshConjGrad
 
         r = (self.remesh_frequency != 0) and (self.remesh_frequency <= max_iter)
         dr = (self.delaunay_remesh_frequency != 0) and (self.delaunay_remesh_frequency <= max_iter)
@@ -1299,10 +1431,10 @@ cdef class MembraneMesh(TriangleMesh):
             
             # We want face area, rather than edge length to decrease linearly as iterations proceed
             # this means we should be linear in edge length squared
-            initial_length_2 = initial_length*initial_length
-            final_length_2 = final_length*final_length
+            initial_length_2 = initial_length#*initial_length
+            final_length_2 = final_length#*final_length
 
-            m = (final_length_2 - initial_length_2)/max_iter
+            m = (final_length_2 - initial_length_2)/(rf*np.ceil(max_iter/rf))
 
         neck_first_iter = getattr(self, 'neck_first_iter', -1)
 
@@ -1335,37 +1467,41 @@ cdef class MembraneMesh(TriangleMesh):
         else:
             lams  = [step_size*self.kc/2.0,]
 
-        while j < max_iter:
-            n = self._halfedges['vertex'][self._vertices['neighbors']]
-            n_idxs = self._vertices['neighbors'] == -1
-            n[n_idxs] = -1
+        
+        # truncate_at kwarg to allow visualisation of early steps of a given refinement scheme
+        n_iter = min(max_iter, getattr(self, 'truncate_at', max_iter))
+        
+        while j < n_iter:#max_iter:
+            # n = self._halfedges['vertex'][self._vertices['neighbors']]
+            # n_idxs = self._vertices['neighbors'] == -1
+            # n[n_idxs] = -1
             
-            fn = self._halfedges['face'][self._vertices['neighbors']]
-            fn[n_idxs] = -1
+            # fn = self._halfedges['face'][self._vertices['neighbors']]
+            # fn[n_idxs] = -1
             
-            faces = self._faces['halfedge']
-            v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
-            v1 = self._halfedges['vertex'][faces]
-            v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
-            faces_by_vertex = np.vstack([v0, v1, v2]).T
+            # faces = self._faces['halfedge']
+            # v0 = self._halfedges['vertex'][self._halfedges['prev'][faces]]
+            # v1 = self._halfedges['vertex'][faces]
+            # v2 = self._halfedges['vertex'][self._halfedges['next'][faces]]
+            # faces_by_vertex = np.vstack([v0, v1, v2]).T
             
-            self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            # self.cg = ShrinkwrapConjGrad(self._vertices['position'], n, faces_by_vertex, fn, points, 
+            #                         search_k=self.search_k, search_rad=self.search_rad,
+            #                         shield_sigma=self._mean_edge_length/2.0)
+
+            self.cg = ShrinkwrapMeshConjGrad(self, points, 
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
-            #self.cg = ShrinkwrapMeshConjGrad(self, points, 
-            #                        search_k=self.search_k, search_rad=self.search_rad,
-            #                        shield_sigma=self._mean_edge_length/2.0)
 
+            n_it = min(n_iter - j, rf)
+            vp = self.cg.search(points,lams=lams,num_iters=n_it,
+                           sigma_inv=s, weights=weights)
 
-            n_it = min(max_iter - j, rf)
-            vp = self.cg.search(points,lams=lams,num_iters=n_it, weights=s)
-                           #sigma_inv=s, weights=weights)
-                           
             j += n_it
 
-            k = (self._vertices['halfedge'] != -1)
-            self._vertices['position'][k] = vp[k]
+            #k = (self._vertices['halfedge'] != -1)
+            #self._vertices['position'][k] = vp[k]
 
             self._face_normals_valid = 0
             self._vertex_normals_valid = 0
@@ -1384,7 +1520,8 @@ cdef class MembraneMesh(TriangleMesh):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
-                target_length = np.sqrt(initial_length_2 + m*(j+1))
+                #target_length = np.sqrt(initial_length_2 + m*(j+1))
+                target_length = (initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
@@ -1405,6 +1542,23 @@ cdef class MembraneMesh(TriangleMesh):
     def _S0(self):
         """ Search direction to minimise data misfit"""
         return self.cg.Ahfunc(self.cg.res).reshape(self.vertices.shape)
+
+    @property
+    def S0(self):
+        return self.cg.S[:,0].reshape(self.vertices.shape)
+
+    @property
+    def S1(self):
+        return self.cg.S[:,1].reshape(self.vertices.shape)
+
+    @property
+    def S2(self):
+        return self.cg.S[:,2].reshape(self.vertices.shape)
+
+    @property
+    def S3(self):
+        return self.cg.S[:,3].reshape(self.vertices.shape)
+
 
     @property
     def S0(self):

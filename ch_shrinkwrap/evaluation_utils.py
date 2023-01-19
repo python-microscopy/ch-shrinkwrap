@@ -24,6 +24,9 @@ import itertools
 import scipy.spatial
 import numpy as np
 
+import logging
+logger = logging.getLogger(__name__)
+
 from ch_shrinkwrap.sdf import sdf_normals
 
 if sys.platform == 'darwin':
@@ -53,7 +56,21 @@ def points_from_mesh(mesh, dx_min: float = 5, p: float = 1.0,
     #norms = mesh._faces['normal'][mesh._faces['halfedge'] != -1]  # (N_faces, (x,y,z))
     norms = np.cross((tris[:,2,:]-tris[:,1,:]),(tris[:,0,:]-tris[:,1,:]))  # (N_faces, (x,y,z))
     nn = np.linalg.norm(norms,axis=1)
-    norms = norms/nn[:,None]
+
+    # If a triangle is degenerate (has parallel sides) and zero area we get a 0 length cross-product 
+    # (and a whole pile of NaNs once we divide by nn)
+    # calculate a mask to work out where this happens, and exclude the zero area triangles
+    nan_mask = nn != 0 
+    #logger.debug(f'nn.shape: {nn.shape}, tris.shape: {tris.shape}')
+    if np.any(~nan_mask):
+        logger.warning('Detected zero error triangles in mesh')
+
+    #logger.debug(f'tris[:5,:,:]: {tris[:5,:,:]}' )
+    
+    norms = norms[nan_mask]/nn[nan_mask,None]
+    tris = tris[nan_mask,:,:]
+    #logger.debug(f'norms.shape: {norms.shape}, tris.shape: {tris.shape}' )
+    #logger.debug(f'tris[:5,:,:]: {tris[:5,:,:]}' )
 
     # construct orthogonal vectors to form basis of triangle plane
     v0 = tris[:,1,:]-tris[:,0,:]     # (N_faces, (x,y,z))
@@ -91,8 +108,13 @@ def points_from_mesh(mesh, dx_min: float = 5, p: float = 1.0,
     s2 = np.sign(m2)
 
     d = []
+
+    
+
     # for each triangle...
     for i in range(tris.shape[0]):
+        
+
         # create a grid of points for this triangle
         x = np.arange(xl[i]-x0[i]-dx_min/2, xu[i]-x0[i], dx_min)  # normalize coordinates to vertex 0
         y = np.arange(yl[i]-y0[i]-dx_min/2, yu[i]-y0[i], dx_min)

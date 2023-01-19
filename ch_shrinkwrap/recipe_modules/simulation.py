@@ -3,7 +3,7 @@ import logging
 import numpy as np
 
 from PYME.recipes.base import register_module, ModuleBase
-from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int, List
+from PYME.recipes.traits import Input, Output, CStr, Float, Bool, Int, List, CInt
 from PYME.IO import tabular
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,8 @@ class PointcloudFromShape(ModuleBase):
     psf_width_x = Float(280.0)
     psf_width_y = Float(280.0)
     psf_width_z = Float(840.0)
-    mean_photon_count = Int(600)
-    bg_photon_count = Int(20)
+    mean_photon_count = CInt(600)
+    bg_photon_count = CInt(20)
     noise_fraction = Float(0.1)
     no_jitter = Bool(False)
 
