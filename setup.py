@@ -27,9 +27,9 @@ module3 = Extension('ch_shrinkwrap.conj_grad_utils', sources=[os.path.join(this_
 setup(name='ch_shrinkwrap',
       version='0.0',
       package_path=os.path.join(this_dir,'ch_shrinkwrap'),
-      description='Mesh shrinkwrapping constrained by Canham-Helfrich energy functional.',
-      author='Zach Marin',
-      author_email='zach.marin@yale.edu',
+      description='Iterative mesh fitting to SMLM data.',
+      author='Zach Marin, David Baddeley',
+      author_email='zach.marin@yale.edu, d.baddeley@auckland.ac.nz',
       packages=find_packages(),
       ext_modules = cythonize([module0, module1, module2, module3])
      )
