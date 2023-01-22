@@ -28,12 +28,12 @@ This is designed to fit coarse isosurfaces to localization data.
 | Parameter                  | Description                                                                                                                                                                                        | Standard values        |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | input                      | The data source containing the coarse isosurface.                                                                                                                                                  | surf0                  |
-| input_points                     | The data source containing the points to fit.                                                                                                                                                      | filtered_localizations |
+| points                     | The data source containing the points to fit.                                                                                                                                                      | filtered_localizations |
 | curvature_weight           | The contribution of curvature (vs. point attraction force) to the fitting procedure. Higher values create smoother surfaces.                                                                       | 10 - 100               |
 | max_iters                  | Maximum number of fitting iterations.                                                                                                                                                              | 10 - 100               |
 | output                     | The name of the data source that will contain the fit isosurface.                                                                                                                                  | membrane0              |
 
-NOTE: If `input_points` contains multiple channels (multicolor data), points in all channels will be fit as a single point set.
+NOTE: If `points` contains multiple channels (multicolor data), points in all channels will be fit as a single point set.
 
 ### Advanced
 | Parameter                  | Description                                                                                                                                                                                        | Standard values        |
