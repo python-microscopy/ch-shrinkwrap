@@ -1,10 +1,6 @@
-# Canham-Helfrich Shrinkwrap
+# PYME Localization Surface Fitting
 
-Fit a surface through single-molecule localization microscopy data, taking 
-localization precision into account, and constraining the fit on curvature 
-likelihood. Curvature likelihood is based on the Canham-Helfrich energy
-functional, with stiffness coefficients of lipid bilayers extracted from 
-the literature.
+Fit a surface through single-molecule localization microscopy data, subject to a curvature constraint.
 
 ## Requirements
 
@@ -18,9 +14,7 @@ Once PYME is installed, open a command line and execute the following.
 
 0. Clone this repository.
 
-1. Navigate to the cloned folder `ch-shrinkwrap`.
-
-1. `python setup.py install`
+1. `python ch-shrinkwrap/setup.py install`
 
 The plugin will appear in PYMEVisualize (`pymevis`) under *Mesh-->Shrinkwrap membrane surface*.
 
@@ -34,22 +28,33 @@ This is designed to fit coarse isosurfaces to localization data.
 | Parameter                  | Description                                                                                                                                                                                        | Standard values        |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | input                      | The data source containing the coarse isosurface.                                                                                                                                                  | surf0                  |
+| input_points                     | The data source containing the points to fit.                                                                                                                                                      | filtered_localizations |
 | curvature_weight           | The contribution of curvature (vs. point attraction force) to the fitting procedure. Higher values create smoother surfaces.                                                                       | 10 - 100               |
-| kc                         | Lipid stiffness coefficient of membrane in eV (can be looked up in the literature).                                                                                                                | 0 - 1 (20k_bT)         |
 | max_iters                  | Maximum number of fitting iterations.                                                                                                                                                              | 10 - 100               |
-| points                     | The data source containing the points to fit.                                                                                                                                                      | filtered_localizations |                     
+| output                     | The name of the data source that will contain the fit isosurface.                                                                                                                                  | membrane0              |
+
+NOTE: If `input_points` contains multiple channels (multicolor data), points in all channels will be fit as a single point set.
+
+### Advanced
+| Parameter                  | Description                                                                                                                                                                                        | Standard values        |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | remesh_frequency           | Remesh the isourface every N iterations. Helps keep the fitting numerically stable. Should be often.                                                                                               | 5                      |
-| punch_frequency           | Every punch_frequency iterations, check for and add holes in regions of the mesh where there is a continuous empty area in between two "sides" of the mesh.                                                                                               | 0                      |
-| min_hole_radius           | The minimum size of the continuous empty area defined in punch_frequency.                                                                                               | 100.0                      |
 | neck_first_iter           | Every neck_first_iter iterations, check for and remove necks in the mesh.                                                                                               | 9                      |
-| neck_threshold_low           | Vertices with Gaussian curvature below this threshold are necks.                                                                                               | -1e4                      |
+| neck_threshold_low           | Vertices with Gaussian curvature below this threshold are necks.                                                                                               | -1e3                      |
 | neck_threshold_high           | Vertices with Gaussian curvature above this threshold are necks.                                                                                               | 1e2                      |
+| punch_frequency           | Every punch_frequency iterations, check for and add holes in regions of the mesh where there is a continuous empty area in between two "sides" of the mesh.                                                                                               | 0                      |
+| kc                         | Lipid stiffness coefficient of membrane in eV (can be looked up in the literature).                                                                                                                | 0 - 1 (20k_bT)         |                     
+| minimum_edge_length          | The smallest allowed edge length in the mesh. If not set (left at -1.0), it will default to min(sqrt(sigma_x^2+sigma_y^2+sigma_z^2))/2.5.                                                                                               | -1.0                 |
+| smooth_curvature          | Each vertex's estimated curvature will be replaced by the weighted average of its calculated curvature and curvature of its neighbors.                                                                                               | True                |
+| truncate_at          | Stop the mesh fitting at this iteration. Useful for visualizing intermediate states of the iterative fitting procedure. The rate at which edge lengths subdivide is set by max_iters, so varying this value (as opposed to max_iters). lets a user see the itermediate state without also changing the subdivision behavior.                                                                                          | 1000                |
+
+### Point errors
+
+| Parameter                  | Description                                                                                                                                                                                        | Standard values        |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | sigma_x                    | The variable in the `points` data source containing localization precision in the x-direction. If sigma is only known for one direction, supply it here and it will be assumed for all directions. | error_x                |
 | sigma_y                    | The variable in the `points` data source containing localization precision in the y-direction.                                                                                                     |                        |
 | sigma_z                    | The variable in the `points` data source containing localization precision in the z-direction.                                                                                                     |                        |
-| output                     | The name of the data source that will contain the fit isosurface.                                                                                                                                  | membrane0              |
-
-NOTE: If `points` contains multiple channels (multicolor data), points in all channels will be fit as a single point set.
 
 # Test suite configuration
 
@@ -181,3 +186,5 @@ left at sensible defaults (see ch_shrinkwrap.screened_poisson.screened_poisson).
 - iters : int
     Gauss-Seidel Relaxations: This integer value specifies the number of Gauss-Seidel relaxations 
     to be performed at each level of the hierarchy. The default value for this parameter is 8.
+- k : int
+    Number of neighbors to use when estimating the normal of a point in the input point cloud.
