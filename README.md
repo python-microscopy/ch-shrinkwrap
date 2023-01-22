@@ -4,8 +4,8 @@ Fit a surface through single-molecule localization microscopy data, subject to a
 
 ## Requirements
 
-- python-microscopy
-- pymeshlab
+- `python-microscopy`
+- `pymeshlab` (only needed for comparison in the testing suite)
 
 ## Installation
 
