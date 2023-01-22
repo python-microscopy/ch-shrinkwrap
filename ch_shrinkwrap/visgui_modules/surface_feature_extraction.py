@@ -8,7 +8,7 @@ def skeletonize(visFr):
     skeleton_name = visFr.pipeline.new_ds_name('skeleton')
 
     recipe = visFr.pipeline.recipe
-    sw = SkeletonizeMembrane(recipe, invalidate_parent=False, input=surf_name, output=skeleton_name, points='filtered_localizations')
+    sw = SkeletonizeMembrane(recipe, invalidate_parent=False, input=surf_name, output=skeleton_name, input_points='filtered_localizations')
     
     if sw.configure_traits(kind='modal'):
         recipe.add_module(sw)

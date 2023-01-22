@@ -81,7 +81,7 @@ def compute_shrinkwrap(test_d, output_dir, test_pointcloud_id, shape_pointcloud_
         neck_threshold_high: {float(test_d['neck_threshold_high']):.3e}
         neck_first_iter: {test_d['neck_first_iter']}
         output: membrane
-        points: test_test
+        input_points: test_test
     - surface_feature_extraction.PointsFromMesh:
         input: membrane
         output: membrane0_localizations

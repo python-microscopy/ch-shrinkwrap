@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ShrinkwrapMembrane(ModuleBase):
     input = Input('surf')
     output = Output('membrane')
-    points = Input('filtered_localizations')
+    input_points = Input('filtered_localizations')
 
     max_iters = Int(39)
     curvature_weight = Float(20.0)
@@ -73,20 +73,20 @@ class ShrinkwrapMembrane(ModuleBase):
 
         namespace[self.output] = mesh
 
-        pts = np.ascontiguousarray(np.vstack([namespace[self.points]['x'], 
-                                              namespace[self.points]['y'],
-                                              namespace[self.points]['z']]).T)
+        pts = np.ascontiguousarray(np.vstack([namespace[self.input_points]['x'], 
+                                              namespace[self.input_points]['y'],
+                                              namespace[self.input_points]['z']]).T)
 
         try:
-            sigma = np.vstack([namespace[self.points][self.sigma_x],
-                               namespace[self.points][self.sigma_y],
-                               namespace[self.points][self.sigma_z]]).T
+            sigma = np.vstack([namespace[self.input_points][self.sigma_x],
+                               namespace[self.input_points][self.sigma_y],
+                               namespace[self.input_points][self.sigma_z]]).T
         except:
             try:
-                sigma = namespace[self.points][self.sigma_x]
+                sigma = namespace[self.input_points][self.sigma_x]
             except(KeyError):
                 print(f"{self.sigma_x} not found in data source, defaulting to 10 nm precision.")
-                sigma = 10*np.ones_like(namespace[self.points]['x'])
+                sigma = 10*np.ones_like(namespace[self.input_points]['x'])
 
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
@@ -111,6 +111,7 @@ class ShrinkwrapMembrane(ModuleBase):
         
         return [Item(name='max_iters'),
                 Item(name='curvature_weight'),
+
                 
                 Group(
                     Item(name='remesh_frequency'),

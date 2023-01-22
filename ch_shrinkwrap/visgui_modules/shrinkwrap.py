@@ -13,7 +13,7 @@ def shrinkwrap(visFr):
     membrane_name = visFr.pipeline.new_ds_name('membrane')
     
     recipe = visFr.pipeline.recipe
-    sw = ShrinkwrapMembrane(recipe, invalidate_parent=False, input=surf_name, output=membrane_name, points='filtered_localizations')
+    sw = ShrinkwrapMembrane(recipe, invalidate_parent=False, input=surf_name, output=membrane_name, input_points='filtered_localizations')
     
     if sw.configure_traits(kind='modal'):
         recipe.add_module(sw)
