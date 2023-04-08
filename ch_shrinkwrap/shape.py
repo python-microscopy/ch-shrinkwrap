@@ -253,6 +253,17 @@ def ERSim(centroid=[0,0,0]):
 TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
 
 def NToruses(toruses, centroid=np.array([0,0,0])):
+    """
+    Generate a chain of N toruses. 
+
+    Parameters
+    ----------
+    toruses: dict
+        Dictionary of torus parameters. Key names do not matter.
+        E.g. {'one': {'r': 30, 'R': 100}, 'two': {'r': 10, 'R': 75}, 'three': {'r': 30, 'R': 150}}
+    centroid: np.array
+        Centroid of first torus in the dictionary.
+    """
     dt = toruses.pop(next(iter(toruses)))
     dcentroid = centroid.copy()
     if dcentroid[0] > 0:
