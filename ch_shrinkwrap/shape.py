@@ -173,12 +173,34 @@ class Capsule(Shape):
 
     def sdf(self, p):
         return sdf.capsule(p, self._start, self._end, self._r)
+    
+class TaperedCapsule(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = max(r1, r2, length)/2.0
+    
+    def sdf(self, p):
+        return sdf.tapered_capsule(p, self._r1, self._r2, self._length)
+    
+class RoundCone(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = max(r1, r2, length)/2.0
+    
+    def sdf(self, p):
+        return sdf.round_cone(p, self._r1, self._r2, self._length)
 
 class Box(Shape):
     def __init__(self, halfwidth, r=0, **kwargs):
         Shape.__init__(self, **kwargs)
         self._r = r
-        self._halfwidth = halfwidth
+        self._halfwidth = np.array(halfwidth)
         self._radius = np.max(halfwidth)
 
     @property
@@ -204,7 +226,6 @@ def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
             )
 
 def ERSim(centroid=[0,0,0]):
-    centroid = np.array([0,0,0])
     sheet_height = 100   # nm
     a, b = np.array([0,0,0]), np.array([400,-50,0])
     c, d = np.array([500,250,0]), np.array([0,217,0])
@@ -230,6 +251,19 @@ def ERSim(centroid=[0,0,0]):
     return struct
 
 TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
+
+def NToruses(toruses, centroid=np.array([0,0,0])):
+    dt = toruses.pop(next(iter(toruses)))
+    dcentroid = centroid.copy()
+    if dcentroid[0] > 0:
+        dcentroid[0] += float(dt['R'])  # TODO: Don't force along single axis?
+    print(dt, dcentroid)
+    
+    torus = Torus(radius=float(dt['R']), r=float(dt['r']), centroid=dcentroid)
+    if len(toruses) == 0:
+        return torus
+        
+    return UnionShape(torus, NToruses(toruses, dcentroid + np.array([dt['R'], 0, 0])))
 
 def DualCapsule(length, r, sep): 
     return UnionShape(Capsule(start=np.array([-sep/2,0,0]), end=np.array([-sep/2,length,0]), radius=r),

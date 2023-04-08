@@ -77,6 +77,51 @@ def capsule(p, a, b, r):
     d = pa - ba[:,None]*h
     return np.sqrt((d*d).sum(0)) - r
 
+def tapered_capsule(p, r1, r2, length):
+    """
+    Draw a tapered capsule.
+
+    Parameters
+    ----------
+    p : np.array
+        (3,N) point to calculate
+    r1 : float
+        Capsule minimum radius
+    r2 : float
+        Capsule maximum radius
+    length : float
+        Length of tapered capsule
+    """
+
+    x  = p[0,:]
+    x1 = x/length
+    
+    r = np.sqrt((p[1:,:]**2).sum(0))
+    
+    rx = r1 + (r2-r1)*x1*x1
+    
+    p2 = p - np.array([1,0,0])[:,None]*length
+    
+    d = (x1 < 0)*(np.sqrt((p*p).sum(0))- r1) + \
+        (x1>1)*(np.sqrt((p2*p2).sum(0))- r2) + \
+        (x1 >= 0)*(x1 <=1)*(r-rx)
+
+    return d
+
+def round_cone(p, r1, r2, length):
+
+    b = (r1-r2)/length
+    a = np.sqrt(1.0-b*b)
+
+    q = np.vstack([np.sqrt(p[0,:]**2+p[2,:]**2), p[1,:]])
+    k = (q*np.array([-b,a])[:,None]).sum(0)
+
+    d = (q*np.array([a,b])[:,None]).sum(0) - r1
+    d[k<0.0] = np.linalg.norm(q, axis=0)[k<0.0] - r1
+    d[k>(a*length)] = np.linalg.norm((q-np.array([0.0,length])[:,None]), axis=0)[k>(a*length)] - r2
+
+    return d
+
 def tetrahedron(p, v0, v1, v2, v3):
     """
     SDF of a tetrahedron, calculated as the intersection of the 
@@ -140,7 +185,7 @@ def round_box(p, w, r):
     np.array
         (N,) array of distances to box
     """
-
+    w = np.array(w)
     q = np.abs(p) - w[:,None]
     return np.linalg.norm(np.maximum(q,0.0),axis=0) + np.minimum(np.maximum(q[0,:],np.maximum(q[1,:],q[2,:])),0.0) - r
-    
+
