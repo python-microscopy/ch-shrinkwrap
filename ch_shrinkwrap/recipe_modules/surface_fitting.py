@@ -98,7 +98,7 @@ class ShrinkwrapMembrane(ModuleBase):
             mesh._populate_curvature_grad()
         stop = time.time()
         duration = stop-start
-        md[f'Processing.ShrinkwrapMembrane.Runtime'] = duration
+        md['Processing.ShrinkwrapMembrane.Runtime'] = duration
         # mProfile.profileOff()
         # mProfile.report()
 
@@ -186,7 +186,44 @@ class ScreenedPoissonMesh(ModuleBase):
                                            threads=self.threads)
         stop = time.time()
         duration = stop-start
-        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
+        md['Processing.ScreenedPoissonMesh.Runtime'] = duration
+        self._params_to_metadata(md)
+
+        mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
+
+        mesh.mdh = md
+
+        namespace[self.output] = mesh
+
+@register_module('AlphaWrap')
+class AlphaWrap(ModuleBase):
+    input = Input('filtered_localizations')
+    output = Output('membrane')
+    
+    alpha = Float(20.0)
+    offset = Float(0.001)
+
+    def execute(self, namespace):
+        import numpy as np
+
+        from PYME.IO import MetaDataHandler
+
+        from ch_shrinkwrap.alpha_wrap import alpha_wrap
+        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        points = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                 inp['y'],
+                                                 inp['z']]).T)
+        
+        start = time.time()
+
+        vertices, faces = alpha_wrap(points, self.alpha, self.offset)
+
+        stop = time.time()
+        duration = stop-start
+        md['Processing.AlphaWrap.Runtime'] = duration
         self._params_to_metadata(md)
 
         mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
