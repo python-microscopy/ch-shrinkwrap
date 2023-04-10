@@ -664,7 +664,7 @@ cdef class SkeletonMesh(MembraneMesh):
         # ct = self.split_edges(split_threshold)
 
         # Let's double-check the mesh manifoldness
-        self._manifold = None
+        self._manifold = 0
         self.manifold
         self._initialize_curvature_vectors()
 
