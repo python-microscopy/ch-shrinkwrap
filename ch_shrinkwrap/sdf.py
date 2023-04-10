@@ -2,6 +2,18 @@ import math
 import numpy as np
 from . import util
 
+try:
+    # https://github.com/fogleman/sdf
+    import sdf
+
+    @sdf.sdf3
+    def shape_wrap(shape):
+        def f(p):
+            return shape.sdf(p.T)
+        return f
+except ModuleNotFoundError:
+    pass
+
 def grad_sdf(pts, sdf, delta=0.1):
     """
     Gradient of the signed distance function, calculated via central differences.
