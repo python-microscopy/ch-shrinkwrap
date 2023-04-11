@@ -201,3 +201,25 @@ def round_box(p, w, r):
     q = np.abs(p) - w[:,None]
     return np.linalg.norm(np.maximum(q,0.0),axis=0) + np.minimum(np.maximum(q[0,:],np.maximum(q[1,:],q[2,:])),0.0) - r
 
+def sheet(p, w, r):
+    """Apply a dumbbell shape to a box.
+
+    Parameters
+    ----------
+    p : np.array
+        (3,N) point to calculate
+    w : np.array
+        (3,) halfwidth of box in x, y, z
+    r : float
+        Radius of rounded corners
+
+    Returns
+    -------
+    np.array
+        (N,) array of distances to sheet
+    """
+    w = np.array(w)
+
+    q = np.abs(p) - w[:,None]
+    m = np.maximum(q[0,:],np.maximum(q[1,:],q[2,:]))
+    return np.minimum(np.linalg.norm(np.vstack([np.maximum(q[0,:],q[2,:])+r, q[1,:]+w[1]]),axis=0) - r, m)

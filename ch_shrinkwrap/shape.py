@@ -213,6 +213,16 @@ class Box(Shape):
 
     def sdf(self, p):
         return sdf.round_box(p-self.centroid[:,None], self._halfwidth, self._r)
+    
+class Sheet(Shape):
+    def __init__(self, halfwidth, r=0, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r = r
+        self._halfwidth = np.array(halfwidth)
+        self._radius = np.max(halfwidth)
+
+    def sdf(self, p):
+        return sdf.sheet(p-self.centroid[:,None], self._halfwidth, self._r)
 
 def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
     centroid = np.array(centroid, dtype=float)
