@@ -222,4 +222,4 @@ def sheet(p, w, r):
 
     q = np.abs(p) - w[:,None]
     m = np.maximum(q[0,:],np.maximum(q[1,:],q[2,:]))
-    return np.minimum(np.linalg.norm(np.vstack([np.maximum(q[0,:],q[2,:])+r, q[1,:]+w[1]]),axis=0) - r, m)
+    return np.minimum(np.linalg.norm(np.vstack([np.maximum(q[0,:],q[1,:])+r, q[2,:]+w[2]]),axis=0) - r, m)

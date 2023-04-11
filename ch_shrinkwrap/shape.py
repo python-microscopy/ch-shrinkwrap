@@ -260,6 +260,33 @@ def ERSim(centroid=[0,0,0]):
                         sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
     return struct
 
+def ERSim2(centroid=[0,0,0]):
+    sheet_height = 100   # nm
+    a, b = np.array([0,0,0]), np.array([400,-50,0])
+    c, d = np.array([500,250,0]), np.array([0,217,0])
+    e, f = np.array([0,-400,0]), np.array([-400,0,0])
+    g, h = np.array([-40,0,-100]), np.array([-40,0,100])
+
+    sheet0 = RotationShape(Sheet(np.array([126,100,sheet_height/3]), sheet_height/3), rz=np.pi/4)
+    sheet1 = Sheet(np.array([50,50,sheet_height/3]), 1, centroid=np.array([0,133,0]))
+    sheet2 = RotationShape(Sheet(np.array([33,33,sheet_height/3]), sheet_height/2), rz=7*np.pi/3, centroid=c)
+    cap0 = Capsule(a,b,sheet_height//2)
+    cap1 = Capsule(b,c,sheet_height//2)
+    cap2 = Capsule(c,d,sheet_height//2)
+    cap3 = Capsule(a,e,sheet_height//2)
+    cap4 = Capsule(a,f,sheet_height//2)
+    cap5 = Capsule(g,h,50)
+    smooth = sheet_height/4
+    struct = DifferenceShape(cap5, UnionShape(UnionShape(UnionShape(
+                        UnionShape(sheet0,
+                                UnionShape(cap0,
+                                            UnionShape(cap1,
+                                                        UnionShape(sheet2,cap2,k=smooth),
+                                                        k=smooth),k=smooth),
+                                k=smooth), 
+                        sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth),k=smooth)
+    return struct
+
 TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
 
 def NToruses(toruses, centroid=np.array([0,0,0])):
@@ -416,16 +443,18 @@ class BentShape(Shape):
     Parameters
     ----------
     s0 : shape.Shape
-    rx: float
-        Rotation in x-dir (rad)
-    ry: float
-        Rotation in y-dir (rad)
-    rz: float
-        Rotation in z-dir (rad)
-
+    k : float
+        Bending amount
     """
-    def __init__(self, s0):
-        pass
+    def __init__(self, s0, k=10.0):
+
+        self._s0 = s0
+        self._k = k
+        self._radius = self._s0._radius
 
     def sdf(self, p):
-        pass
+        c = np.cos(self._k*p[0,:])
+        s = np.sin(self._k*p[0,:])
+        m = np.array([[c,-s],[s,c]])
+        q = np.vstack([m*p[0,:], m*p[1,:], p[2,:]])
+        return self._s0.sdf(q)
