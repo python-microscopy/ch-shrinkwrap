@@ -180,7 +180,7 @@ class TaperedCapsule(Shape):
         self._r1 = r1
         self._r2 = r2
         self._length = length
-        self._radius = max(r1, r2, length)/2.0
+        self._radius = (length + max(r1, r2))/2.0
     
     def sdf(self, p):
         return sdf.tapered_capsule(p, self._r1, self._r2, self._length)
