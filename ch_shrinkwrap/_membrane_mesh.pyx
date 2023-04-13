@@ -724,7 +724,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._face_delete(face1)
 
         # Make sure we re-calculate
-        self._clear_flags()
+        self._invalidate_cached_properties()
         self.face_normals
         self.vertex_neighbors
 
@@ -809,7 +809,7 @@ cdef class MembraneMesh(TriangleMesh):
                                     <np.int32_t *> np.PyArray_DATA(new_faces), 
                                     0, n_edges, live_update=True)
 
-        self._clear_flags()
+        self._invalidate_cached_properties()
         self.face_normals
         self.vertex_neighbors
 
