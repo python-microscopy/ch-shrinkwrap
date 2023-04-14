@@ -560,12 +560,16 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         else:
             v_idx, w = self.w
             # v_idx2, w2 = self.w2
+            conj_grad_utils.c_shrinkwrap_ah_helper(v_idx, w, fv.astype('f'), d)
             
-            for i in range(3):
-                d[v_idx[:,i], :] += (w[:,i][:,None])*fv 
-                # d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
+            # for j in range(v_idx.shape[0]):
+            #     for i in range(3):
+            #         d[v_idx[j,i], :] += (w[j,i])*fv[j, :] 
+            #     # d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
 
         
+        #print(fv.dtype, v_idx.dtype, w.dtype)
+        #print('ah:',d)
         assert(not np.any(np.isnan(d)))
         #print('ah:',d)
 

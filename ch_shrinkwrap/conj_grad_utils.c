@@ -120,6 +120,52 @@ static PyObject *c_shrinkwrap_ah_func(PyObject *self, PyObject *args)
     return Py_None;
 }
 
+static PyObject* c_shrinkwrap_ah_helper(PyObject *self, PyObject *args)
+{
+    PyObject* a_v_idx=0, *a_w=0, *a_fv=0, *out=0;
+    int i, j, k, n_points; 
+    
+    if (!PyArg_ParseTuple(args, "OOOO", &a_v_idx, &a_w, &a_fv, &out)) return NULL;
+
+    if (!PyArray_Check(a_v_idx) || !PyArray_ISCONTIGUOUS(a_v_idx))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the f data.");
+        return NULL;
+    }
+    if (!PyArray_Check(a_w) || !PyArray_ISCONTIGUOUS(a_w))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the neighbor data.");
+        return NULL;
+    }
+    if (!PyArray_Check(a_fv) || !PyArray_ISCONTIGUOUS(a_fv)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the weigh matrix.");
+        return NULL;
+    } 
+    if (!PyArray_Check(out) || !PyArray_ISCONTIGUOUS(out)) 
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expecting a contiguous numpy array for the output data.");
+        return NULL;
+    }
+    
+    n_points = PyArray_DIMS(a_v_idx)[0];
+
+    for (j=0; j < n_points;j++)
+    {
+        for (i=0; i < 3; i++) //loop over the three vertices of a face
+        {
+            for(k=0; k < 3; k++) //loop over the 3 dimensions
+            {
+                ((float*)PyArray_GETPTR2(out, *((int32_t *)PyArray_GETPTR2(a_v_idx, j, i)), k))[0] += (*((float *)PyArray_GETPTR2(a_w, j, i)))*(*((float*)PyArray_GETPTR2(a_fv, j, k)));
+            }
+        }
+    }
+
+    
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 static PyObject *c_compute_weight_matrix(PyObject *self, PyObject *args)
 {
     PyObject *v_f = 0, *v_n = 0, *v_points = 0, *v_dd = 0;
@@ -667,6 +713,7 @@ static PyObject *c_shrinkwrap_lhw_func(PyObject *self, PyObject *args)
 static PyMethodDef conj_grad_utils_methods[] = {
     {"c_shrinkwrap_a_func", c_shrinkwrap_a_func, METH_VARARGS},
     {"c_shrinkwrap_ah_func", c_shrinkwrap_ah_func, METH_VARARGS},
+    {"c_shrinkwrap_ah_helper", c_shrinkwrap_ah_helper, METH_VARARGS},
     {"c_compute_weight_matrix", c_compute_weight_matrix, METH_VARARGS},
     {"c_shrinkwrap_l_func", c_shrinkwrap_l_func, METH_VARARGS},
     {"c_shrinkwrap_lh_func", c_shrinkwrap_lh_func, METH_VARARGS},
