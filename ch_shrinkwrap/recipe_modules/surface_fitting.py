@@ -15,7 +15,10 @@ class ShrinkwrapMembrane(ModuleBase):
     points = Input('filtered_localizations')
 
     max_iters = Int(39)
+    
     curvature_weight = Float(20.0)
+    finishing_iters = Int(9)
+    finishing_curvature_weight = Float(20.0)
     shrink_weight = Float(0)
     #attraction_weight = Float(1)
     #curvature_weight = Float(1)
@@ -92,6 +95,12 @@ class ShrinkwrapMembrane(ModuleBase):
         # mProfile.profileOn(['membrane_mesh.py'])
         start = time.time()
         mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        
+        if self.finishing_iters > 0:
+            # do some iterations at the end with a higher curvature force
+            mesh.step_size = self.finishing_curvature_weight
+            mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, max_iter=self.finishing_iters)
+        
         if self.smooth_curvature:
             # recalculate the curvatures with smoothing after iteration is finished
             mesh.smooth_curvature = self.smooth_curvature
@@ -120,6 +129,8 @@ class ShrinkwrapMembrane(ModuleBase):
                     Item(name='punch_frequency'),
                     Item(name='min_hole_radius', visible_when='punch_frequency > 0'),
                     #Item(name='shrink_weight'), #dedicated shrink force is not used
+                    Item(name='finishing_iters'),
+                    Item(name='finishing_curvature_weight', visible_when='finishing_iters > 0'),
                     Item(name='kc'),
                     Item(name='minimum_edge_length'),
                     Item(name='smooth_curvature'),
