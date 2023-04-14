@@ -628,7 +628,7 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
     double QviT[VECTORSIZE*VECTORSIZE];
     double QviTMvi[VECTORSIZE*VECTORSIZE];
     double QviTMviQvi[VECTORSIZE*VECTORSIZE];
-    double cos_theta, sin_theta, t, tau;
+    double cos_theta, sin_theta, t, tau, tmp;
 
     // first coordinate vector
     e1[0] = 1; e1[1] = 0; e1[2] = 0;
@@ -692,13 +692,30 @@ static void compute_curvature_tensor_eig_givens(double *Mvi, PRECISION *Nvi,
     // the eigenvectors now are 
     cos_theta = 1.0/sqrt(1+t*t);
     sin_theta = t*cos_theta;
-    v1[0] = cos_theta*QviT[1]-sin_theta*QviT[2];
-    v1[1] = cos_theta*QviT[4]-sin_theta*QviT[5];
-    v1[2] = cos_theta*QviT[7]-sin_theta*QviT[8];
 
-    v2[0] = sin_theta*QviT[1]+cos_theta*QviT[2];
-    v2[1] = sin_theta*QviT[4]+cos_theta*QviT[5];
-    v2[2] = sin_theta*QviT[7]+cos_theta*QviT[8];
+    // sort eigenvalues high to low
+    if ((*l1) > (*l2)) {
+
+        v1[0] = cos_theta*QviT[1]-sin_theta*QviT[2];
+        v1[1] = cos_theta*QviT[4]-sin_theta*QviT[5];
+        v1[2] = cos_theta*QviT[7]-sin_theta*QviT[8];
+
+        v2[0] = sin_theta*QviT[1]+cos_theta*QviT[2];
+        v2[1] = sin_theta*QviT[4]+cos_theta*QviT[5];
+        v2[2] = sin_theta*QviT[7]+cos_theta*QviT[8];
+    } else {
+        tmp = *l1;
+        *l1 = *l2;
+        *l2 = tmp;
+
+        v2[0] = cos_theta*QviT[1]-sin_theta*QviT[2];
+        v2[1] = cos_theta*QviT[4]-sin_theta*QviT[5];
+        v2[2] = cos_theta*QviT[7]-sin_theta*QviT[8];
+
+        v1[0] = sin_theta*QviT[1]+cos_theta*QviT[2];
+        v1[1] = sin_theta*QviT[4]+cos_theta*QviT[5];
+        v1[2] = sin_theta*QviT[7]+cos_theta*QviT[8];
+    }
 
 }
 
@@ -920,7 +937,6 @@ static void c_curvature_grad(void *vertices_,
     int i, j, jj, neighbor, n_neighbors;
     double l1, l2, r_sum, dv_norm, dv_1_norm, T_theta_norm, Ni_diff, Nj_diff, Nj_1_diff;
     double kj, kj_1, k, Aj, dAj, areas, dareas, w;
-    double k0, k1; 
     double dEdN_H, dEdN_K, dEdN_sum;
     double Nvidv_hat, Nvjdv_hat, Nvjdv_1_hat;
     double v1[VECTORSIZE], v2[VECTORSIZE], Mvi[VECTORSIZE*VECTORSIZE];
@@ -1112,43 +1128,23 @@ static void c_curvature_grad(void *vertices_,
 
         if isnan(l1) {
             // weird tensor
-            k0 = 0.0; k1 = 0.0;
+            k_0[i] = 0.0; k_1[i] = 0.0;
             v1[0] = v1[1] = v1[2] = 0.0;
             v2[0] = v2[1] = v2[2] = 0.0;
         } else {
 
             // principal curvatures (1/nm)
-            k0 = 3.0*l1 - l2;
-            k1 = 3.0*l2 - l1;
+            k_0[i] = 3.0*l1 - l2;
+            k_1[i] = 3.0*l2 - l1;
         }
 
-        // sort pricipal components
-        if (abs(k0) > abs(k1))
-        {
-            k_0[i] = k0;
-            k_1[i] = k1;
-
-                // store eigenvectors
-            e_0[VECTORSIZE*i] = v1[0]; 
-            e_0[VECTORSIZE*i+1] = v1[1];
-            e_0[VECTORSIZE*i+2] = v1[2];
-            e_1[VECTORSIZE*i] = v2[0]; 
-            e_1[VECTORSIZE*i+1] = v2[1];
-            e_1[VECTORSIZE*i+2] = v2[2];
-        } else
-        {
-            k_1[i] = k0;
-            k_0[i] = k1;
-
-                // store eigenvectors
-            e_1[VECTORSIZE*i] = v1[0]; 
-            e_1[VECTORSIZE*i+1] = v1[1];
-            e_1[VECTORSIZE*i+2] = v1[2];
-            e_0[VECTORSIZE*i] = v2[0]; 
-            e_0[VECTORSIZE*i+1] = v2[1];
-            e_0[VECTORSIZE*i+2] = v2[2];
-        }
-
+        // store principal component vectors
+        e_0[VECTORSIZE*i] = v1[0]; 
+        e_0[VECTORSIZE*i+1] = v1[1];
+        e_0[VECTORSIZE*i+2] = v1[2];
+        e_1[VECTORSIZE*i] = v2[0]; 
+        e_1[VECTORSIZE*i+1] = v2[1];
+        e_1[VECTORSIZE*i+2] = v2[2];
         
 
         // mean and gaussian curvatures
