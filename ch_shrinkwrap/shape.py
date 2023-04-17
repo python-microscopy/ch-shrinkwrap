@@ -1,9 +1,20 @@
-from ch_shrinkwrap import sdf, util
-
-from PYME.simulation.locify import points_from_sdf
-
 import math
 import numpy as np
+
+try:
+    # https://github.com/fogleman/sdf
+    import sdf as fsdf
+
+    @fsdf.sdf3
+    def shape_wrap(shape):
+        def f(p):
+            return shape.sdf(p.T)
+        return f
+except ModuleNotFoundError:
+    pass
+
+from PYME.simulation.locify import points_from_sdf
+from ch_shrinkwrap import sdf, util
 
 class Shape:
     def __init__(self, **kwargs):
@@ -184,6 +195,17 @@ class TaperedCapsule(Shape):
     
     def sdf(self, p):
         return sdf.tapered_capsule(p, self._r1, self._r2, self._length)
+    
+class TaperedEllipsoid(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = (length + max(r1, r2))/2.0
+    
+    def sdf(self, p):
+        return sdf.tapered_ellipsoid(p, self._r1, self._r2, self._length)
     
 class RoundCone(Shape):
     def __init__(self, r1, r2, length=1, **kwargs):
