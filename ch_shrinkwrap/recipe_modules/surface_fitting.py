@@ -17,7 +17,7 @@ class ShrinkwrapMembrane(ModuleBase):
     max_iters = Int(39)
     
     curvature_weight = Float(20.0)
-    finishing_iters = Int(9)
+    finishing_iters = Int(0)
     finishing_curvature_weight = Float(20.0)
     shrink_weight = Float(0)
     #attraction_weight = Float(1)
@@ -30,15 +30,15 @@ class ShrinkwrapMembrane(ModuleBase):
     remesh_frequency = Int(5, desc='# of iterations between remesh operations')
     punch_frequency = Int(0, desc='# of iterations between hole punching attempts')
     min_hole_radius = Float(100.0)
-    sigma_x = CStr('sigma_x')
-    sigma_y = CStr('sigma_y')
-    sigma_z = CStr('sigma_z')
+    sigma_x = CStr('error_x')
+    sigma_y = CStr('error_y')
+    sigma_z = CStr('error_z')
     neck_threshold_low = Float(-1e-3, desc='curvature threshold for necks characterised by negative curvature (i.e. a constriction/furrow)')
     neck_threshold_high = Float(1e-2, desc='curvature threshold for necks characterised by +ve curvature (i.e. very thin tubes)')
     neck_first_iter = Int(9)
     truncate_at = Int(1000, desc='Truncate the iterations before max_iter (useful for debugging edge-length refinement)')
     # method = Enum(DESCENT_METHODS)
-    minimum_edge_length = Float(-1.0)
+    minimum_edge_length = Float(5)
     smooth_curvature = Bool(True, desc='Smooth curvature estimates [NB - just on finished mesh, does not effect shrinkwrapping]')
 
     def execute(self, namespace):
