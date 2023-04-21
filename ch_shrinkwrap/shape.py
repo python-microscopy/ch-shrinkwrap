@@ -285,11 +285,11 @@ def ERSim(centroid=[0,0,0]):
 def ERSim2(centroid=[0,0,0]):
     sheet_height = 100   # nm
     a, b = np.array([0,0,0]), np.array([400,-50,0])
-    c, d = np.array([500,250,0]), np.array([0,217,0])
-    e, f = np.array([0,-400,0]), np.array([-400,0,0])
+    c, d = np.array([500,250,0]), np.array([0,240,0])
+    e, f = np.array([0,-600,0]), np.array([-600,0,0])
     g, h = np.array([-40,0,-100]), np.array([-40,0,100])
 
-    sheet0 = RotationShape(Sheet(np.array([126,100,sheet_height/3]), sheet_height/3), rz=np.pi/4)
+    sheet0 = RotationShape(Sheet(np.array([226,200,sheet_height/3]), sheet_height/3), rz=np.pi/4)
     sheet1 = Sheet(np.array([50,50,sheet_height/3]), 1, centroid=np.array([0,133,0]))
     sheet2 = RotationShape(Sheet(np.array([33,33,sheet_height/3]), sheet_height/2), rz=7*np.pi/3, centroid=c)
     cap0 = Capsule(a,b,sheet_height//2)
