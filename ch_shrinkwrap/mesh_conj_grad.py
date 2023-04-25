@@ -227,12 +227,13 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
-            
-            md = np.median(self.d)
-            #print(f'md:{md}')
 
-            #w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
-            w = md/(self.d.ravel() + md)
+            w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            
+            #md = np.median(self.d)
+            #print(f'md:{md}')
+            #w = md/(self.d.ravel() + md)
+            
             #w = w*w
 
             #w = 2.0/(self.d.ravel()*.01 + 1)

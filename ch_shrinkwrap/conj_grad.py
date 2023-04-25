@@ -218,7 +218,7 @@ class TikhonovConjugateGradient(object):
 
         c = np.linalg.solve(H, G)
 
-        print(c)
+        #print(c)
 
         cpred = c0 + np.dot(np.dot(np.transpose(c), Hc), c) - np.dot(np.transpose(c), Gc)
         for i in range(n_smooth):
@@ -439,7 +439,7 @@ class ShrinkwrapConjGrad(TikhonovConjugateGradient):
             S[:,0] = self.Ahfunc(self.res)
             #print(S.shape, prefs.shape, defaults.shape)
             for i in range(n_smooth):
-                print(i)
+                #print(i)
                 prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[i]) # residuals
                 S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
             
