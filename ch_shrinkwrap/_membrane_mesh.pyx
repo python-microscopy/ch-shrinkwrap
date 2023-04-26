@@ -1525,7 +1525,7 @@ cdef class MembraneMesh(TriangleMesh):
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
                 print('Shrinkwrapping iteration {} of {} -  Remesh: Target mean length: {}   Resulting mean length: {}'.format(str(j), str(n_iter), str(target_length), 
-                                                                                str(self._mean_edge_length)), end='\r')             
+                                                                                str(self._mean_edge_length)))             
                 self.cg = None
 
             # Terminate if area change is minimal
