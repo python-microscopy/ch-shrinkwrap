@@ -265,7 +265,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
                         / (np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]]))))
 
             #print & log some statistics
-            print(('Test Statistic %f' % (test,)))
+            #print(('Test Statistic %f' % (test,)))
             self.tests.append(test)
             self.ress.append(np.linalg.norm(self.res))
             self.prefs.append(np.linalg.norm(prefs,axis=0))

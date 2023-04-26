@@ -1524,18 +1524,20 @@ cdef class MembraneMesh(TriangleMesh):
                 target_length = (initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
-                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
-                                                                                str(self._mean_edge_length)))             
+                print('Shrinkwrapping iteration {} of {} -  Remesh: Target mean length: {}   Resulting mean length: {}'.format(str(j), str(n_iter), str(target_length), 
+                                                                                str(self._mean_edge_length)), end='\r')             
                 self.cg = None
 
             # Terminate if area change is minimal
             area = self.area()
             area_ratio = math.fabs(last_area-area)/last_area
-            print(f"Area ratio is {area_ratio:.4f}")
+            #print(f"Area ratio is {area_ratio:.4f}")
             # if area_ratio < 0.001:
             #     print(f"CONVERGED in {j*rf}!!!")
             #     break
             last_area = area
+        
+        print(f'Shrinkwrapping complete in {j} iterations')
 
     # make some metrics from the optimiser accessible for visualisation
     @property
