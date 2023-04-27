@@ -192,6 +192,7 @@ class TaperedCapsule(Shape):
         self._r2 = r2
         self._length = length
         self._radius = (length + max(r1, r2))/2.0
+        self.centroid = np.array([length/2.0,0,0],dtype=float)
     
     def sdf(self, p):
         return sdf.tapered_capsule(p, self._r1, self._r2, self._length)
@@ -203,6 +204,8 @@ class TaperedEllipsoid(Shape):
         self._r2 = r2
         self._length = length
         self._radius = (length + max(r1, r2))/2.0
+        self.centroid = np.array([length/2.0,0,0],dtype=float)
+
     
     def sdf(self, p):
         return sdf.tapered_ellipsoid(p, self._r1, self._r2, self._length)
@@ -327,20 +330,22 @@ def NToruses(toruses, centroid=np.array([0,0,0])):
     dcentroid = centroid.copy()
     if dcentroid[0] > 0:
         dcentroid[0] += float(dt['R'])  # TODO: Don't force along single axis?
-    print(dt, dcentroid)
+
+    # print(dt, dcentroid, len(toruses))
     
     torus = Torus(radius=float(dt['R']), r=float(dt['r']), centroid=dcentroid)
     if len(toruses) == 0:
         return torus
-        
-    return UnionShape(torus, NToruses(toruses, dcentroid + np.array([dt['R'], 0, 0])))
+    
+    n = len(toruses)  # force a copy
+    return UnionShape(torus, NToruses(toruses, dcentroid + np.array([dt['R'], 0, 0])), n=n)
 
 def DualCapsule(length, r, sep): 
     return UnionShape(Capsule(start=np.array([-sep/2,0,0]), end=np.array([-sep/2,length,0]), radius=r),
                       Capsule(start=np.array([sep/2,0,0]), end=np.array([sep/2,length,0]), radius=r))
 
 class UnionShape(Shape):
-    def __init__(self, s0, s1, k=0, **kwargs):
+    def __init__(self, s0, s1, k=0, n=1, **kwargs):
         """
         Return the union of two shapes.
 
@@ -350,6 +355,8 @@ class UnionShape(Shape):
         s1 : shape.Shape
         k : float
             Smoothing parameter
+        n : int
+            Element number in chain of Unions.
         """
         Shape.__init__(self, **kwargs)
         
@@ -357,6 +364,7 @@ class UnionShape(Shape):
         self._s1 = s1
         self._k = k
         self._radius = self._s0._radius + self._s1._radius
+        self.centroid = (1.0/(n+1))*(self._s0.centroid + n*self._s1.centroid)
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -384,7 +392,13 @@ class DifferenceShape(Shape):
         self._s0 = s0
         self._s1 = s1
         self._k = k
-        self._radius = max(self._s0._radius, self._s1._radius)
+        # self._radius = max(self._s0._radius, self._s1._radius)
+        if self._s0._radius > self._s1._radius:
+            self._radius = self._s0._radius
+            self.centroid = self._s0.centroid
+        else:
+            self._radius = self._s1._radius
+            self.centroid = self._s1.centroid
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -412,7 +426,13 @@ class IntersectionShape(Shape):
         self._s0 = s0
         self._s1 = s1
         self._k = k
-        self._radius = min(self._s0._radius, self._s1._radius)
+        # self._radius = min(self._s0._radius, self._s1._radius)
+        if self._s0._radius < self._s1._radius:
+            self._radius = self._s0._radius
+            self.centroid = self._s0.centroid
+        else:
+            self._radius = self._s1._radius
+            self.centroid = self._s1.centroid
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -454,6 +474,7 @@ class RotationShape(Shape):
         self._inv_r = np.linalg.inv(_rz @ (_ry @ _rx))
 
         self._radius = self._s0._radius
+        self.centroid = self._s0.centroid
 
     def sdf(self, p):
         return self._s0.sdf(self._inv_r @ (p-self.centroid[:,None]))
@@ -473,6 +494,7 @@ class BentShape(Shape):
         self._s0 = s0
         self._k = k
         self._radius = self._s0._radius
+        self.centroid = self._s0.centroid
 
     def sdf(self, p):
         c = np.cos(self._k*p[0,:])
