@@ -1227,7 +1227,7 @@ cdef class MembraneMesh(TriangleMesh):
         #self._populate_curvature_grad()
         edges = self._halfedges[self._halfedges['vertex'] != -1]
         el = edges['length']
-        verts = edges[el < threshold*np.median(el)]['vertex']
+        verts = np.array(list(set(edges[el < threshold*np.median(el)]['vertex'])), dtype='i')
         
         if len(verts) > 0:
             self.unsafe_remove_vertices(verts)
@@ -1538,7 +1538,7 @@ cdef class MembraneMesh(TriangleMesh):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
-                #self.remove_extra_short_edges() # resolves topological issues, but can cause segfaults (not sure why)               
+                self.remove_extra_short_edges() # resolves topological issues, but can cause segfaults (not sure why)               
 
                 #target_length = np.sqrt(initial_length_2 + m*(j+1))
                 target_length = (initial_length_2 + m*(j+1))
