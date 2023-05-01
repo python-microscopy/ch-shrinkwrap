@@ -51,8 +51,8 @@ class PointcloudFromShape(ModuleBase):
             
             ds = ColumnSource(x=points[:,0], y=points[:,1], z=points[:,2], 
                               xn=normals[:,0], yn=normals[:,1], zn=normals[:,2],
-                              sigma=s, sigma_x=sigma[:,0], sigma_y=sigma[:,1], 
-                              sigma_z=sigma[:,2])
+                              sigma=s, error_x=sigma[:,0], error_y=sigma[:,1], 
+                              error_z=sigma[:,2])
                               
         md = MetaDataHandler.DictMDHandler()
         self._params_to_metadata(md)
