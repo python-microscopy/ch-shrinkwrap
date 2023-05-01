@@ -1218,6 +1218,24 @@ cdef class MembraneMesh(TriangleMesh):
             self.remesh()
             self.remove_inner_surfaces()
 
+    def remove_extra_short_edges(self, threshold=0.05):
+        """
+        sometimes mesh topology prevents collapse on unreasonably short edges, remove these and continue 
+        """
+
+        #print(self.curvature_gaussian)
+        #self._populate_curvature_grad()
+        edges = self._halfedges[self._halfedges['vertex'] != -1]
+        el = edges['length']
+        verts = edges[el < threshold*np.median(el)]['vertex']
+        
+        if len(verts) > 0:
+            self.unsafe_remove_vertices(verts)
+            self.repair()
+            #self.repair()
+            self.remesh()
+            self.remove_inner_surfaces()
+
     # End topology functions
     ##########################
     
@@ -1519,6 +1537,8 @@ cdef class MembraneMesh(TriangleMesh):
             if r and ((j % self.remesh_frequency) == 0):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
+
+                #self.remove_extra_short_edges()                
 
                 #target_length = np.sqrt(initial_length_2 + m*(j+1))
                 target_length = (initial_length_2 + m*(j+1))
