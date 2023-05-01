@@ -1538,7 +1538,7 @@ cdef class MembraneMesh(TriangleMesh):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
-                #self.remove_extra_short_edges()                
+                #self.remove_extra_short_edges() # resolves topological issues, but can cause segfaults (not sure why)               
 
                 #target_length = np.sqrt(initial_length_2 + m*(j+1))
                 target_length = (initial_length_2 + m*(j+1))
