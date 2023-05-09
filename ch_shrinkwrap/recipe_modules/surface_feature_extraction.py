@@ -140,3 +140,28 @@ class AverageSquaredDistance(ModuleBase):
         ds.mdh = md
 
         namespace[self.output] = ds
+
+@register_module('MeshProperties')
+class MeshProperties(ModuleBase):
+    inputMesh = Input('membrane')
+    output = Output('mesh_props')
+
+    def run(self, inputMesh):
+        from PYME.IO.tabular import ColumnSource
+        import numpy as np
+
+        # calculate # of components
+        # TODO - move this to mesh class
+        comps = np.unique(inputMesh.component[inputMesh.vertex_mask])
+        n_comps = len(comps)
+
+        
+        ds = ColumnSource(euler=np.atleast_1d(inputMesh.euler_characteristic),
+                          genus=np.atleast_1d(inputMesh.genus),
+                          manifold=np.atleast_1d(int(inputMesh.manifold)),
+                          components=np.atleast_1d(n_comps),
+                          #area=np.atleast_1d(np.sum([inputMesh.area(c) for c in comps])),
+                          #volume=np.atleast_1d(np.sum([inputMesh.volume(c) for c in comps]))
+                          )
+
+        return ds

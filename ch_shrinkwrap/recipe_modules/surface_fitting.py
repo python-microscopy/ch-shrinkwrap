@@ -15,7 +15,10 @@ class ShrinkwrapMembrane(ModuleBase):
     points = Input('filtered_localizations')
 
     max_iters = Int(39)
+    
     curvature_weight = Float(20.0)
+    finishing_iters = Int(0)
+    finishing_curvature_weight = Float(20.0)
     shrink_weight = Float(0)
     #attraction_weight = Float(1)
     #curvature_weight = Float(1)
@@ -27,15 +30,15 @@ class ShrinkwrapMembrane(ModuleBase):
     remesh_frequency = Int(5, desc='# of iterations between remesh operations')
     punch_frequency = Int(0, desc='# of iterations between hole punching attempts')
     min_hole_radius = Float(100.0)
-    sigma_x = CStr('sigma_x')
-    sigma_y = CStr('sigma_y')
-    sigma_z = CStr('sigma_z')
+    sigma_x = CStr('error_x')
+    sigma_y = CStr('error_y')
+    sigma_z = CStr('error_z')
     neck_threshold_low = Float(-1e-3, desc='curvature threshold for necks characterised by negative curvature (i.e. a constriction/furrow)')
     neck_threshold_high = Float(1e-2, desc='curvature threshold for necks characterised by +ve curvature (i.e. very thin tubes)')
     neck_first_iter = Int(9)
     truncate_at = Int(1000, desc='Truncate the iterations before max_iter (useful for debugging edge-length refinement)')
     # method = Enum(DESCENT_METHODS)
-    minimum_edge_length = Float(-1.0)
+    minimum_edge_length = Float(5)
     smooth_curvature = Bool(True, desc='Smooth curvature estimates [NB - just on finished mesh, does not effect shrinkwrapping]')
 
     def execute(self, namespace):
@@ -92,13 +95,19 @@ class ShrinkwrapMembrane(ModuleBase):
         # mProfile.profileOn(['membrane_mesh.py'])
         start = time.time()
         mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        
+        if self.finishing_iters > 0:
+            # do some iterations at the end with a higher curvature force
+            mesh.step_size = self.finishing_curvature_weight
+            mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, max_iter=self.finishing_iters)
+        
         if self.smooth_curvature:
             # recalculate the curvatures with smoothing after iteration is finished
             mesh.smooth_curvature = self.smooth_curvature
             mesh._populate_curvature_grad()
         stop = time.time()
         duration = stop-start
-        md[f'Processing.ShrinkwrapMembrane.Runtime'] = duration
+        md['Processing.ShrinkwrapMembrane.Runtime'] = duration
         # mProfile.profileOff()
         # mProfile.report()
 
@@ -120,6 +129,8 @@ class ShrinkwrapMembrane(ModuleBase):
                     Item(name='punch_frequency'),
                     Item(name='min_hole_radius', visible_when='punch_frequency > 0'),
                     #Item(name='shrink_weight'), #dedicated shrink force is not used
+                    Item(name='finishing_iters'),
+                    Item(name='finishing_curvature_weight', visible_when='finishing_iters > 0'),
                     Item(name='kc'),
                     Item(name='minimum_edge_length'),
                     Item(name='smooth_curvature'),
@@ -186,7 +197,44 @@ class ScreenedPoissonMesh(ModuleBase):
                                            threads=self.threads)
         stop = time.time()
         duration = stop-start
-        md[f'Processing.ScreenedPoissonMesh.Runtime'] = duration
+        md['Processing.ScreenedPoissonMesh.Runtime'] = duration
+        self._params_to_metadata(md)
+
+        mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)
+
+        mesh.mdh = md
+
+        namespace[self.output] = mesh
+
+@register_module('AlphaWrap')
+class AlphaWrap(ModuleBase):
+    input = Input('filtered_localizations')
+    output = Output('membrane')
+    
+    alpha = Float(20.0)
+    offset = Float(0.001)
+
+    def execute(self, namespace):
+        import numpy as np
+
+        from PYME.IO import MetaDataHandler
+
+        from ch_shrinkwrap.alpha_wrap import alpha_wrap
+        from ch_shrinkwrap import _membrane_mesh as membrane_mesh
+
+        inp = namespace[self.input]
+        md = MetaDataHandler.DictMDHandler(getattr(inp, 'mdh', None)) # get metadata from the input dataset if present
+        points = np.ascontiguousarray(np.vstack([inp['x'], 
+                                                 inp['y'],
+                                                 inp['z']]).T)
+        
+        start = time.time()
+
+        vertices, faces = alpha_wrap(points, self.alpha, self.offset)
+
+        stop = time.time()
+        duration = stop-start
+        md['Processing.AlphaWrap.Runtime'] = duration
         self._params_to_metadata(md)
 
         mesh = membrane_mesh.MembraneMesh(vertices=vertices, faces=faces)

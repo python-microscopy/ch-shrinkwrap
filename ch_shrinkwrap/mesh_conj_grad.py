@@ -227,8 +227,14 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # /8 = 2 * 2^2 for weighting within 2*sigma of the point
             # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
             #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
-            
+
             w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            
+            #md = np.median(self.d)
+            #print(f'md:{md}')
+            #w = md/(self.d.ravel() + md)
+            
+            #w = w*w
 
             #w = 2.0/(self.d.ravel()*.01 + 1)
             
@@ -247,7 +253,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             S[:,0] = self.Ahfunc(self.res)
             #print(S.shape, prefs.shape, defaults.shape)
             for i in range(n_smooth):
-                print(i)
+                #print(i)
                 prefs[:,i] = getattr(self, self.Lfuncs[i])(self.f - defaults[i]) # residuals
                 S[:,i+1] = -1.0*getattr(self, self.Lhfuncs[i])(prefs[:,i])
             
@@ -259,7 +265,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
                         / (np.linalg.norm(S[:,pair[0]])*np.linalg.norm(S[:,pair[1]]))))
 
             #print & log some statistics
-            print(('Test Statistic %f' % (test,)))
+            #print(('Test Statistic %f' % (test,)))
             self.tests.append(test)
             self.ress.append(np.linalg.norm(self.res))
             self.prefs.append(np.linalg.norm(prefs,axis=0))
@@ -521,6 +527,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # self.w2 = self._compute_weight_matrix3(self.f)
             # self.w = self._compute_weight_matrix2(self.f)
             self.w = self._compute_weight_matrix4(self.f)
+
             #print(self.w)
 
         if False: #USE_C:
@@ -560,12 +567,16 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         else:
             v_idx, w = self.w
             # v_idx2, w2 = self.w2
+            conj_grad_utils.c_shrinkwrap_ah_helper(v_idx, w, fv.astype('f'), d)
             
-            for i in range(3):
-                d[v_idx[:,i], :] += (w[:,i][:,None])*fv 
-                # d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
+            # for j in range(v_idx.shape[0]):
+            #     for i in range(3):
+            #         d[v_idx[j,i], :] += (w[j,i])*fv[j, :] 
+            #     # d[v_idx2[:,i], :] += (w2[:,i][:,None])*fv 
 
         
+        #print(fv.dtype, v_idx.dtype, w.dtype)
+        #print('ah:',d)
         assert(not np.any(np.isnan(d)))
         #print('ah:',d)
 
@@ -796,6 +807,9 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         pi = self.mesh.point_influence
         pi = pi #/(pi.sum()/(pi > 0).sum()) # normalise by mean of non-zero entries
         #pi = np.repeat(pi, 3)
+        #pi = pi/3.
+
+        #pi = 1
 
         alpha = alpha*np.minimum(pi**2, 1)
         

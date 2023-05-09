@@ -724,7 +724,7 @@ cdef class MembraneMesh(TriangleMesh):
         self._face_delete(face1)
 
         # Make sure we re-calculate
-        self._clear_flags()
+        self._invalidate_cached_properties()
         self.face_normals
         self.vertex_neighbors
 
@@ -809,7 +809,7 @@ cdef class MembraneMesh(TriangleMesh):
                                     <np.int32_t *> np.PyArray_DATA(new_faces), 
                                     0, n_edges, live_update=True)
 
-        self._clear_flags()
+        self._invalidate_cached_properties()
         self.face_normals
         self.vertex_neighbors
 
@@ -1218,6 +1218,24 @@ cdef class MembraneMesh(TriangleMesh):
             self.remesh()
             self.remove_inner_surfaces()
 
+    def remove_extra_short_edges(self, threshold=0.05):
+        """
+        sometimes mesh topology prevents collapse on unreasonably short edges, remove these and continue 
+        """
+
+        #print(self.curvature_gaussian)
+        #self._populate_curvature_grad()
+        edges = self._halfedges[self._halfedges['vertex'] != -1]
+        el = edges['length']
+        verts = np.array(list(set(edges[el < threshold*np.median(el)]['vertex'])), dtype='i')
+        
+        if len(verts) > 0:
+            self.unsafe_remove_vertices(verts)
+            self.repair()
+            #self.repair()
+            self.remesh()
+            self.remove_inner_surfaces()
+
     # End topology functions
     ##########################
     
@@ -1520,22 +1538,26 @@ cdef class MembraneMesh(TriangleMesh):
                 if (neck_first_iter > 0) and (j > neck_first_iter):
                     self.remove_necks(getattr(self, 'neck_threshold_low', -1e-4), getattr(self, 'neck_threshold_high', 1e-2)) # TODO - do this every remesh iteration or not?
 
+                self.remove_extra_short_edges() # resolves topological issues, but can cause segfaults (not sure why)               
+
                 #target_length = np.sqrt(initial_length_2 + m*(j+1))
                 target_length = (initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
                 self.remesh(5, target_length, 0.5, 10)
-                print('Target mean length: {}   Resulting mean length: {}'.format(str(target_length), 
+                print('Shrinkwrapping iteration {} of {} -  Remesh: Target mean length: {}   Resulting mean length: {}'.format(str(j), str(n_iter), str(target_length), 
                                                                                 str(self._mean_edge_length)))             
                 self.cg = None
 
             # Terminate if area change is minimal
             area = self.area()
             area_ratio = math.fabs(last_area-area)/last_area
-            print(f"Area ratio is {area_ratio:.4f}")
+            #print(f"Area ratio is {area_ratio:.4f}")
             # if area_ratio < 0.001:
             #     print(f"CONVERGED in {j*rf}!!!")
             #     break
             last_area = area
+        
+        print(f'Shrinkwrapping complete in {j} iterations')
 
     # make some metrics from the optimiser accessible for visualisation
     @property

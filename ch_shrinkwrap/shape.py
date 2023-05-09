@@ -1,9 +1,20 @@
-from ch_shrinkwrap import sdf, util
-
-from PYME.simulation.locify import points_from_sdf
-
 import math
 import numpy as np
+
+try:
+    # https://github.com/fogleman/sdf
+    import sdf as fsdf
+
+    @fsdf.sdf3
+    def shape_wrap(shape):
+        def f(p):
+            return shape.sdf(p.T)
+        return f
+except ModuleNotFoundError:
+    pass
+
+from PYME.simulation.locify import points_from_sdf
+from ch_shrinkwrap import sdf, util
 
 class Shape:
     def __init__(self, **kwargs):
@@ -173,12 +184,48 @@ class Capsule(Shape):
 
     def sdf(self, p):
         return sdf.capsule(p, self._start, self._end, self._r)
+    
+class TaperedCapsule(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = (length + max(r1, r2))/2.0
+        self.centroid = np.array([length/2.0,0,0],dtype=float)
+    
+    def sdf(self, p):
+        return sdf.tapered_capsule(p, self._r1, self._r2, self._length)
+    
+class TaperedEllipsoid(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = (length + max(r1, r2))/2.0
+        self.centroid = np.array([length/2.0,0,0],dtype=float)
+
+    
+    def sdf(self, p):
+        return sdf.tapered_ellipsoid(p, self._r1, self._r2, self._length)
+    
+class RoundCone(Shape):
+    def __init__(self, r1, r2, length=1, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r1 = r1
+        self._r2 = r2
+        self._length = length
+        self._radius = max(r1, r2, length)/2.0
+    
+    def sdf(self, p):
+        return sdf.round_cone(p, self._r1, self._r2, self._length)
 
 class Box(Shape):
     def __init__(self, halfwidth, r=0, **kwargs):
         Shape.__init__(self, **kwargs)
         self._r = r
-        self._halfwidth = halfwidth
+        self._halfwidth = np.array(halfwidth)
         self._radius = np.max(halfwidth)
 
     @property
@@ -191,6 +238,16 @@ class Box(Shape):
 
     def sdf(self, p):
         return sdf.round_box(p-self.centroid[:,None], self._halfwidth, self._r)
+    
+class Sheet(Shape):
+    def __init__(self, halfwidth, r=0, **kwargs):
+        Shape.__init__(self, **kwargs)
+        self._r = r
+        self._halfwidth = np.array(halfwidth)
+        self._radius = np.max(halfwidth)
+
+    def sdf(self, p):
+        return sdf.sheet(p-self.centroid[:,None], self._halfwidth, self._r)
 
 def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
     centroid = np.array(centroid, dtype=float)
@@ -204,7 +261,6 @@ def ThreeWayJunction(h, r, centroid=[0,0,0], k=0):
             )
 
 def ERSim(centroid=[0,0,0]):
-    centroid = np.array([0,0,0])
     sheet_height = 100   # nm
     a, b = np.array([0,0,0]), np.array([400,-50,0])
     c, d = np.array([500,250,0]), np.array([0,217,0])
@@ -229,14 +285,67 @@ def ERSim(centroid=[0,0,0]):
                         sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth)
     return struct
 
+def ERSim2(centroid=[0,0,0]):
+    sheet_height = 100   # nm
+    a, b = np.array([0,0,0]), np.array([400,-50,0])
+    c, d = np.array([500,250,0]), np.array([0,240,0])
+    e, f = np.array([0,-600,0]), np.array([-600,0,0])
+    g, h = np.array([-40,0,-100]), np.array([-40,0,100])
+
+    sheet0 = RotationShape(Sheet(np.array([226,200,sheet_height/3]), sheet_height/3), rz=np.pi/4)
+    sheet1 = Sheet(np.array([50,50,sheet_height/3]), 1, centroid=np.array([0,133,0]))
+    sheet2 = RotationShape(Sheet(np.array([33,33,sheet_height/3]), sheet_height/2), rz=7*np.pi/3, centroid=c)
+    cap0 = Capsule(a,b,sheet_height//2)
+    cap1 = Capsule(b,c,sheet_height//2)
+    cap2 = Capsule(c,d,sheet_height//2)
+    cap3 = Capsule(a,e,sheet_height//2)
+    cap4 = Capsule(a,f,sheet_height//2)
+    cap5 = Capsule(g,h,50)
+    smooth = sheet_height/4
+    struct = DifferenceShape(cap5, UnionShape(UnionShape(UnionShape(
+                        UnionShape(sheet0,
+                                UnionShape(cap0,
+                                            UnionShape(cap1,
+                                                        UnionShape(sheet2,cap2,k=smooth),
+                                                        k=smooth),k=smooth),
+                                k=smooth), 
+                        sheet1, k=smooth),cap3,k=smooth),cap4,k=smooth),k=smooth)
+    return struct
+
 TwoToruses = lambda r, R: UnionShape(Torus(radius=R, r=r, centroid=np.array([-R,0,0])), Torus(radius=R, r=r, centroid=np.array([R,0,0])))
+
+def NToruses(toruses, centroid=np.array([0,0,0])):
+    """
+    Generate a chain of N toruses. 
+
+    Parameters
+    ----------
+    toruses: dict
+        Dictionary of torus parameters. Key names do not matter.
+        E.g. {'one': {'r': 30, 'R': 100}, 'two': {'r': 10, 'R': 75}, 'three': {'r': 30, 'R': 150}}
+    centroid: np.array
+        Centroid of first torus in the dictionary.
+    """
+    dt = toruses.pop(next(iter(toruses)))
+    dcentroid = centroid.copy()
+    if dcentroid[0] > 0:
+        dcentroid[0] += float(dt['R'])  # TODO: Don't force along single axis?
+
+    # print(dt, dcentroid, len(toruses))
+    
+    torus = Torus(radius=float(dt['R']), r=float(dt['r']), centroid=dcentroid)
+    if len(toruses) == 0:
+        return torus
+    
+    n = len(toruses)  # force a copy
+    return UnionShape(torus, NToruses(toruses, dcentroid + np.array([dt['R'], 0, 0])), n=n)
 
 def DualCapsule(length, r, sep): 
     return UnionShape(Capsule(start=np.array([-sep/2,0,0]), end=np.array([-sep/2,length,0]), radius=r),
                       Capsule(start=np.array([sep/2,0,0]), end=np.array([sep/2,length,0]), radius=r))
 
 class UnionShape(Shape):
-    def __init__(self, s0, s1, k=0, **kwargs):
+    def __init__(self, s0, s1, k=0, n=1, **kwargs):
         """
         Return the union of two shapes.
 
@@ -246,6 +355,8 @@ class UnionShape(Shape):
         s1 : shape.Shape
         k : float
             Smoothing parameter
+        n : int
+            Element number in chain of Unions.
         """
         Shape.__init__(self, **kwargs)
         
@@ -253,6 +364,7 @@ class UnionShape(Shape):
         self._s1 = s1
         self._k = k
         self._radius = self._s0._radius + self._s1._radius
+        self.centroid = (1.0/(n+1))*(self._s0.centroid + n*self._s1.centroid)
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -280,7 +392,13 @@ class DifferenceShape(Shape):
         self._s0 = s0
         self._s1 = s1
         self._k = k
-        self._radius = max(self._s0._radius, self._s1._radius)
+        # self._radius = max(self._s0._radius, self._s1._radius)
+        if self._s0._radius > self._s1._radius:
+            self._radius = self._s0._radius
+            self.centroid = self._s0.centroid
+        else:
+            self._radius = self._s1._radius
+            self.centroid = self._s1.centroid
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -308,7 +426,13 @@ class IntersectionShape(Shape):
         self._s0 = s0
         self._s1 = s1
         self._k = k
-        self._radius = min(self._s0._radius, self._s1._radius)
+        # self._radius = min(self._s0._radius, self._s1._radius)
+        if self._s0._radius < self._s1._radius:
+            self._radius = self._s0._radius
+            self.centroid = self._s0.centroid
+        else:
+            self._radius = self._s1._radius
+            self.centroid = self._s1.centroid
 
     def sdf(self, p):
         d0 = self._s0.sdf(p)
@@ -350,6 +474,7 @@ class RotationShape(Shape):
         self._inv_r = np.linalg.inv(_rz @ (_ry @ _rx))
 
         self._radius = self._s0._radius
+        self.centroid = self._s0.centroid
 
     def sdf(self, p):
         return self._s0.sdf(self._inv_r @ (p-self.centroid[:,None]))
@@ -361,16 +486,19 @@ class BentShape(Shape):
     Parameters
     ----------
     s0 : shape.Shape
-    rx: float
-        Rotation in x-dir (rad)
-    ry: float
-        Rotation in y-dir (rad)
-    rz: float
-        Rotation in z-dir (rad)
-
+    k : float
+        Bending amount
     """
-    def __init__(self, s0):
-        pass
+    def __init__(self, s0, k=10.0):
+
+        self._s0 = s0
+        self._k = k
+        self._radius = self._s0._radius
+        self.centroid = self._s0.centroid
 
     def sdf(self, p):
-        pass
+        c = np.cos(self._k*p[0,:])
+        s = np.sin(self._k*p[0,:])
+        m = np.array([[c,-s],[s,c]])
+        q = np.vstack([m*p[0,:], m*p[1,:], p[2,:]])
+        return self._s0.sdf(q)
