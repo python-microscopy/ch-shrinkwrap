@@ -1,9 +1,12 @@
 import numpy as np
 
+last_membrane=None
+
 def shrinkwrap(visFr):
     from PYME.LMVis.Extras.extra_layers import gen_isosurface
     from PYME.LMVis.layers.mesh import TriangleRenderLayer
     from ch_shrinkwrap.recipe_modules.surface_fitting import ShrinkwrapMembrane
+    global last_membrane
 
     surf_name = 'surf0'
 
@@ -23,8 +26,11 @@ def shrinkwrap(visFr):
         visFr.add_layer(layer)
         sw._invalidate_parent = True
 
+        last_membrane = membrane_name 
+
         visFr.RefreshView()
 
 def Plug(visFr):
     visFr.AddMenuItem('Mesh', 'Shrinkwrap membrane surface', lambda e: shrinkwrap(visFr))
+    visFr.AddMenuItem('Mesh', 'Show shrinkwrap residuals', lambda e: visFr.pipeline.dataSources[last_membrane].residual_histogram())
     

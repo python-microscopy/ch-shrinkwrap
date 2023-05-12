@@ -1667,3 +1667,19 @@ cdef class MembraneMesh(TriangleMesh):
         self._sigma = sigma
 
         return getattr(self, 'opt_{}'.format(method))(**opts)
+
+    def residual_histogram(self, points = None, sigma=None):
+        from ch_shrinkwrap.util import surf_residuals
+        
+        if points is None:
+            points = self._points
+
+        if sigma is None:
+            sigma = self._sigma
+
+        surf_residuals(self, points, sigma)
+
+
+        
+
+        

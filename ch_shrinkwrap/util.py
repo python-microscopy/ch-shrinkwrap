@@ -45,3 +45,33 @@ def loc_error(shape, model=None, **kw):
         sigma = 10.0*np.ones(shape)
 
     return sigma
+
+def surf_residuals(surf, points, sigma):
+    from PYME.experimental import isosurface
+    import matplotlib.pyplot as plt
+    from scipy import stats
+        
+    d = isosurface.distance_to_mesh(points, surf, smooth=False)
+
+    f = plt.figure()
+    a1, a2 = f.subplots(2, 1)
+    a1.hist(d, np.linspace(-100, 100, 500))
+    a1.grid()
+    a1.set_xlabel('Distance from surface [nm]')
+    a1.set_ylabel('Frequency')
+    a1.set_title('Surface residuals')
+
+    #a = plt.subplot()
+    a2.hist(d*d, np.linspace(0, 1500, 500), density=True)
+
+    me = np.median(sigma)
+    print(me)
+    x = np.linspace(0, 1500, 1000)
+    a2.plot(x, stats.chi2(3).pdf(x/(me*me))/(me*me))
+
+    a2.grid()
+    a2.set_xlabel('Squared distance [nm^2]')
+    a2.set_ylabel('Frequency')
+    a2.legend(['Expermental', 'Predicted'])
+
+
