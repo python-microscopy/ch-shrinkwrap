@@ -62,16 +62,17 @@ def surf_residuals(surf, points, sigma):
     a1.set_title('Surface residuals')
 
     #a = plt.subplot()
-    a2.hist(d*d, np.linspace(0, 1500, 500), density=True)
+    a2.hist(np.abs(d), np.linspace(0, 100, 500), density=True, label='Experimental')
 
     me = np.median(sigma)
     print(me)
-    x = np.linspace(0, 1500, 1000)
-    a2.plot(x, stats.chi2(3).pdf(x/(me*me))/(me*me))
+    x = np.linspace(0, 100, 1000)
+    a2.plot(x, stats.chi(3).pdf(x/me)/(me), label='Predicted')
 
     a2.grid()
-    a2.set_xlabel('Squared distance [nm^2]')
+    #a2.set_xlabel('Squared distance [nm^2]')
+    a2.set_xlabel('Absolute distance from surface [nm]')
     a2.set_ylabel('Frequency')
-    a2.legend(['Expermental', 'Predicted'])
+    a2.legend()
 
 
