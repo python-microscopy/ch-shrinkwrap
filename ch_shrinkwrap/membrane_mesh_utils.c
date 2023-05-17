@@ -1126,7 +1126,7 @@ static void c_curvature_grad(void *vertices_,
         // compute_curvature_tensor_eig(Mvi, &l1, &l2, v1, v2);
         compute_curvature_tensor_eig_givens(Mvi, Nvi, &l1, &l2, v1, v2);
 
-        if isnan(l1) {
+        if (isnan(l1)) {
             // weird tensor
             k_0[i] = 0.0; k_1[i] = 0.0;
             v1[0] = v1[1] = v1[2] = 0.0;

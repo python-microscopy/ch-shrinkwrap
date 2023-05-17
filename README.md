@@ -9,20 +9,25 @@ Fit a surface through single-molecule localization microscopy data, subject to a
 
 ## Installation
 
-ch_shrinkwrap is a plugin for the [PYthon Microscopy Environment](https://python-microscopy.org/). 
-Once PYME is installed, open a command line and execute the following. 
+ch_shrinkwrap is a plugin for the PYMEVis component of the [PYthon Microscopy Environment](https://python-microscopy.org/). The easiest way to install ch_shrinkwrap is to download the executable installer for PYME from https://python-microscopy.org/downloads/ as this comes with ch_shrinkwrap already bundled. 
+
+Alternatively, follow the [PYME installation instuctions](https://python-microscopy.org/doc/Installation/Installation.html) and perform a conda install, or build from source. Once PYME is installed, open a command line and execute the following. 
 
 0. Clone this repository.
 
 1. `python ch-shrinkwrap/setup.py install`
 
-The plugin will appear in PYMEVisualize (`pymevis`) under *Mesh-->Shrinkwrap membrane surface*.
 
 ## Usage
 
-This is designed to fit coarse isosurfaces to localization data.
+Launch PYMEVis and and open a localization data set, the plugin will appear in PYMEVisualize (`PYMEVis`) as a new menu item *Mesh-->Shrinkwrap membrane surface*.
 
-1. Create an isosurface that slightly over-approximates your data by going to *Mesh-->Generate isosurface*.
+> **_NOTE:_** The easiest way of launching PYMEVis will depend on how it was installed. With the executable installer on windows, PYMEVis should be accessible from the PYME start menu group. On other platforms or for manual installs you will need to open the appropriate anaconda command prompt. On Mac or Linux this will be your normal command prompt / console. On Windows this will be the the `Anaconda prompt` accessed through the start menu. If you have installed in
+a dedicated conda environment (recommended) you will need to activate the environment (e.g. `conda activate PYME` - substituting the relevant environment name). Once in the correct environment, run `PYMEVis`. 
+
+
+
+1. Create a coarse initial density isosurface that slightly over-approximates your data by going to *Mesh-->Generate isosurface*.
 2. Navigate to *Mesh-->Shrinkwrap membrane surface*. A dialog will pop up. Parameters for this dialog are described below.
 
 | Parameter                  | Description                                                                                                                                                                                        | Standard values        |
