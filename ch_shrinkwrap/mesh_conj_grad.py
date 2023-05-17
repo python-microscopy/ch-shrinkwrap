@@ -819,6 +819,57 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
 
         return vc
 
+    def _ncc2(self):
+        """
+        Define a prior for Lfunc to operate against as a location part way
+        between the centroid (minimises curvature at the given point) and 
+        a point which minimises the curvature at the neighbours. 
+        """ 
+
+        vnn = self.mesh._halfedges['vertex'][self.mesh.vertex_neighbors]
+        mask = self.mesh.vertex_neighbors > -1
+        ms= mask.sum(1)
+        
+        #centroid
+        vc = (self.mesh.vertices[vnn,:]*mask[:,:,None]).sum(1)/ms[:,None]
+
+        #vector from centroid to each of the neighouring vertices
+        c_n = self.mesh.vertices[vnn,:] - vc[:,None,:]
+
+        #neighbour normals
+        n_n = self.mesh.vertex_normals[vnn, :]
+
+        # alpha = dot(c_n, n_n)/dot(n_n, mesh.vertex_normals)
+        # NB - we clip the dot product of the vertex and neighbour normals so as to
+        # avoid a div/0 situation as the angle approaches 90 degrees.
+        # now clip at 0.5 to avoid being expansive when angles are greater than 60 degrees.
+        #alpha = (c_n*n_n).sum(2)/np.maximum((n_n*self.mesh.vertex_normals[:,None,:]).sum(2), 0.5)
+        
+        n_dot_n = (n_n*self.mesh.vertex_normals[:,None,:]).sum(2)
+        alpha = ((c_n*n_n).sum(2))/np.sqrt(2*(np.maximum(n_dot_n, 0) +1))
+        
+        #print(alpha.shape)
+        alpha = (alpha*mask).sum(1)/ms
+        
+        ### Switch (linearly) between shrinking curvature force and non-shrinking curvature
+        # force depending on point influence (how much point-attraction force is acting
+        # on the vertex).
+        # Low point attraction -> use a shrinking force
+        # average/high point attraction -> use a non-shrinking force
+        pi = self.mesh.point_influence
+        pi = pi #/(pi.sum()/(pi > 0).sum()) # normalise by mean of non-zero entries
+        #pi = np.repeat(pi, 3)
+        #pi = pi/3.
+
+        #pi = 1
+
+        alpha = alpha*np.minimum(pi**2, 1)
+        
+        vc = vc + alpha[:,None]*self.mesh.vertex_normals
+
+        vc[ms==0,:] = self.mesh.vertices[ms==0,:]
+
+        return vc
 
 
     def _defaults(self, idx=0):

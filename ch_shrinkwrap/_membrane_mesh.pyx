@@ -1215,7 +1215,7 @@ cdef class MembraneMesh(TriangleMesh):
             self.unsafe_remove_vertices(verts)
             self.repair()
             #self.repair()
-            self.remesh()
+            self.remesh(n_relax=0)
             self.remove_inner_surfaces()
 
     def remove_extra_short_edges(self, threshold=0.05):
@@ -1233,7 +1233,7 @@ cdef class MembraneMesh(TriangleMesh):
             self.unsafe_remove_vertices(verts)
             self.repair()
             #self.repair()
-            self.remesh()
+            self.remesh(n_relax=0)
             self.remove_inner_surfaces()
 
     # End topology functions
@@ -1543,7 +1543,7 @@ cdef class MembraneMesh(TriangleMesh):
                 #target_length = np.sqrt(initial_length_2 + m*(j+1))
                 target_length = (initial_length_2 + m*(j+1))
                 # target_length = np.maximum(0.5*self._mean_edge_length, final_length)
-                self.remesh(5, target_length, 0.5, 10)
+                self.remesh(5, target_length, 0.5, n_relax=0)
                 print('Shrinkwrapping iteration {} of {} -  Remesh: Target mean length: {}   Resulting mean length: {}'.format(str(j), str(n_iter), str(target_length), 
                                                                                 str(self._mean_edge_length)))             
                 self.cg = None

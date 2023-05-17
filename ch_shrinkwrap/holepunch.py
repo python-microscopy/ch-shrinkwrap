@@ -81,7 +81,7 @@ def punch_holes(m, offset=10.0, pi_threshold=0):
     tris = mc.march()
     surf = triangle_mesh.TriangleMesh.from_np_stl(tris, smooth_curvature=True)
     #surf.repair()
-    surf.remesh()
+    surf.remesh(n_relax=0)
     return surf
 
 
