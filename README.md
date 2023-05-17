@@ -34,8 +34,8 @@ a dedicated conda environment (recommended) you will need to activate the enviro
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | input                      | The data source containing the coarse isosurface.                                                                                                                                                  | surf0                  |
 | points                     | The data source containing the points to fit.                                                                                                                                                      | filtered_localizations |
-| curvature_weight           | The contribution of curvature (vs. point attraction force) to the fitting procedure. Higher values create smoother surfaces.                                                                       | 10 - 100               |
-| max_iters                  | Maximum number of fitting iterations.                                                                                                                                                              | 10 - 100               |
+| curvature_weight           | The contribution of curvature (vs. point attraction force) to the fitting procedure. Higher values create smoother surfaces.                                                                       | 5 - 50               |
+| max_iters                  | Maximum number of fitting iterations.                                                                                                                                                              | 9 - 99               |
 | output                     | The name of the data source that will contain the fit isosurface.                                                                                                                                  | membrane0              |
 
 NOTE: If `points` contains multiple channels (multicolor data), points in all channels will be fit as a single point set.
@@ -57,9 +57,9 @@ NOTE: If `points` contains multiple channels (multicolor data), points in all ch
 
 | Parameter                  | Description                                                                                                                                                                                        | Standard values        |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| sigma_x                    | The variable in the `points` data source containing localization precision in the x-direction. If sigma is only known for one direction, supply it here and it will be assumed for all directions. | error_x                |
-| sigma_y                    | The variable in the `points` data source containing localization precision in the y-direction.                                                                                                     |                        |
-| sigma_z                    | The variable in the `points` data source containing localization precision in the z-direction.                                                                                                     |                        |
+| error_x                    | The variable in the `points` data source containing localization precision in the x-direction. If error is only known for one axis, supply it here and it will be assumed for all axes. | error_x                |
+| error_y                    | The variable in the `points` data source containing localization precision in the y-direction.                                                                                                     |                        |
+| error_z                    | The variable in the `points` data source containing localization precision in the z-direction.                                                                                                     |                        |
 
 # Test suite configuration
 
