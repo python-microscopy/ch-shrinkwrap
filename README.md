@@ -1,6 +1,6 @@
 # PYME Localization Surface Fitting
 
-This package implements the NanoSculpt algorithm (see https://www.biorxiv.org/content/10.1101/2023.01.26.525798v2), which fits a surface through single-molecule localization microscopy data, subject to a curvature constraint.
+This package implements the NanoWrap algorithm (see https://www.biorxiv.org/content/10.1101/2023.01.26.525798v2), which fits a surface through single-molecule localization microscopy data, subject to a curvature constraint.
 
 ## Requirements
 
