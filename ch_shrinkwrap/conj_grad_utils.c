@@ -123,7 +123,8 @@ static PyObject *c_shrinkwrap_ah_func(PyObject *self, PyObject *args)
 static PyObject* c_shrinkwrap_ah_helper(PyObject *self, PyObject *args)
 {
     PyObject* a_v_idx=0, *a_w=0, *a_fv=0, *out=0;
-    int i, j, k, n_points; 
+    int i, j, k, n_points, v_idx;
+    float w; 
     
     if (!PyArg_ParseTuple(args, "OOOO", &a_v_idx, &a_w, &a_fv, &out)) return NULL;
 
@@ -154,9 +155,12 @@ static PyObject* c_shrinkwrap_ah_helper(PyObject *self, PyObject *args)
     {
         for (i=0; i < 3; i++) //loop over the three vertices of a face
         {
+            w = (*((float *)PyArray_GETPTR2(a_w, j, i)));
+            v_idx = (*((int32_t *)PyArray_GETPTR2(a_v_idx, j, i)));
+
             for(k=0; k < 3; k++) //loop over the 3 dimensions
             {
-                ((float*)PyArray_GETPTR2(out, *((int32_t *)PyArray_GETPTR2(a_v_idx, j, i)), k))[0] += (*((float *)PyArray_GETPTR2(a_w, j, i)))*(*((float*)PyArray_GETPTR2(a_fv, j, k)));
+                ((float*)PyArray_GETPTR2(out, v_idx, k))[0] += w*(*((float*)PyArray_GETPTR2(a_fv, j, k)));
             }
         }
     }
