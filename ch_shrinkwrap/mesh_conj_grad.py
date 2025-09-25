@@ -30,7 +30,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
     dims, shape = None, None
     d = None
 
-    def __init__(self, mesh, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None, use_octree=False):
+    def __init__(self, mesh, points, sigma=None, search_k=200, search_rad=100, shield_sigma=None, use_octree=False, capture_range_nm = 300):
         TikhonovConjugateGradient.__init__(self)
         
         #self.Lfuncs, self.Lhfuncs = ["Lfunc3", "I"], ["Lfunc3", "I"]
@@ -40,6 +40,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         self.mesh = mesh
         self.points = points
         self.sigma = sigma
+        self.capture_range_nm = capture_range_nm
         
         self._mesh_vertex_mask = mesh._vertices['halfedge'] != -1
         
@@ -145,6 +146,26 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
     def search_rad(self, search_rad):
         self._search_rad = max(search_rad, 1.0)
 
+
+
+    def calc_residuals(self, data):
+        r = (data - self.Afunc(self.f))
+
+        d = self.d.ravel()
+        #dr = d * sigma_inv
+        
+        # if precision is higher than capture range, we want weights to be be 1 for d in the range 0-capture_range, then fall off with approx 1/d^2
+        # if precision is worse than the capture range we want to be falling off later - say from 3 sigma_loc
+        
+        #weighting based on caputre range
+        #w1 = 1.0/(d/self.capture_range_nm + 1)**2
+        w1 = 0.5*(1 - np.tanh(10*(d - self.capture_range_nm)/self.capture_range_nm))
+
+        w2 =0 #1.0/(dr/3.0 + 1)**2
+        w = np.maximum(w1, w2)
+
+        return r, w, r*w
+
     
         
     def search(self, data, lams, defaults=None, num_iters=10, weights=None, sigma_inv=1.0, pos=False, last_step=True):
@@ -219,16 +240,36 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             self.loopcount += 1
             
             # residuals
-            self.res[:] = (weights*(data - self.Afunc(self.f)))
+            #self.res[:] = ((data - self.Afunc(self.f)))
+
+            #w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+            #self.res *= (weights*w)
+            self.res[:] = weights*self.calc_residuals(data)[2]
 
             defaults = [self._defaults(i) for i in range(n_smooth)]
 
-            # weight the residuals based on distance
-            # /8 = 2 * 2^2 for weighting within 2*sigma of the point
-            # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
-            #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
+            # # weight the residuals based on distance
+            # # /8 = 2 * 2^2 for weighting within 2*sigma of the point
+            # # w = np.exp(-(self.d.ravel()**2)*((weights/2)**2)) + 1/(self.d.ravel()**2+1)
+            # #w = 0.5-np.arctan(self.d.ravel()**2-2.0/weights**2)/np.pi
 
-            w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+
+            # #w = 1.0/(self.d.ravel()*sigma_inv/2.0+1)
+
+            # # relative distance (in units of localisation error)
+            # d = self.d.ravel()
+            # dr = d * sigma_inv
+            
+            # # if precision is higher than capture range, we want weights to be be 1 for d in the range 0-capture_range, then fall off with approx 1/d^2
+            # # if precision is worse than the capture range we want to be falling off later - say from 3 sigma_loc
+            
+            # #weighting based on caputre range
+            # #w1 = 1.0/(d/self.capture_range_nm + 1)**2
+            # w1 = 0.5*(1 - np.tanh(2*(d - self.capture_range_nm)/self.capture_range_nm))
+
+            # w2 =0 #1.0/(dr/3.0 + 1)**2
+            # w = np.maximum(w1, w2) 
+
             
             #md = np.median(self.d)
             #print(f'md:{md}')
@@ -245,7 +286,7 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
             # w = 1.0/np.log((2*self.d.ravel()/weights)**2+np.exp(1))
             # print("WEIGHTING")
             # print(w)
-            self.res *= w
+            
 
             #print ('res:', self.res.reshape(-1, self.dims))
 
@@ -561,13 +602,24 @@ class ShrinkwrapMeshConjGrad(TikhonovConjugateGradient):
         
         d = np.zeros([self.M,self.dims], dtype='f')
         fv = f.reshape(-1,self.dims)
+
+        n = np.zeros(self.M, 'f')
+        
+
         
         if False:#USE_C:
             conj_grad_utils.c_shrinkwrap_ah_func(np.ascontiguousarray(f), self.vertex_neighbors, self.w, d, self.dims, self.points.shape[0], self.M, self.N)
         else:
             v_idx, w = self.w
+
+            #vr = v_idx.ravel()
+            for i in v_idx.ravel():
+                n[i] += 1.0
+
             # v_idx2, w2 = self.w2
-            conj_grad_utils.c_shrinkwrap_ah_helper(v_idx, w, fv.astype('f'), d)
+            conj_grad_utils.c_shrinkwrap_ah_helper(v_idx, w*w, fv.astype('f'), d)
+
+            d /= (1 + n[:,None])
             
             # for j in range(v_idx.shape[0]):
             #     for i in range(3):

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 class ShrinkwrapMembrane(ModuleBase):
     input = Input('surf')
     output = Output('membrane')
+    point_residuals = Output('')
     points = Input('filtered_localizations')
 
     max_iters = Int(39)
@@ -40,6 +41,7 @@ class ShrinkwrapMembrane(ModuleBase):
     # method = Enum(DESCENT_METHODS)
     minimum_edge_length = Float(5)
     smooth_curvature = Bool(True, desc='Smooth curvature estimates [NB - just on finished mesh, does not effect shrinkwrapping]')
+    capture_range_nm = Float(100, desc='Distance over which points influence the mesh (in nm), should be a few times the localisation precision')
 
     def execute(self, namespace):
         import numpy as np
@@ -94,12 +96,12 @@ class ShrinkwrapMembrane(ModuleBase):
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
         start = time.time()
-        mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, capture_range_nm=self.capture_range_nm)
         
         if self.finishing_iters > 0:
             # do some iterations at the end with a higher curvature force
             mesh.step_size = self.finishing_curvature_weight
-            mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, max_iter=self.finishing_iters)
+            mesh.shrink_wrap(pts, sigma, method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, max_iter=self.finishing_iters, capture_range_nm=self.capture_range_nm)
         
         if self.smooth_curvature:
             # recalculate the curvatures with smoothing after iteration is finished
@@ -113,6 +115,29 @@ class ShrinkwrapMembrane(ModuleBase):
 
         self._params_to_metadata(md)
         mesh.mdh = md
+
+        if self.point_residuals:
+            from PYME.IO import tabular
+            # chreate a mapping filter which wraps the input points
+            pt_res = tabular.MappingFilter(namespace[self.points])
+
+            print(pts.shape, pt_res['x'].shape)
+
+            res, aweights, weighted_res  = mesh.cg.calc_residuals(pts.ravel())
+            res = res.reshape(-1,3)
+            aweights = aweights.reshape(-1,3)
+            weighted_res = weighted_res.reshape(-1,3)
+            pt_res.addColumn('shrinkwrap_residual_x', res[:,0])
+            pt_res.addColumn('shrinkwrap_residual_y', res[:,1])
+            pt_res.addColumn('shrinkwrap_residual_z', res[:,2])
+            pt_res.addColumn('shrinkwrap_adaptive_weight', aweights[:,0])
+            pt_res.addColumn('shrinkwrap_weighted_residual_x', weighted_res[:,0])
+            pt_res.addColumn('shrinkwrap_weighted_residual_y', weighted_res[:,1])
+            pt_res.addColumn('shrinkwrap_weighted_residual_z', weighted_res[:,2])
+            pt_res.addColumn('shrinkwrap_d', mesh.cg.d[:,0])
+            #pt_res.addColumn('shrinkwrap_sigma', sigma[:,0])
+
+            namespace[self.point_residuals] = pt_res
 
 
     def _view_items(self, params=None):
@@ -135,6 +160,7 @@ class ShrinkwrapMembrane(ModuleBase):
                     Item(name='minimum_edge_length'),
                     Item(name='smooth_curvature'),
                     Item(name='truncate_at'),
+                    Item(name='capture_range_nm'),
                     Group(Item(name='sigma_x'),
                         Item(name='sigma_y'),
                         Item(name='sigma_z'),
@@ -270,6 +296,9 @@ class ImageShrinkwrapMembrane(ModuleBase):
     neck_first_iter = Int(9)
     # method = Enum(DESCENT_METHODS)
     minimum_edge_length = Float(-1.0)
+    capture_range_nm = Float(100, desc='Distance over which points influence the mesh (in nm), should be a few times the localisation precision')
+
+    truncate_at = Int(1000, desc='Truncate the iterations before max_iter (useful for debugging edge-length refinement)')
 
     def execute(self, namespace):
         import numpy as np
@@ -296,7 +325,8 @@ class ImageShrinkwrapMembrane(ModuleBase):
                                           neck_threshold_low = self.neck_threshold_low,
                                           neck_threshold_high = self.neck_threshold_high,
                                           neck_first_iter = self.neck_first_iter,
-                                          shrink_weight = self.shrink_weight) # self.min_hole_radius)
+                                          shrink_weight = self.shrink_weight,
+                                          truncate_at = self.truncate_at) # self.min_hole_radius)
                                           #a=self.attraction_weight,
                                           #c=self.curvature_weight,
                                         #   search_rad=self.search_rad)
@@ -330,9 +360,12 @@ class ImageShrinkwrapMembrane(ModuleBase):
 
         sigma = vx
 
+        print(f'Image contains {len(pts)} points with non-zero weight')
+        print(f'Starting shrinkwrapping ({mesh.max_iter} iterations max)')
+
         # from PYME.util import mProfile
         # mProfile.profileOn(['membrane_mesh.py'])
-        mesh.shrink_wrap(pts, sigma=sigma, weights=np.repeat(weights, 3), method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length)
+        mesh.shrink_wrap(pts, sigma=sigma, weights=np.repeat(weights, 3), method='conjugate_gradient', minimum_edge_length=self.minimum_edge_length, capture_range_nm=self.capture_range_nm)
         # mProfile.profileOff()
         # mProfile.report()
 
