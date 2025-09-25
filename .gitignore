@@ -17,3 +17,4 @@ notebooks/*.stl
 notebooks/*.txt
 ch_shrinkwrap/_skeleton_mesh.c
 .idea*
+*.so
