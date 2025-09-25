@@ -1458,7 +1458,7 @@ cdef class MembraneMesh(TriangleMesh):
 
 
         if np.isscalar(sigma):
-            s = float(sigma)
+            s = 1.0/float(sigma)
         elif (len(sigma.shape) == 1) and (sigma.shape[0] == points.shape[0]):
             print("Not this case???")
             print(points.shape, sigma.shape)
@@ -1511,9 +1511,12 @@ cdef class MembraneMesh(TriangleMesh):
                                     search_k=self.search_k, search_rad=self.search_rad,
                                     shield_sigma=self._mean_edge_length/2.0)
 
+            lj = lams.copy()
+            lj[0] = lams[0]/(self._mean_edge_length/initial_length)**2
+
 
             n_it = min(n_iter - j, rf)
-            vp = self.cg.search(points,lams=lams,num_iters=n_it,
+            vp = self.cg.search(points,lams=lj,num_iters=n_it,
                            sigma_inv=s, weights=weights)
 
             j += n_it
