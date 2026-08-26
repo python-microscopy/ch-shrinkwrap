@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61", "wheel", "Cython>=3", "numpy", "python-microscopy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ch-shrinkwrap"
+version = "0.0"
+description = "Iterative mesh fitting to SMLM data."
+authors = [
+    {name = "Zach Marin", email = "zach.marin@yale.edu"},
+    {name = "David Baddeley", email = "d.baddeley@auckland.ac.nz"},
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "python-microscopy",
+]
+
+# Group names must match PYME's entry-point discovery implementation (issue #1699)
+[project.entry-points."pyme.plugins.recipes"]
+ch_shrinkwrap_surface_fitting = "ch_shrinkwrap.recipe_modules.surface_fitting"
+ch_shrinkwrap_surface_feature_extraction = "ch_shrinkwrap.recipe_modules.surface_feature_extraction"
+ch_shrinkwrap_simulation = "ch_shrinkwrap.recipe_modules.simulation"
+
+[project.entry-points."pyme.plugins.visgui"]
+ch_shrinkwrap_shrinkwrap = "ch_shrinkwrap.visgui_modules.shrinkwrap"
+ch_shrinkwrap_surface_feature_extraction = "ch_shrinkwrap.visgui_modules.surface_feature_extraction"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+ch_shrinkwrap = ["*.h", "*.pxd", "*.pyx", "*.c"]
