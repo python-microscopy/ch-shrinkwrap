@@ -9,13 +9,11 @@ This package implements the NanoWrap algorithm (see https://www.biorxiv.org/cont
 
 ## Installation
 
-ch_shrinkwrap is a plugin for the PYMEVis component of the [PYthon Microscopy Environment](https://python-microscopy.org/). The easiest way to install ch_shrinkwrap is to download the executable installer for PYME from https://python-microscopy.org/downloads/ as this comes with ch_shrinkwrap already bundled. 
-
-Alternatively, follow the [PYME installation instuctions](https://python-microscopy.org/doc/Installation/Installation.html) and perform a conda install, or build from source. Once PYME is installed, open a command line and execute the following. 
+ch_shrinkwrap is a plugin for the PYMEVis component of the [PYthon Microscopy Environment](https://python-microscopy.org/). If you already have PYME installed [PYME installation instuctions](https://python-microscopy.org/doc/Installation/Installation.html), drop into the shell for that python environment. Otherwise create a new clean environment (using conda, venv, uv or your preffered tool) with python <=3.13. Then:
 
 0. Clone this repository.
 
-1. `python ch-shrinkwrap/setup.py install`
+1. `pip install .` or `uv pip install .` (faster, especially if you don't already have python-microscopy installed in the environment)
 
 
 ## Usage
