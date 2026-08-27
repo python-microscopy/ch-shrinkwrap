@@ -1,0 +1,72 @@
+name: Build PIP packages
+
+on:
+  workflow_run:
+    workflows: ["Make release"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  deploy_source:
+    runs-on: 'macos-latest'
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    - name: Build source distribution
+      run: |
+        python -m build --sdist
+    - name: Publish source distribution
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        twine upload --skip-existing dist/*.tar.gz
+
+  deploy_wheel:
+    needs: deploy_source
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        arch: [x86_64, arm64]
+        exclude:
+          - os: windows-latest
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    - name: Build wheel
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          arch -${{ matrix.arch }} python -m build --wheel
+        else
+          python -m build --wheel
+        fi
+    - name: Publish wheel
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        twine upload --skip-existing dist/*.whl

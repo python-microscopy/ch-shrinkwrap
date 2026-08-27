@@ -4,8 +4,8 @@
 # Based on PYME.Deconv.dec dec.py
 ###################################
 
-from numpy.compat.py3k import npy_load_module
-from .delaunay_utils import voronoi_poles
+#from numpy.compat.py3k import npy_load_module
+#from .delaunay_utils import voronoi_poles
 
 import numpy as np
 import scipy.spatial
