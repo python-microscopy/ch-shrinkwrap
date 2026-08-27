@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ch-shrinkwrap"
-version = "0.0"
+version = "0.0.1"
 description = "Iterative mesh fitting to SMLM data."
 authors = [
     {name = "Zach Marin", email = "zach.marin@yale.edu"},
